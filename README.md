@@ -53,6 +53,21 @@ Unlike streaming-first players, Elovaire focuses on music stored directly on you
 - Local library scanning through Android `MediaStore`
 - Smooth animations designed around default Android motion framework
 
+---
+
+<p align="center">
+  <img
+    src="https://raw.githubusercontent.com/droidbeauty/elovaire-music/refs/heads/main/renders/2.png"
+    alt="Elovaire library preview"
+    width="49%"
+  />
+  <img
+    src="https://raw.githubusercontent.com/droidbeauty/elovaire-music/refs/heads/main/renders/3.png"
+    alt="Elovaire player preview"
+    width="49%"
+  />
+</p>
+
 ## Features
 
 - Full now playing screen with queue, lyrics overlay, volume control, and playback modes
