@@ -3392,7 +3392,7 @@ private fun LibraryHubScreen(
                         )
                         DividerLine()
                         LibraryHubRow(
-                            iconResId = R.drawable.ic_lucide_gallery_vertical_end,
+                            iconResId = R.drawable.ic_lucide_guitar,
                             title = "Genres",
                             detail = "${formatCountLabel(totalGenres, "genre")} tagged",
                             onClick = { onOpenCollection(LibraryCollectionKind.Genres) },
@@ -5118,37 +5118,60 @@ private fun FavoriteAlbumsModule(
                 color = borderColor,
                 shape = RoundedCornerShape(ElovaireRadii.module),
             )
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 16.dp),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Start,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
                         painter = painterResource(id = iconResId),
                         contentDescription = null,
                         tint = readableMutedIconColor(),
-                        modifier = Modifier.size(15.dp),
+                        modifier = Modifier
+                            .size(18.dp),
                     )
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium),
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = readableSecondaryTextColor(),
+                        )
+                    }
                 }
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = readableSecondaryTextColor(),
+            }
+
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
                 )
             }
 
             albums.chunked(2).take(3).forEach { rowAlbums ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     rowAlbums.forEach { album ->
                         FavoriteAlbumCompactCell(
@@ -5193,20 +5216,20 @@ private fun FavoriteAlbumCompactCell(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             ArtworkImage(
                 uri = album.artUri,
                 title = album.title,
-                modifier = Modifier.size(42.dp),
+                modifier = Modifier.size(60.dp),
                 cornerRadius = ElovaireRadii.artworkSmall,
                 showArtworkGlow = true,
             )
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(
                     text = album.title,
@@ -10027,9 +10050,7 @@ private fun SettingsScreen(
                                 onClick = onOpenChangelog,
                             ) {
                                 Row(
-                                    modifier = Modifier
-                                        .padding(horizontal = 14.dp, vertical = 8.dp)
-                                        .fillMaxWidth(),
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.Center,
                                 ) {
@@ -10323,9 +10344,12 @@ private fun TextSizeStepper(
     var isDragging by remember { mutableStateOf(false) }
     var dragCenterPx by remember { mutableFloatStateOf(0f) }
 
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
         BoxWithConstraints(
-            modifier = modifier
+            modifier = Modifier
                 .fillMaxWidth()
                 .height(36.dp)
                 .horizontalGestureSafe(),

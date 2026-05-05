@@ -7,13 +7,13 @@
       3. Add newer releases above older ones.
     -->
     <release version="1.7">
-        <item>refined look for recently played albums module in Home tab</item>
-        <item>all new queue menu in now playing screen with more functional layout</item>
-        <item>another batch of tweaks to EQ interface</item>
-        <item>improved interactions and layout of queue menu in now playing UI</item>
-        <item>fixed choppy scrollbars all throughout the UI</item>
-        <item>new animation to minimize/expand now playing screen</item>
-        <item>new app icon</item>
-        <item>some other bug fixes</item>
+        <item>Refined look for recently played albums module in Home tab</item>
+        <item>All new queue menu in now playing screen with more functional layout</item>
+        <item>Another batch of tweaks to EQ interface</item>
+        <item>Added the ability to switch playback from stereo to mono for accessibility</item>
+        <item>Improved interactions and layout of queue menu in now playing UI</item>
+        <item>Fixed choppy scrollbars all throughout the UI</item>
+        <item>New animation to minimize/expand now playing screen</item>
+        <item>Some other bug fixes</item>
     </release>
 </changelog>
