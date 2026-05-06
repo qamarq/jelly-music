@@ -653,32 +653,20 @@ private fun DynamicBackdropSurface(
     content: @Composable BoxScope.() -> Unit = {},
 ) {
     val hazeState = LocalChromeHazeState.current
-    val backdropBitmap = LocalChromeBackdropBitmap.current
     val overlayColor = blurSurfaceOverlayColor()
-    var bounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
-    val hasSnapshotBackdrop = backdropBitmap != null && bounds != null
 
     Box(
-        modifier = modifier
-            .clip(shape)
-            .onGloballyPositioned { bounds = it.boundsInWindow() },
+        modifier = modifier.clip(shape),
     ) {
-        if (hasSnapshotBackdrop) {
-            SnapshotBackdropBlurLayer(
-                backdropBitmap = backdropBitmap,
-                bounds = bounds,
-                blurRadius = 30.dp,
-                modifier = Modifier.matchParentSize(),
-            )
-        } else if (hazeState != null) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && hazeState != null) {
             Box(
                 modifier = Modifier
                     .matchParentSize()
                     .hazeEffect(hazeState) {
-                        blurRadius = 28.dp
+                        blurRadius = 30.dp
                         backgroundColor = overlayColor.copy(alpha = overlayAlpha)
                         tints = listOf(HazeTint(overlayColor.copy(alpha = overlayAlpha)))
-                        noiseFactor = 0.02f
+                        noiseFactor = 0.015f
                     },
             )
         }
@@ -963,8 +951,6 @@ fun ElovaireRoot(
     }
     var detailExpandOrigin by remember { mutableStateOf(ExpandOrigin()) }
     var nowPlayingTransitionSnapshot by remember { mutableStateOf<NowPlayingTransitionSnapshot?>(null) }
-    var nowPlayingBackdropSnapshot by remember { mutableStateOf<BackdropSnapshot?>(null) }
-    var lastChromeBackdropSnapshot by remember { mutableStateOf<BackdropSnapshot?>(null) }
     var isPlayerOverlayVisible by rememberSaveable { mutableStateOf(false) }
     var lastPlayerOpenRequestAt by remember { mutableLongStateOf(0L) }
     var isSearchQueryActive by rememberSaveable { mutableStateOf(false) }
@@ -1017,23 +1003,11 @@ fun ElovaireRoot(
             darkTheme = darkTheme,
         )
     }
-    val chromeBackdropBitmap = rememberChromeBackdropSnapshot(
-        enabled = !isPlayerOverlayVisible,
-        refreshKey = "$darkTheme:$currentRoute",
-    )
-    LaunchedEffect(chromeBackdropBitmap) {
-        if (chromeBackdropBitmap != null) {
-            lastChromeBackdropSnapshot = chromeBackdropBitmap
-        }
-    }
     val openPlayerIfAllowed: (NowPlayingTransitionSnapshot?) -> Unit = { snapshot ->
         val now = System.currentTimeMillis()
         if (now - lastPlayerOpenRequestAt > 450L) {
             lastPlayerOpenRequestAt = now
             nowPlayingTransitionSnapshot = snapshot
-            nowPlayingBackdropSnapshot = chromeBackdropBitmap ?: lastChromeBackdropSnapshot ?: runCatching {
-                rootView.rootView.drawToDownsampledBitmap()
-            }.getOrNull()
             isPlayerOverlayVisible = true
         }
     }
@@ -1055,7 +1029,6 @@ fun ElovaireRoot(
     LaunchedEffect(isPlayerOverlayVisible) {
         if (!isPlayerOverlayVisible) {
             nowPlayingTransitionSnapshot = null
-            nowPlayingBackdropSnapshot = null
         }
     }
     LaunchedEffect(eqSettings.crossfadeEnabled) {
@@ -1122,11 +1095,6 @@ fun ElovaireRoot(
     CompositionLocalProvider(
         LocalOverscrollFactory provides overscrollFactory,
         LocalSongMenuActions provides songMenuActions,
-        LocalChromeBackdropBitmap provides if (isPlayerOverlayVisible) {
-            nowPlayingBackdropSnapshot ?: lastChromeBackdropSnapshot ?: chromeBackdropBitmap
-        } else {
-            chromeBackdropBitmap
-        },
         LocalChromeHazeState provides chromeHazeState,
     ) {
         Box(
@@ -7033,7 +7001,6 @@ private fun NowPlayingScreen(
     val displaySong = currentSong?.let { enrichedSongsById[it.id] ?: it }
     val playbackProgress by playbackManager.progressState.collectAsStateWithLifecycle()
     val playerHazeState = rememberHazeState()
-    val backdropSnapshot = LocalChromeBackdropBitmap.current
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     var playerDismissTriggered by rememberSaveable { mutableStateOf(false) }
@@ -7308,21 +7275,6 @@ private fun NowPlayingScreen(
                     baseSurface.copy(alpha = 0.68f * effectiveTransitionProgress.coerceIn(0f, 1f)),
                 ),
         )
-        SnapshotBackdropBlurLayer(
-            backdropBitmap = backdropSnapshot,
-            bounds = fullSurfaceBounds.takeIf { activeTransitionSnapshot != null || dismissAnimationRunning },
-            blurRadius = 0.dp,
-            modifier = Modifier
-                .fillMaxSize()
-                .alpha(
-                    if (activeTransitionSnapshot != null || dismissAnimationRunning) {
-                        1f
-                    } else {
-                        0f
-                    },
-                ),
-        )
-
         Box(
             modifier = Modifier
                 .offset {
@@ -7470,6 +7422,7 @@ private fun NowPlayingScreen(
                             },
                             onDragEnd = {
                                 val progress = interactiveTransitionProgress ?: 1f
+                                dragDistance = 0f
                                 if (progress < 0.6f) {
                                     dismissNowPlaying(null)
                                 } else {
@@ -7484,6 +7437,7 @@ private fun NowPlayingScreen(
                             },
                             onDragCancel = {
                                 if (dismissAnimationRunning) return@detectVerticalDragGestures
+                                dragDistance = 0f
                                 scope.launch {
                                     settlePlayerTransition(
                                         targetValue = 1f,
