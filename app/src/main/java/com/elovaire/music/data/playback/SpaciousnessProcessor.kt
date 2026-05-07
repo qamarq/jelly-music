@@ -47,7 +47,7 @@ internal object SpaciousnessProcessorModel {
     }
 
     fun mappedAmount(amountNormalized: Float): Float {
-        return amountNormalized.coerceIn(0f, 1f).toDouble().pow(1.35).toFloat()
+        return amountNormalized.coerceIn(0f, 1f).toDouble().pow(1.18).toFloat()
     }
 
     fun automaticHeadroomDb(
@@ -58,13 +58,13 @@ internal object SpaciousnessProcessorModel {
         if (amount <= 0f || mode == SpaciousnessMode.Off) return 0f
         val compensationDb = when (mode) {
             SpaciousnessMode.Off -> 0f
-            SpaciousnessMode.StereoWidth -> 0.6f + (amount * 0.9f)
-            SpaciousnessMode.CrossfeedDepth -> 0.25f + (amount * 0.45f)
-            SpaciousnessMode.EarlyReflectionRoom -> 0.35f + (amount * 0.7f)
-            SpaciousnessMode.HaasSpace -> 0.4f + (amount * 0.8f)
-            SpaciousnessMode.HarmonicAir -> 0.22f + (amount * 0.5f)
+            SpaciousnessMode.StereoWidth -> 0.28f + (amount * 0.52f)
+            SpaciousnessMode.CrossfeedDepth -> 0.08f + (amount * 0.2f)
+            SpaciousnessMode.EarlyReflectionRoom -> 0.16f + (amount * 0.34f)
+            SpaciousnessMode.HaasSpace -> 0.2f + (amount * 0.42f)
+            SpaciousnessMode.HarmonicAir -> 0.12f + (amount * 0.24f)
         }
-        return -compensationDb.coerceAtMost(2.4f)
+        return -compensationDb.coerceAtMost(1.35f)
     }
 }
 
@@ -234,13 +234,13 @@ internal class SpaciousnessProcessor {
             0f
         }
         val highSide = side - lowSide
-        val sideGain = 1f + (amount * 0.74f)
+        val sideGain = 1f + (amount * 1.05f)
         val widenedSide = if (activeConfig.preserveBassMono) {
-            lowSide * (1f + (amount * 0.06f)) + highSide * sideGain
+            lowSide * (1f + (amount * 0.02f)) + highSide * sideGain
         } else {
             side * sideGain
         }
-        val centerGain = 1f - (amount * 0.02f)
+        val centerGain = 1f - (amount * 0.01f)
         return StereoPair(
             left = (mid * centerGain) + widenedSide,
             right = (mid * centerGain) - widenedSide,
@@ -252,14 +252,17 @@ internal class SpaciousnessProcessor {
         right: Float,
         amount: Float,
     ): StereoPair {
-        val crossDelay = delaySamples(0.18f + (0.42f * amount))
+        val crossDelay = delaySamples(0.14f + (0.3f * amount))
         val lowPassedRight = crossfeedLowPassL.process(readDelay(rightDelay, crossDelay), sampleRateHz, 920f)
         val lowPassedLeft = crossfeedLowPassR.process(readDelay(leftDelay, crossDelay), sampleRateHz, 920f)
-        val crossGain = 0.03f + (amount * 0.11f)
-        val directTrim = 1f - (amount * 0.055f)
+        val mid = (left + right) * 0.5f
+        val side = (left - right) * 0.5f
+        val sideBlend = 1f - (amount * 0.16f)
+        val crossGain = 0.018f + (amount * 0.075f)
+        val presenceLift = 1f + (amount * 0.015f)
         return StereoPair(
-            left = (left * directTrim) + (lowPassedRight * crossGain),
-            right = (right * directTrim) + (lowPassedLeft * crossGain),
+            left = (mid * presenceLift) + (side * sideBlend) + (lowPassedRight * crossGain),
+            right = (mid * presenceLift) - (side * sideBlend) + (lowPassedLeft * crossGain),
         )
     }
 
@@ -285,8 +288,8 @@ internal class SpaciousnessProcessor {
             sampleRateHz,
             4_800f,
         )
-        val wetGain = 0.06f + (amount * 0.14f)
-        val dryGain = 1f - (amount * 0.045f)
+        val wetGain = 0.038f + (amount * 0.1f)
+        val dryGain = 1f - (amount * 0.01f)
         return StereoPair(
             left = (left * dryGain) + (reflectionLeft * wetGain),
             right = (right * dryGain) + (reflectionRight * wetGain),
@@ -298,14 +301,18 @@ internal class SpaciousnessProcessor {
         right: Float,
         amount: Float,
     ): StereoPair {
-        val delayLeft = delaySamples(5.5f + (3.5f * amount))
-        val delayRight = delaySamples(7.2f + (4.2f * amount))
-        val delayedRightHigh = haasHighPassL.process(readDelay(rightDelay, delayRight), sampleRateHz, 240f)
-        val delayedLeftHigh = haasHighPassR.process(readDelay(leftDelay, delayLeft), sampleRateHz, 240f)
-        val wetGain = 0.045f + (amount * 0.09f)
+        val delayLeft = delaySamples(6.2f + (2.6f * amount))
+        val delayRight = delaySamples(8.1f + (3.1f * amount))
+        val mid = (left + right) * 0.5f
+        val side = (left - right) * 0.5f
+        val delayedLeftHigh = haasHighPassL.process(readDelay(leftDelay, delayLeft), sampleRateHz, 520f)
+        val delayedRightHigh = haasHighPassR.process(readDelay(rightDelay, delayRight), sampleRateHz, 520f)
+        val delayedSide = (delayedLeftHigh - delayedRightHigh) * 0.5f
+        val wetGain = 0.06f + (amount * 0.16f)
+        val sideGain = 1f + (amount * 0.16f)
         return StereoPair(
-            left = left + (delayedRightHigh * wetGain),
-            right = right + (delayedLeftHigh * wetGain),
+            left = mid + (side * sideGain) + (delayedSide * wetGain),
+            right = mid - (side * sideGain) - (delayedSide * wetGain),
         )
     }
 
@@ -314,18 +321,21 @@ internal class SpaciousnessProcessor {
         right: Float,
         amount: Float,
     ): StereoPair {
+        val mid = (left + right) * 0.5f
+        val side = (left - right) * 0.5f
         val highLeft = airHighPassL.process(left, sampleRateHz, 2_600f)
         val highRight = airHighPassR.process(right, sampleRateHz, 2_600f)
         val sideAir = (highLeft - highRight) * 0.5f
-        val delayLeft = delaySamples(2.4f + (1.2f * amount))
-        val delayRight = delaySamples(3.2f + (1.4f * amount))
-        val wetLeft = airWetLowPassL.process(readDelay(rightDelay, delayRight), sampleRateHz, 9_500f)
-        val wetRight = airWetLowPassR.process(readDelay(leftDelay, delayLeft), sampleRateHz, 9_500f)
-        val sideGain = 0.06f + (amount * 0.11f)
-        val decorrelatedGain = 0.028f + (amount * 0.068f)
+        val delayLeft = delaySamples(2.6f + (1.0f * amount))
+        val delayRight = delaySamples(3.4f + (1.2f * amount))
+        val wetLeft = airWetLowPassL.process(readDelay(leftDelay, delayLeft), sampleRateHz, 10_500f)
+        val wetRight = airWetLowPassR.process(readDelay(rightDelay, delayRight), sampleRateHz, 10_500f)
+        val decorrelatedSide = (wetLeft - wetRight) * 0.5f
+        val sideGain = 0.08f + (amount * 0.16f)
+        val decorrelatedGain = 0.04f + (amount * 0.09f)
         return StereoPair(
-            left = left + (sideAir * sideGain) + (wetLeft * decorrelatedGain),
-            right = right - (sideAir * sideGain) + (wetRight * decorrelatedGain),
+            left = mid + side + (sideAir * sideGain) + (decorrelatedSide * decorrelatedGain),
+            right = mid - side - (sideAir * sideGain) - (decorrelatedSide * decorrelatedGain),
         )
     }
 

@@ -250,6 +250,7 @@ import elovaire.music.app.ui.theme.elovaireScaledSp
 import elovaire.music.app.ui.theme.rememberElovaireOverscrollFactory
 import elovaire.music.app.ui.theme.InkText
 import elovaire.music.app.ui.theme.ToggleEnabledGreen
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.ceil
 import kotlin.math.ln
@@ -6986,15 +6987,15 @@ private fun NowPlayingScreen(
     transitionSnapshot: NowPlayingTransitionSnapshot?,
     modifier: Modifier = Modifier,
 ) {
-    val currentSong = playbackState.currentSong
-    val displaySong = currentSong?.let { enrichedSongsById[it.id] ?: it }
+    val liveCurrentSong = playbackState.currentSong
+    val liveDisplaySong = liveCurrentSong?.let { enrichedSongsById[it.id] ?: it }
     val playbackProgress by playbackManager.progressState.collectAsStateWithLifecycle()
     val playerHazeState = rememberHazeState()
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     var playerDismissTriggered by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(currentSong?.id) {
-        if (currentSong == null) {
+    LaunchedEffect(liveCurrentSong?.id) {
+        if (liveCurrentSong == null) {
             if (!playerDismissTriggered) {
                 playerDismissTriggered = true
                 onBack()
@@ -7004,19 +7005,19 @@ private fun NowPlayingScreen(
         }
     }
     val appBackground = MaterialTheme.colorScheme.background
-    val gradient = rememberArtworkGradient(currentSong?.artUri).value
-    val artwork = rememberArtworkBitmap(currentSong?.artUri, size = 768)
-    val activeTransitionSnapshot = remember(transitionSnapshot, currentSong?.id) {
+    val gradient = rememberArtworkGradient(liveCurrentSong?.artUri).value
+    val artwork = rememberArtworkBitmap(liveCurrentSong?.artUri, size = 768)
+    val activeTransitionSnapshot = remember(transitionSnapshot, liveCurrentSong?.id) {
         transitionSnapshot?.takeIf {
-            it.songId == currentSong?.id &&
+            it.songId == liveCurrentSong?.id &&
                 it.barBounds.isValidTransitionBounds &&
                 it.artworkBounds.isValidTransitionBounds
         }
     }
-    val transitionProgress = remember(currentSong?.id, activeTransitionSnapshot?.songId) {
+    val transitionProgress = remember(liveCurrentSong?.id, activeTransitionSnapshot?.songId) {
         Animatable(if (activeTransitionSnapshot != null) 0f else 1f)
     }
-    var transitionState by remember(currentSong?.id, activeTransitionSnapshot?.songId) {
+    var transitionState by remember(liveCurrentSong?.id, activeTransitionSnapshot?.songId) {
         mutableStateOf(
             if (activeTransitionSnapshot != null) {
                 PlayerOverlayTransitionState.Expanding
@@ -7037,9 +7038,17 @@ private fun NowPlayingScreen(
             easing = FastOutSlowInEasing,
         )
     }
-    var interactiveTransitionProgress by remember(currentSong?.id) { mutableStateOf<Float?>(null) }
-    var dismissAnimationRunning by remember(currentSong?.id) { mutableStateOf(false) }
+    var interactiveTransitionProgress by remember(liveCurrentSong?.id) { mutableStateOf<Float?>(null) }
+    var dismissAnimationRunning by remember(liveCurrentSong?.id) { mutableStateOf(false) }
     val effectiveTransitionProgress = interactiveTransitionProgress ?: transitionProgress.value
+    val transitionInFlight = transitionState != PlayerOverlayTransitionState.Expanded || interactiveTransitionProgress != null || dismissAnimationRunning
+    var frozenPlaybackProgress by remember(liveCurrentSong?.id) { mutableStateOf(playbackProgress) }
+    LaunchedEffect(playbackProgress, transitionInFlight, liveCurrentSong?.id) {
+        if (!transitionInFlight) {
+            frozenPlaybackProgress = playbackProgress
+        }
+    }
+    val renderedPlaybackProgress = if (transitionInFlight) frozenPlaybackProgress else playbackProgress
     val adaptivePalette = remember(gradient, appBackground) {
         buildPlayerAdaptivePalette(
             gradient = gradient,
@@ -7067,6 +7076,8 @@ private fun NowPlayingScreen(
         animationSpec = tween(360, easing = LinearOutSlowInEasing),
         label = "player_secondary_content_color",
     )
+    val currentSong = liveCurrentSong
+    val displaySong = liveDisplaySong
     val playingFromText = remember(playbackState.sourceLabel, currentSong?.album) {
         playbackState.sourceLabel
             ?.takeIf { it.isNotBlank() }
@@ -7244,15 +7255,14 @@ private fun NowPlayingScreen(
         val animatedSurfaceBounds = lerpRect(sourceSurfaceBounds, fullSurfaceBounds, effectiveTransitionProgress)
         val artworkRevealProgress = ((effectiveTransitionProgress - 0.08f) / 0.92f).coerceIn(0f, 1f)
         val contentRevealProgress = ((effectiveTransitionProgress - 0.22f) / 0.78f).coerceIn(0f, 1f)
-        val controlsRevealProgress = ((effectiveTransitionProgress - 0.3f) / 0.7f).coerceIn(0f, 1f)
         val playerContentAlpha = if (showLyricsSheet) 0f else contentRevealProgress
-        val playerControlsTranslationPx = with(density) { (1f - controlsRevealProgress) * 30.dp.toPx() }
         val playerSurfaceCorner = lerpFloat(with(density) { ElovaireRadii.card.toPx() }, 0f, effectiveTransitionProgress)
         val sharedArtworkBounds = lerpRect(sourceArtworkBounds, targetArtworkBounds, artworkRevealProgress).coerceWithin(fullSurfaceBounds)
-        val metadataSectionProgress = ((effectiveTransitionProgress - 0.34f) / 0.24f).coerceIn(0f, 1f)
-        val progressSectionProgress = ((effectiveTransitionProgress - 0.44f) / 0.2f).coerceIn(0f, 1f)
-        val transportSectionProgress = ((effectiveTransitionProgress - 0.54f) / 0.18f).coerceIn(0f, 1f)
-        val actionsSectionProgress = ((effectiveTransitionProgress - 0.64f) / 0.16f).coerceIn(0f, 1f)
+        val volumeSectionProgress = ((effectiveTransitionProgress - 0.22f) / 0.16f).coerceIn(0f, 1f)
+        val actionsSectionProgress = ((effectiveTransitionProgress - 0.34f) / 0.16f).coerceIn(0f, 1f)
+        val transportSectionProgress = ((effectiveTransitionProgress - 0.48f) / 0.16f).coerceIn(0f, 1f)
+        val progressSectionProgress = ((effectiveTransitionProgress - 0.6f) / 0.15f).coerceIn(0f, 1f)
+        val metadataSectionProgress = ((effectiveTransitionProgress - 0.72f) / 0.14f).coerceIn(0f, 1f)
         val useSharedArtworkOverlay =
             activeTransitionSnapshot != null &&
                 transitionState != PlayerOverlayTransitionState.Expanded &&
@@ -7350,10 +7360,7 @@ private fun NowPlayingScreen(
                     .statusBarsPadding()
                     .navigationBarsPadding()
                     .padding(start = 20.dp, top = 18.dp, end = 20.dp, bottom = 20.dp)
-                    .alpha(playerContentAlpha)
-                    .graphicsLayer {
-                        translationY = playerControlsTranslationPx
-                    },
+                    .alpha(playerContentAlpha),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
             if (currentSong == null) {
@@ -7364,20 +7371,20 @@ private fun NowPlayingScreen(
             val centeredInfoWidth = 0.95f
             val nowPlayingTitleTopGap = ElovaireSpacing.nowPlayingTitleTopGap
             val nowPlayingTitleBottomGap = ElovaireSpacing.nowPlayingTitleBottomGap
-            val displayedPositionMs = playbackProgress.displayPositionMs
-            val displayedProgressFraction = remember(playbackProgress.displayPositionMs, playbackProgress.durationMs) {
-                if (playbackProgress.durationMs > 0L) {
-                    (playbackProgress.displayPositionMs.toFloat() / playbackProgress.durationMs.toFloat()).coerceIn(0f, 1f)
+            val displayedPositionMs = renderedPlaybackProgress.displayPositionMs
+            val displayedProgressFraction = remember(renderedPlaybackProgress.displayPositionMs, renderedPlaybackProgress.durationMs) {
+                if (renderedPlaybackProgress.durationMs > 0L) {
+                    (renderedPlaybackProgress.displayPositionMs.toFloat() / renderedPlaybackProgress.durationMs.toFloat()).coerceIn(0f, 1f)
                 } else {
                     0f
                 }
             }
             val spaciousnessEnabled = eqSettings.spaciousness > 0.02f
             val artworkScale by animateFloatAsState(
-                targetValue = if (playbackState.isPlaying) 1f else 0.95f,
-                animationSpec = spring(
-                    dampingRatio = 0.72f,
-                    stiffness = 260f,
+                targetValue = if (playbackState.isPlaying) 1f else 0.985f,
+                animationSpec = tween(
+                    durationMillis = 220,
+                    easing = FastOutSlowInEasing,
                 ),
                 label = "now_playing_artwork_scale",
             )
@@ -7579,7 +7586,7 @@ private fun NowPlayingScreen(
                                 )
                                 CompactPlaybackTimingRow(
                                     displayedPositionMs = displayedPositionMs,
-                                    durationMs = playbackProgress.durationMs,
+                                    durationMs = renderedPlaybackProgress.durationMs,
                                     contentColor = contentColor,
                                     secondaryContentColor = secondaryContentColor,
                                 )
@@ -7589,132 +7596,130 @@ private fun NowPlayingScreen(
                 }
             }
 
-            if (!showQueueSheet || metadataSectionProgress > 0f) {
-                Box(
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = nowPlayingTitleTopGap, bottom = nowPlayingTitleBottomGap),
+                contentAlignment = Alignment.Center,
+            ) {
+                Row(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = nowPlayingTitleTopGap, bottom = nowPlayingTitleBottomGap),
-                    contentAlignment = Alignment.Center,
+                        .fillMaxWidth(centeredInfoWidth)
+                        .align(Alignment.Center)
+                        .graphicsLayer {
+                            alpha = if (showQueueSheet) 0f else metadataSectionProgress
+                        },
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Row(
                         modifier = Modifier
-                            .fillMaxWidth(centeredInfoWidth)
-                            .align(Alignment.Center)
-                            .graphicsLayer {
-                                alpha = if (showQueueSheet) 0f else metadataSectionProgress
-                                translationY = (1f - metadataSectionProgress) * 20f
-                            },
+                            .weight(1f)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = {
+                                    currentSong.takeIf { it.albumId > 0L }?.albumId?.let { albumId ->
+                                        dismissNowPlaying {
+                                            onOpenCurrentAlbum(albumId)
+                                        }
+                                    }
+                                },
+                            ),
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null,
-                                    onClick = {
-                                        currentSong.takeIf { it.albumId > 0L }?.albumId?.let { albumId ->
-                                            dismissNowPlaying {
-                                                onOpenCurrentAlbum(albumId)
-                                            }
-                                        }
-                                    },
-                                ),
-                            horizontalArrangement = Arrangement.spacedBy(14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            AnimatedContent(
-                                targetState = currentSong.id,
-                                transitionSpec = {
-                                    fadeIn(animationSpec = tween(220)) togetherWith
-                                        fadeOut(animationSpec = tween(180))
-                                },
-                                label = "player_metadata_content",
-                                modifier = Modifier.weight(1f),
-                            ) { songId ->
-                                val animatedSong = playbackState.queue.firstOrNull { it.id == songId } ?: currentSong
-                                Column(
+                        AnimatedContent(
+                            targetState = currentSong.id,
+                            transitionSpec = {
+                                fadeIn(animationSpec = tween(220)) togetherWith
+                                    fadeOut(animationSpec = tween(180))
+                            },
+                            label = "player_metadata_content",
+                            modifier = Modifier.weight(1f),
+                        ) { songId ->
+                            val animatedSong = playbackState.queue.firstOrNull { it.id == songId } ?: currentSong
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Text(
-                                            text = animatedSong.title,
-                                            style = MaterialTheme.typography.displayLarge.copy(fontSize = elovaireScaledSp(22f)),
-                                            color = contentColor,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Clip,
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .basicMarquee(
-                                                    iterations = Int.MAX_VALUE,
-                                                    animationMode = MarqueeAnimationMode.Immediately,
-                                                    repeatDelayMillis = 2500,
-                                                    initialDelayMillis = 2500,
-                                                    velocity = 28.dp,
-                                                ),
-                                        )
-                                        if (animatedSong.isExplicit) {
-                                            Text(
-                                                text = "E",
-                                                style = MaterialTheme.typography.labelLarge.copy(
-                                                    fontSize = elovaireScaledSp(6f),
-                                                    fontWeight = FontWeight.SemiBold,
-                                                ),
-                                                color = contentColor.copy(alpha = 0.7f),
-                                            )
-                                        }
-                                    }
                                     Text(
-                                        text = animatedSong.artist,
-                                        style = MaterialTheme.typography.titleLarge.copy(fontSize = elovaireScaledSp(18f)),
-                                        color = secondaryContentColor,
+                                        text = animatedSong.title,
+                                        style = MaterialTheme.typography.displayLarge.copy(fontSize = elovaireScaledSp(22f)),
+                                        color = contentColor,
                                         maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
+                                        overflow = TextOverflow.Clip,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .basicMarquee(
+                                                iterations = Int.MAX_VALUE,
+                                                animationMode = MarqueeAnimationMode.Immediately,
+                                                repeatDelayMillis = 2500,
+                                                initialDelayMillis = 2500,
+                                                velocity = 28.dp,
+                                            ),
                                     )
+                                    if (animatedSong.isExplicit) {
+                                        Text(
+                                            text = "E",
+                                            style = MaterialTheme.typography.labelLarge.copy(
+                                                fontSize = elovaireScaledSp(6f),
+                                                fontWeight = FontWeight.SemiBold,
+                                            ),
+                                            color = contentColor.copy(alpha = 0.7f),
+                                        )
+                                    }
                                 }
+                                Text(
+                                    text = animatedSong.artist,
+                                    style = MaterialTheme.typography.titleLarge.copy(fontSize = elovaireScaledSp(18f)),
+                                    color = secondaryContentColor,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
                             }
                         }
-                        Box(
-                            modifier = Modifier
-                                .width(48.dp)
-                                .alpha(favoriteAlpha),
-                            contentAlignment = Alignment.CenterEnd,
-                        ) {
-                            FavoriteSongButton(
-                                isFavorite = isFavorite,
-                                tint = contentColor,
-                                onClick = { onToggleFavorite(currentSong.id) },
-                            )
-                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .width(48.dp)
+                            .alpha(favoriteAlpha * if (showQueueSheet) 0f else metadataSectionProgress),
+                        contentAlignment = Alignment.CenterEnd,
+                    ) {
+                        FavoriteSongButton(
+                            isFavorite = isFavorite,
+                            tint = contentColor,
+                            onClick = { onToggleFavorite(currentSong.id) },
+                        )
                     }
                 }
             }
 
-            Column(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth(centeredInfoWidth)
                     .align(Alignment.CenterHorizontally)
                     .weight(1f),
-                verticalArrangement = Arrangement.spacedBy(0.dp),
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(0.dp),
                 ) {
-                    if (!showQueueSheet || progressSectionProgress > 0f || transportSectionProgress > 0f) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                    ) {
                         Column(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .graphicsLayer {
                                     alpha = if (showQueueSheet) 0f else progressSectionProgress
-                                    translationY = (1f - progressSectionProgress) * 24f
                                 },
                             verticalArrangement = Arrangement.spacedBy(0.dp),
                         ) {
@@ -7724,7 +7729,7 @@ private fun NowPlayingScreen(
                             ) {
                                 PlaybackProgressBar(
                                     progress = displayedProgressFraction,
-                                    isInteracting = playbackProgress.isUserScrubbing,
+                                    isInteracting = renderedPlaybackProgress.isUserScrubbing,
                                     contentColor = contentColor,
                                     onScrubStarted = {
                                         playbackManager.beginScrub()
@@ -7732,14 +7737,14 @@ private fun NowPlayingScreen(
                                     onScrubFractionChanged = { fraction ->
                                         val target = fractionToDurationPosition(
                                             fraction = fraction,
-                                            durationMs = playbackProgress.durationMs,
+                                            durationMs = renderedPlaybackProgress.durationMs,
                                         )
                                         playbackManager.updateScrubPosition(target)
                                     },
                                     onScrubFinished = { fraction ->
                                         val target = fractionToDurationPosition(
                                             fraction = fraction,
-                                            durationMs = playbackProgress.durationMs,
+                                            durationMs = renderedPlaybackProgress.durationMs,
                                         )
                                         playbackManager.finishScrub(target)
                                     },
@@ -7768,7 +7773,7 @@ private fun NowPlayingScreen(
                                         contentAlignment = Alignment.CenterEnd,
                                     ) {
                                         Text(
-                                            text = formatDuration(playbackProgress.durationMs),
+                                            text = formatDuration(renderedPlaybackProgress.durationMs),
                                             style = MaterialTheme.typography.labelLarge,
                                             color = secondaryContentColor,
                                         )
@@ -7785,7 +7790,6 @@ private fun NowPlayingScreen(
                                 Column(
                                     modifier = Modifier.graphicsLayer {
                                         alpha = if (showQueueSheet) 0f else transportSectionProgress * transportAlpha
-                                        translationY = (1f - transportSectionProgress) * 28f
                                     },
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     verticalArrangement = Arrangement.spacedBy(22.dp),
@@ -7822,66 +7826,13 @@ private fun NowPlayingScreen(
                         }
                     }
 
-                    androidx.compose.animation.AnimatedVisibility(
-                        visible = showQueueSheet,
-                        modifier = Modifier.fillMaxSize(),
-                        enter = fadeIn(animationSpec = tween(ElovaireMotion.Standard)) +
-                            scaleIn(
-                                initialScale = 0.94f,
-                                transformOrigin = TransformOrigin(1f, 1f),
-                                animationSpec = tween(ElovaireMotion.Standard, easing = FastOutSlowInEasing),
-                            ) +
-                            slideInHorizontally(
-                                initialOffsetX = { it / 14 },
-                                animationSpec = tween(ElovaireMotion.Standard, easing = FastOutSlowInEasing),
-                            ) +
-                            slideInVertically(
-                                initialOffsetY = { it / 14 },
-                                animationSpec = tween(ElovaireMotion.Standard, easing = FastOutSlowInEasing),
-                            ),
-                        exit = fadeOut(animationSpec = tween(ElovaireMotion.Quick)) +
-                            scaleOut(
-                                targetScale = 0.98f,
-                                transformOrigin = TransformOrigin(1f, 1f),
-                                animationSpec = tween(ElovaireMotion.Quick),
-                            ),
-                    ) {
-                        QueueSheet(
-                            queue = playbackState.queue,
-                            currentIndex = playbackState.currentIndex,
-                            tint = contentColor,
-                            secondaryTint = secondaryContentColor,
-                            modifier = Modifier.fillMaxSize(),
-                            onSongSelected = onQueueItemSelected,
-                            shuffleEnabled = playbackState.shuffleEnabled,
-                            onToggleShuffle = {
-                                queueStatusText = if (!playbackState.shuffleEnabled) "Shuffle | Enabled" else null
-                                onToggleShuffle()
-                            },
-                            spaciousnessEnabled = spaciousnessEnabled,
-                            onToggleSpaciousness = {
-                                val enabling = !spaciousnessEnabled
-                                queueStatusText = if (enabling) "Spaciousness | Enabled" else null
-                                onSpaciousnessChanged(if (enabling) 0.5f else 0f)
-                            },
-                            spaciousnessAmount = eqSettings.spaciousness.coerceIn(0f, 1f),
-                            onSpaciousnessAmountChanged = onSpaciousnessChanged,
-                            statusText = queueStatusText,
-                            onDismiss = { showQueueSheet = false },
-                            isPlaying = playbackState.isPlaying,
-                        )
-                    }
-                }
+                    Spacer(modifier = Modifier.height(12.dp))
 
-                Spacer(modifier = Modifier.height(12.dp))
-
-                if (!showQueueSheet || actionsSectionProgress > 0f) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .graphicsLayer {
                                 alpha = if (showQueueSheet) 0f else actionsSectionProgress
-                                translationY = (1f - actionsSectionProgress) * 32f
                             },
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically,
@@ -7917,6 +7868,59 @@ private fun NowPlayingScreen(
                         )
                     }
                 }
+
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = showQueueSheet,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.975f)
+                        .align(Alignment.BottomCenter),
+                    enter = fadeIn(animationSpec = tween(ElovaireMotion.Standard)) +
+                        scaleIn(
+                            initialScale = 0.94f,
+                            transformOrigin = TransformOrigin(1f, 1f),
+                            animationSpec = tween(ElovaireMotion.Standard, easing = FastOutSlowInEasing),
+                        ) +
+                        slideInHorizontally(
+                            initialOffsetX = { it / 14 },
+                            animationSpec = tween(ElovaireMotion.Standard, easing = FastOutSlowInEasing),
+                        ) +
+                        slideInVertically(
+                            initialOffsetY = { it / 14 },
+                            animationSpec = tween(ElovaireMotion.Standard, easing = FastOutSlowInEasing),
+                        ),
+                    exit = fadeOut(animationSpec = tween(ElovaireMotion.Quick)) +
+                        scaleOut(
+                            targetScale = 0.98f,
+                            transformOrigin = TransformOrigin(1f, 1f),
+                            animationSpec = tween(ElovaireMotion.Quick),
+                        ),
+                ) {
+                    QueueSheet(
+                        queue = playbackState.queue,
+                        currentIndex = playbackState.currentIndex,
+                        tint = contentColor,
+                        secondaryTint = secondaryContentColor,
+                        modifier = Modifier.fillMaxSize(),
+                        onSongSelected = onQueueItemSelected,
+                        shuffleEnabled = playbackState.shuffleEnabled,
+                        onToggleShuffle = {
+                            queueStatusText = if (!playbackState.shuffleEnabled) "Shuffle | Enabled" else null
+                            onToggleShuffle()
+                        },
+                        spaciousnessEnabled = spaciousnessEnabled,
+                        onToggleSpaciousness = {
+                            val enabling = !spaciousnessEnabled
+                            queueStatusText = if (enabling) "Spaciousness | Enabled" else null
+                            onSpaciousnessChanged(if (enabling) 0.5f else 0f)
+                        },
+                        spaciousnessAmount = eqSettings.spaciousness.coerceIn(0f, 1f),
+                        onSpaciousnessAmountChanged = onSpaciousnessChanged,
+                        statusText = queueStatusText,
+                        onDismiss = { showQueueSheet = false },
+                        isPlaying = playbackState.isPlaying,
+                    )
+                }
             }
 
             VolumeControlBar(
@@ -7924,6 +7928,9 @@ private fun NowPlayingScreen(
                 contentColor = contentColor,
                 onVolumeChanged = onVolumeChanged,
                 modifier = Modifier
+                    .graphicsLayer {
+                        alpha = volumeSectionProgress
+                    }
                     .fillMaxWidth(centeredInfoWidth)
                     .align(Alignment.CenterHorizontally),
             )
@@ -8129,7 +8136,7 @@ private fun QueueSheet(
     var showSpaciousnessSlider by remember(spaciousnessEnabled) { mutableStateOf(spaciousnessEnabled) }
     val footerExpanded = showSpaciousnessSlider || statusText != null
     val footerHeight by animateDpAsState(
-        targetValue = if (footerExpanded) 106.dp else 70.dp,
+        targetValue = if (footerExpanded) 126.dp else 86.dp,
         animationSpec = tween(220, easing = FastOutSlowInEasing),
         label = "queue_footer_height",
     )
@@ -9593,8 +9600,8 @@ private fun VolumeControlBar(
     val animatedVolume by animateFloatAsState(
         targetValue = volume.coerceIn(0f, 1f),
         animationSpec = spring(
-            dampingRatio = 0.78f,
-            stiffness = 520f,
+            dampingRatio = 0.8f,
+            stiffness = 360f,
         ),
         label = "player_volume_slider",
     )
@@ -9620,30 +9627,44 @@ private fun VolumeControlBar(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(ElovaireRadii.pill))
-                    .background(contentColor.copy(alpha = 0.2f))
+                    .height(32.dp)
                     .align(Alignment.CenterStart)
                     .pointerInput(maxWidthPx) {
-                        detectTapGestures { offset ->
-                            onVolumeChanged((offset.x / maxWidthPx).coerceIn(0f, 1f))
-                        }
-                    }
-                    .pointerInput(maxWidthPx) {
-                        detectHorizontalDragGestures { change, _ ->
-                            onVolumeChanged((change.position.x / maxWidthPx).coerceIn(0f, 1f))
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            if (maxWidthPx <= 0f) return@awaitEachGesture
+                            var latestFraction = (down.position.x / maxWidthPx).coerceIn(0f, 1f)
+                            onVolumeChanged(latestFraction)
+
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull() ?: break
+                                if (!change.pressed) break
+                                latestFraction = (change.position.x / maxWidthPx).coerceIn(0f, 1f)
+                                onVolumeChanged(latestFraction)
+                                change.consume()
+                            }
                         }
                     },
-            )
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(ElovaireRadii.pill))
+                        .background(contentColor.copy(alpha = 0.2f))
+                        .align(Alignment.CenterStart),
+                )
 
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(animatedVolume.coerceIn(0f, 1f))
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(ElovaireRadii.pill))
-                    .background(contentColor)
-                    .align(Alignment.CenterStart),
-            )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(animatedVolume.coerceIn(0f, 1f))
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(ElovaireRadii.pill))
+                        .background(contentColor)
+                        .align(Alignment.CenterStart),
+                )
+            }
         }
         Icon(
             painter = painterResource(id = R.drawable.ic_lucide_volume_2),
@@ -10099,6 +10120,7 @@ private fun EqualizerScreen(
                         SettingsCategoryText(title = "Spaciousness")
                         SpaciousnessModeMenu(
                             currentMode = settings.spaciousnessMode,
+                            spaciousnessAmount = settings.spaciousness,
                             onModeSelected = onSpaciousnessModeChanged,
                         )
                         EqMacroSliderRow(
@@ -10989,7 +11011,7 @@ private fun DigitalSoundKnob(
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Box(
             modifier = Modifier
@@ -11003,7 +11025,12 @@ private fun DigitalSoundKnob(
                 }
                 .pointerInput(Unit) {
                     detectTapGestures { offset ->
-                        dragValue = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
+                        dragValue = circularKnobValueForOffset(
+                            offset = offset,
+                            size = Size(size.width.toFloat(), size.height.toFloat()),
+                            startAngleDegrees = 135f,
+                            sweepAngleDegrees = 270f,
+                        )
                         onValueChange(dragValue)
                     }
                 },
@@ -11021,8 +11048,8 @@ private fun DigitalSoundKnob(
                 val radius = arcSize / 2f
                 val tipRadius = strokeWidth / 2f
                 val tipOrbitRadius = radius
-                val startAngle = 140f
-                val sweepAngle = 260f
+                val startAngle = 135f
+                val sweepAngle = 270f
                 val activeSweep = sweepAngle * animatedValue
 
                 drawArc(
@@ -11078,7 +11105,7 @@ private fun DigitalSoundKnob(
 
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Text(
                     text = "${(animatedValue * 100f).roundToInt()}",
@@ -11146,6 +11173,29 @@ private fun DetailScreenHeader(
                 )
             }
         }
+    }
+}
+
+private fun circularKnobValueForOffset(
+    offset: Offset,
+    size: Size,
+    startAngleDegrees: Float,
+    sweepAngleDegrees: Float,
+): Float {
+    if (size.width <= 0f || size.height <= 0f) return 0f
+    val centerX = size.width / 2f
+    val centerY = size.height / 2f
+    val angle = Math.toDegrees(
+        atan2(
+            (offset.y - centerY).toDouble(),
+            (offset.x - centerX).toDouble(),
+        ),
+    ).toFloat().let { if (it < 0f) it + 360f else it }
+    val relative = ((angle - startAngleDegrees) % 360f + 360f) % 360f
+    return when {
+        relative <= sweepAngleDegrees -> (relative / sweepAngleDegrees).coerceIn(0f, 1f)
+        relative < (sweepAngleDegrees + ((360f - sweepAngleDegrees) / 2f)) -> 1f
+        else -> 0f
     }
 }
 
@@ -11292,7 +11342,8 @@ private fun EqPresetMenu(
     }
     val horizontalScrollState = rememberScrollState()
     val activePresetName = remember(currentSettings, presets) {
-        presets.firstOrNull { preset -> preset.settings == currentSettings.normalizedEqSettings() }?.name
+        val currentBands = currentSettings.normalizedBandValues()
+        presets.firstOrNull { preset -> preset.settings.normalizedBandValues() == currentBands }?.name
     }
 
     Row(
@@ -11313,7 +11364,13 @@ private fun EqPresetMenu(
             EqPresetPill(
                 label = preset.name,
                 selected = preset.name == activePresetName,
-                onClick = { onApplyPreset(preset.settings) },
+                onClick = {
+                    onApplyPreset(
+                        currentSettings.copy(
+                            bands = preset.settings.bands,
+                        ),
+                    )
+                },
             )
         }
     }
@@ -11322,6 +11379,7 @@ private fun EqPresetMenu(
 @Composable
 private fun SpaciousnessModeMenu(
     currentMode: SpaciousnessMode,
+    spaciousnessAmount: Float,
     onModeSelected: (SpaciousnessMode) -> Unit,
 ) {
     val modes = remember {
@@ -11344,8 +11402,16 @@ private fun SpaciousnessModeMenu(
         modes.forEach { mode ->
             EqPresetPill(
                 label = mode.displayLabel(),
-                selected = mode == currentMode,
-                onClick = { onModeSelected(mode) },
+                selected = spaciousnessAmount > 0.001f && mode == currentMode,
+                onClick = {
+                    onModeSelected(
+                        if (spaciousnessAmount > 0.001f && mode == currentMode) {
+                            SpaciousnessMode.Off
+                        } else {
+                            mode
+                        },
+                    )
+                },
             )
         }
     }
@@ -11814,19 +11880,23 @@ private fun eqPreset(
     }
     val settings = EqSettings(
         bands = bandShape,
-        bass = ((bass + subBass + lowBass) / 3f).coerceIn(-1f, 1f),
-        treble = ((upperMid + brilliance + air) / 3f).coerceIn(-1f, 1f),
+        bass = 0f,
+        treble = 0f,
         spaciousness = 0f,
-        spaciousnessMode = SpaciousnessMode.StereoWidth,
+        spaciousnessMode = SpaciousnessMode.Off,
     ).normalizedEqSettings()
     return EqPresetDefinition(name = name, settings = settings)
 }
 
+private fun EqSettings.normalizedBandValues(): List<Float> {
+    return List(EqualizerDspModel.BAND_COUNT) { index ->
+        bands.getOrElse(index) { 0f }.coerceIn(-1f, 1f)
+    }
+}
+
 private fun EqSettings.normalizedEqSettings(): EqSettings {
     return copy(
-        bands = List(EqualizerDspModel.BAND_COUNT) { index ->
-            bands.getOrElse(index) { 0f }.coerceIn(-1f, 1f)
-        },
+        bands = normalizedBandValues(),
         bass = bass.coerceIn(-1f, 1f),
         treble = treble.coerceIn(-1f, 1f),
         spaciousness = spaciousness.coerceIn(0f, 1f),

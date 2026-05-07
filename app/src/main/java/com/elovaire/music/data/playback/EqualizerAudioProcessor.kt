@@ -34,27 +34,27 @@ internal data class EqualizerPreset(
 
 internal data class EqualizerDspConfig(
     val bandCenterFrequenciesHz: FloatArray = EqualizerDspModel.BAND_CENTER_FREQUENCIES_HZ,
-    val maxBandGainDb: Float = 12f,
+    val maxBandGainDb: Float = 13.5f,
     val minPreampDb: Float = -12f,
     val maxPreampDb: Float = 6f,
-    val smoothingTimeMs: Int = 56,
-    val bandQ: Float = 0.98f,
-    val bandBandwidthStretch: Float = 1.08f,
+    val smoothingTimeMs: Int = 42,
+    val bandQ: Float = 1.12f,
+    val bandBandwidthStretch: Float = 0.9f,
     val bassConfig: BassBoostConfig = BassBoostConfig(),
-    val trebleShelfFrequencyHz: Float = 8_200f,
-    val trebleShelfSlope: Float = 0.66f,
-    val trebleMaxBoostDb: Float = 3.8f,
+    val trebleShelfFrequencyHz: Float = 7_600f,
+    val trebleShelfSlope: Float = 0.72f,
+    val trebleMaxBoostDb: Float = 4.4f,
     val spaciousnessMidCutDb: Float = 1.25f,
     val spaciousnessPresenceBoostDb: Float = 1.1f,
     val spaciousnessAirBoostDb: Float = 0.75f,
     val spaciousnessMidCutFrequencyHz: Float = 290f,
     val spaciousnessPresenceFrequencyHz: Float = 2_350f,
     val spaciousnessAirFrequencyHz: Float = 8_500f,
-    val headroomSafetyMarginDb: Float = 0.85f,
-    val headroomBlend: Float = 0.92f,
-    val limiterThreshold: Float = 0.988f,
-    val limiterKnee: Float = 0.028f,
-    val updateStrideFrames: Int = 24,
+    val headroomSafetyMarginDb: Float = 0.5f,
+    val headroomBlend: Float = 0.76f,
+    val limiterThreshold: Float = 0.992f,
+    val limiterKnee: Float = 0.018f,
+    val updateStrideFrames: Int = 16,
 ) {
     fun sanitized(): EqualizerDspConfig {
         return copy(
@@ -117,7 +117,13 @@ internal object EqualizerDspModel {
         config: EqualizerDspConfig = EqualizerDspConfig(),
     ): Float {
         val safeConfig = config.sanitized()
-        return normalized.coerceIn(-1f, 1f) * safeConfig.maxBandGainDb
+        val clamped = normalized.coerceIn(-1f, 1f)
+        val curvedMagnitude = abs(clamped).toDouble().pow(0.86).toFloat()
+        return if (clamped >= 0f) {
+            curvedMagnitude * safeConfig.maxBandGainDb
+        } else {
+            -curvedMagnitude * safeConfig.maxBandGainDb
+        }
     }
 
     fun activeBandFrequencies(sampleRateHz: Int): FloatArray {

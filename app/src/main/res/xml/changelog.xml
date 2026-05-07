@@ -9,7 +9,9 @@
     <release version="1.7.2">
         <item>New interaction - tapping on song title/artist stack in now playing screen opens album list view</item>
         <item>Improved library metadata fetching precision</item>
+        <item>Improved lyrics fetching accuracy</item>
+        <item>Improved EQ and spaciousness effects implementation</item>
         <item>Fixed notification center player disappearing right away after pausing playback</item>
-        <item>Micro animations tweaks</item>
+        <item>Animations tweaks</item>
     </release>
 </changelog>

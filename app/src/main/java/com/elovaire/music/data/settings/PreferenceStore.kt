@@ -220,7 +220,33 @@ class PreferenceStore(context: Context) {
     }
 
     fun updateSpaciousnessMode(mode: SpaciousnessMode) {
-        persistEqSettings(_eqSettings.value.copy(spaciousnessMode = mode))
+        val current = _eqSettings.value
+        val normalizedMode = if (mode == SpaciousnessMode.Off) {
+            SpaciousnessMode.Off
+        } else {
+            mode
+        }
+        val nextSettings = when {
+            normalizedMode == SpaciousnessMode.Off -> {
+                current.copy(
+                    spaciousnessMode = SpaciousnessMode.Off,
+                    spaciousness = 0f,
+                )
+            }
+            current.spaciousnessMode == normalizedMode && current.spaciousness > 0.001f -> {
+                current.copy(
+                    spaciousnessMode = SpaciousnessMode.Off,
+                    spaciousness = 0f,
+                )
+            }
+            else -> {
+                current.copy(
+                    spaciousnessMode = normalizedMode,
+                    spaciousness = 0.5f,
+                )
+            }
+        }
+        persistEqSettings(nextSettings)
     }
 
     fun updateMonoPlaybackEnabled(enabled: Boolean) {
