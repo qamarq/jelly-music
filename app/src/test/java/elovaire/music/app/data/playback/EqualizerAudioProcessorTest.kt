@@ -32,8 +32,8 @@ class EqualizerAudioProcessorTest {
     fun nyquistUnsafeBandsAreDisabledAtLowerSampleRates() {
         val bands = EqualizerDspModel.activeBandFrequencies(sampleRateHz = 8_000)
         assertEquals(-1f, bands.last(), 0f)
-        assertEquals(2_912f, bands[17], 0f)
-        assertEquals(-1f, bands[18], 0f)
+        assertEquals(3_150f, bands[18], 0f)
+        assertEquals(-1f, bands[19], 0f)
     }
 
     @Test
@@ -111,7 +111,7 @@ class EqualizerAudioProcessorTest {
         val settings = EqSettings(
             bands = List(EqualizerDspModel.BAND_COUNT) { index ->
                 when (index) {
-                    5, 6, 7 -> 0.45f
+                    4, 5, 6 -> 0.45f
                     else -> 0f
                 }
             },

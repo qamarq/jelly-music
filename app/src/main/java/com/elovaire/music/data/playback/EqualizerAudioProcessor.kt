@@ -38,8 +38,6 @@ internal data class EqualizerDspConfig(
     val minPreampDb: Float = -12f,
     val maxPreampDb: Float = 6f,
     val smoothingTimeMs: Int = 42,
-    val bandQ: Float = 1.12f,
-    val bandBandwidthStretch: Float = 0.9f,
     val bassConfig: BassBoostConfig = BassBoostConfig(),
     val trebleShelfFrequencyHz: Float = 7_600f,
     val trebleShelfSlope: Float = 0.72f,
@@ -62,8 +60,6 @@ internal data class EqualizerDspConfig(
             minPreampDb = minPreampDb.coerceIn(-24f, 0f),
             maxPreampDb = maxPreampDb.coerceIn(0f, 12f),
             smoothingTimeMs = smoothingTimeMs.coerceIn(20, 140),
-            bandQ = bandQ.coerceIn(0.55f, 2.2f),
-            bandBandwidthStretch = bandBandwidthStretch.coerceIn(0.8f, 1.4f),
             trebleShelfFrequencyHz = trebleShelfFrequencyHz.coerceIn(3_500f, 14_000f),
             trebleShelfSlope = trebleShelfSlope.coerceIn(0.35f, 1.4f),
             trebleMaxBoostDb = trebleMaxBoostDb.coerceIn(0f, 8f),
@@ -82,35 +78,44 @@ internal data class EqualizerDspConfig(
     }
 }
 
+internal data class EqBandDefinition(
+    val frequencyHz: Float,
+    val q: Float,
+)
+
 internal object EqualizerDspModel {
-    const val BAND_COUNT = 24
-    val BAND_CENTER_FREQUENCIES_HZ: FloatArray = floatArrayOf(
-        20f,
-        30f,
-        45f,
-        60f,
-        80f,
-        100f,
-        140f,
-        200f,
-        280f,
-        380f,
-        500f,
-        650f,
-        800f,
-        1_000f,
-        1_250f,
-        1_600f,
-        2_000f,
-        2_500f,
-        3_150f,
-        4_000f,
-        5_500f,
-        7_500f,
-        10_500f,
-        14_500f,
+    val BAND_DEFINITIONS: List<EqBandDefinition> = listOf(
+        EqBandDefinition(20f, 2.45f),
+        EqBandDefinition(30f, 2.45f),
+        EqBandDefinition(45f, 2.96f),
+        EqBandDefinition(60f, 3.46f),
+        EqBandDefinition(80f, 3.97f),
+        EqBandDefinition(100f, 3.46f),
+        EqBandDefinition(140f, 2.86f),
+        EqBandDefinition(200f, 2.89f),
+        EqBandDefinition(280f, 3.13f),
+        EqBandDefinition(380f, 3.46f),
+        EqBandDefinition(500f, 3.73f),
+        EqBandDefinition(650f, 4.30f),
+        EqBandDefinition(800f, 4.62f),
+        EqBandDefinition(1_000f, 4.47f),
+        EqBandDefinition(1_250f, 4.22f),
+        EqBandDefinition(1_600f, 4.27f),
+        EqBandDefinition(2_000f, 4.47f),
+        EqBandDefinition(2_500f, 4.38f),
+        EqBandDefinition(3_150f, 4.24f),
+        EqBandDefinition(4_000f, 3.51f),
+        EqBandDefinition(5_500f, 3.18f),
+        EqBandDefinition(7_500f, 3.06f),
+        EqBandDefinition(10_500f, 3.03f),
+        EqBandDefinition(14_500f, 3.08f),
     )
+    const val BAND_COUNT = 24
+    val BAND_CENTER_FREQUENCIES_HZ: FloatArray = BAND_DEFINITIONS.map { it.frequencyHz }.toFloatArray()
     private const val FLAT_EPSILON = 0.0005f
+
+    fun bandDefinition(index: Int): EqBandDefinition =
+        BAND_DEFINITIONS.getOrElse(index.coerceIn(0, BAND_DEFINITIONS.lastIndex)) { BAND_DEFINITIONS.last() }
 
     fun normalizedBandToDb(
         normalized: Float,
@@ -128,8 +133,8 @@ internal object EqualizerDspModel {
 
     fun activeBandFrequencies(sampleRateHz: Int): FloatArray {
         val nyquistSafeLimit = sampleRateHz.coerceAtLeast(8_000) / 2f * 0.9f
-        return BAND_CENTER_FREQUENCIES_HZ.map { frequencyHz ->
-            if (frequencyHz < nyquistSafeLimit) frequencyHz else -1f
+        return BAND_DEFINITIONS.map { definition ->
+            if (definition.frequencyHz < nyquistSafeLimit) definition.frequencyHz else -1f
         }.toFloatArray()
     }
 
@@ -175,23 +180,6 @@ internal object EqualizerDspModel {
         return (1.0 - exp(-stride / (safeSampleRate * safeTimeSeconds))).toFloat().coerceIn(0.01f, 1f)
     }
 
-    fun bandBandwidthOctaves(
-        bandIndex: Int,
-        config: EqualizerDspConfig = EqualizerDspConfig(),
-    ): Float {
-        val safeConfig = config.sanitized()
-        val centers = safeConfig.bandCenterFrequenciesHz
-        if (centers.isEmpty()) return 0.5f
-        val currentIndex = bandIndex.coerceIn(0, centers.lastIndex)
-        val center = centers[currentIndex].coerceAtLeast(10f)
-        val previous = centers.getOrNull(currentIndex - 1) ?: (center / (centers.getOrNull(currentIndex + 1)?.div(center) ?: 1.25f))
-        val next = centers.getOrNull(currentIndex + 1) ?: (center * (center / previous.coerceAtLeast(1f)))
-        val lowerBoundary = sqrt((center * previous).toDouble()).toFloat().coerceAtLeast(1f)
-        val upperBoundary = sqrt((center * next).toDouble()).toFloat().coerceAtLeast(lowerBoundary + 0.0001f)
-        val octaves = (ln((upperBoundary / lowerBoundary).toDouble()) / ln(2.0)).toFloat()
-        return (octaves * safeConfig.bandBandwidthStretch).coerceIn(0.18f, 0.9f)
-    }
-
     private fun estimatePeakResponseDb(
         bandGainsDb: FloatArray,
         bassBoostDb: Float,
@@ -205,12 +193,11 @@ internal object EqualizerDspModel {
         val bandCoefficients = bandGainsDb.mapIndexed { index, gainDb ->
             val frequencyHz = activeFrequencies.getOrElse(index) { -1f }
             if (frequencyHz > 0f && abs(gainDb) > 0.01f) {
-                BiquadCoefficients.peakingByBandwidth(
+                BiquadCoefficients.peaking(
                     sampleRateHz = safeSampleRate.toFloat(),
                     centerFrequencyHz = frequencyHz,
-                    bandwidthOctaves = bandBandwidthOctaves(index, config),
+                    q = bandDefinition(index).q,
                     gainDb = gainDb,
-                    fallbackQ = config.bandQ,
                 )
             } else {
                 BiquadCoefficients.identity()
@@ -505,12 +492,11 @@ internal class EqualizerAudioProcessor(
             for (bandIndex in currentBandGainsDb.indices) {
                 val frequencyHz = activeBandFrequenciesHz.getOrElse(bandIndex) { -1f }
                 val coefficients = if (frequencyHz > 0f && abs(currentBandGainsDb[bandIndex]) > 0.01f) {
-                    BiquadCoefficients.peakingByBandwidth(
+                    BiquadCoefficients.peaking(
                         sampleRateHz = sampleRateHz.toFloat(),
                         centerFrequencyHz = frequencyHz,
-                        bandwidthOctaves = EqualizerDspModel.bandBandwidthOctaves(bandIndex, safeConfig),
+                        q = EqualizerDspModel.bandDefinition(bandIndex).q,
                         gainDb = currentBandGainsDb[bandIndex],
-                        fallbackQ = safeConfig.bandQ,
                     )
                 } else {
                     BiquadCoefficients.identity()

@@ -368,6 +368,14 @@ private sealed interface SharedTopBarSpec {
     ) : SharedTopBarSpec
 }
 
+private fun SharedTopBarSpec.visualSignature(): String {
+    return when (this) {
+        is SharedTopBarSpec.Unified -> "unified|$title|$showSettings"
+        is SharedTopBarSpec.Back -> "back|$title|$centeredTitle"
+        is SharedTopBarSpec.Detail -> "detail|$title|${subtitle.orEmpty()}"
+    }
+}
+
 private data class SharedTopBarRegistration(
     val id: Any,
     val spec: SharedTopBarSpec,
@@ -802,7 +810,14 @@ private fun FrostedTopBarBackground(
 private fun RegisterSharedTopBar(spec: SharedTopBarSpec) {
     val controller = LocalSharedTopBarController.current ?: return
     val registrationId = remember { Any() }
-    SideEffect {
+    val specSignature = remember(spec) {
+        when (spec) {
+            is SharedTopBarSpec.Unified -> "unified|${spec.title}|${spec.showSettings}"
+            is SharedTopBarSpec.Back -> "back|${spec.title}|${spec.centeredTitle}"
+            is SharedTopBarSpec.Detail -> "detail|${spec.title}|${spec.subtitle.orEmpty()}"
+        }
+    }
+    LaunchedEffect(controller, registrationId, specSignature) {
         controller.registration = SharedTopBarRegistration(
             id = registrationId,
             spec = spec,
@@ -858,6 +873,7 @@ fun ElovaireRoot(
     val context = LocalContext.current
     val libraryState by container.libraryRepository.state.collectAsStateWithLifecycle()
     val playbackState by container.playbackManager.state.collectAsStateWithLifecycle()
+    val playbackProgress by container.playbackManager.progressState.collectAsStateWithLifecycle()
     val eqSettings by container.preferenceStore.eqSettings.collectAsStateWithLifecycle()
     val themeMode by container.preferenceStore.themeMode.collectAsStateWithLifecycle()
     val textSizePreset by container.preferenceStore.textSizePreset.collectAsStateWithLifecycle()
@@ -1010,6 +1026,8 @@ fun ElovaireRoot(
         )
         return
     }
+
+    val isPlaybackActuallyPlaying = playbackProgress.isPlaying
 
     val topLevelDestinations = listOf(
         TopLevelDestination(
@@ -1544,7 +1562,7 @@ fun ElovaireRoot(
                             librarySongs = libraryState.songs,
                             favoriteSongIds = favoriteSongIdSet,
                             currentSongId = playbackState.currentSong?.id,
-                            isCurrentSongPlaying = playbackState.isPlaying,
+                            isCurrentSongPlaying = isPlaybackActuallyPlaying,
                             bottomPadding = detailBottomPadding,
                             onBack = navController::navigateUp,
                             onPlayPlaylist = { songs, sourceLabel ->
@@ -1583,7 +1601,7 @@ fun ElovaireRoot(
                             album = album,
                             favoriteSongIds = favoriteSongIdSet,
                             currentSongId = playbackState.currentSong?.id,
-                            isCurrentSongPlaying = playbackState.isPlaying,
+                            isCurrentSongPlaying = isPlaybackActuallyPlaying,
                             bottomPadding = detailBottomPadding,
                             collapsedTopBarTitle = detailFallbackTitle(previousRoute),
                             onBack = navController::navigateUp,
@@ -1627,7 +1645,7 @@ fun ElovaireRoot(
                             songPlayCounts = songPlayCounts,
                             favoriteSongIds = favoriteSongIdSet,
                             currentSongId = playbackState.currentSong?.id,
-                            isCurrentSongPlaying = playbackState.isPlaying,
+                            isCurrentSongPlaying = isPlaybackActuallyPlaying,
                             bottomPadding = detailBottomPadding,
                             onBack = navController::navigateUp,
                             onAlbumSelected = { album, origin ->
@@ -1684,7 +1702,7 @@ fun ElovaireRoot(
                             songPlayCounts = songPlayCounts,
                             favoriteSongIds = favoriteSongIdSet,
                             currentSongId = playbackState.currentSong?.id,
-                            isCurrentSongPlaying = playbackState.isPlaying,
+                            isCurrentSongPlaying = isPlaybackActuallyPlaying,
                             bottomPadding = detailBottomPadding,
                             onBack = navController::navigateUp,
                             onSongSelected = { song, queue ->
@@ -1757,34 +1775,60 @@ fun ElovaireRoot(
                     }
                     if (sharedTopBarSpec != null) {
                         CompositionLocalProvider(LocalRenderSharedTopBarContent provides true) {
-                            when (sharedTopBarSpec) {
-                                is SharedTopBarSpec.Unified -> UnifiedTopBar(
-                                    title = sharedTopBarSpec.title,
-                                    showSettings = sharedTopBarSpec.showSettings,
-                                    onOpenSettings = sharedTopBarSpec.onOpenSettings,
-                                    modifier = Modifier
-                                        .align(Alignment.TopCenter)
-                                        .fillMaxWidth()
-                                        .zIndex(8f),
-                                )
-                                is SharedTopBarSpec.Back -> PinnedBackTopBar(
-                                    title = sharedTopBarSpec.title,
-                                    onBack = sharedTopBarSpec.onBack,
-                                    centeredTitle = sharedTopBarSpec.centeredTitle,
-                                    modifier = Modifier
-                                        .align(Alignment.TopCenter)
-                                        .fillMaxWidth()
-                                        .zIndex(8f),
-                                )
-                                is SharedTopBarSpec.Detail -> DetailListTopBar(
-                                    title = sharedTopBarSpec.title,
-                                    subtitle = sharedTopBarSpec.subtitle,
-                                    onBack = sharedTopBarSpec.onBack,
-                                    modifier = Modifier
-                                        .align(Alignment.TopCenter)
-                                        .fillMaxWidth()
-                                        .zIndex(8f),
-                                )
+                            val currentSharedTopBarSpec = sharedTopBarSpec
+                            AnimatedContent(
+                                targetState = currentSharedTopBarSpec.visualSignature(),
+                                transitionSpec = {
+                                    fadeIn(
+                                        animationSpec = tween(
+                                            ElovaireMotion.ScreenFade,
+                                            easing = LinearOutSlowInEasing,
+                                        ),
+                                    ) + slideInVertically(
+                                        animationSpec = tween(
+                                            ElovaireMotion.ScreenFade,
+                                            easing = FastOutSlowInEasing,
+                                        ),
+                                        initialOffsetY = { -it / 5 },
+                                    ) togetherWith fadeOut(
+                                        animationSpec = tween(
+                                            ElovaireMotion.Quick,
+                                            easing = FastOutLinearInEasing,
+                                        ),
+                                    )
+                                },
+                                contentKey = { it },
+                                label = "shared_top_bar_content",
+                            ) {
+                                when (currentSharedTopBarSpec) {
+                                    is SharedTopBarSpec.Unified -> UnifiedTopBar(
+                                        title = currentSharedTopBarSpec.title,
+                                        showSettings = currentSharedTopBarSpec.showSettings,
+                                        onOpenSettings = currentSharedTopBarSpec.onOpenSettings,
+                                        modifier = Modifier
+                                            .align(Alignment.TopCenter)
+                                            .fillMaxWidth()
+                                            .zIndex(8f),
+                                    )
+                                    is SharedTopBarSpec.Back -> PinnedBackTopBar(
+                                        title = currentSharedTopBarSpec.title,
+                                        onBack = currentSharedTopBarSpec.onBack,
+                                        centeredTitle = currentSharedTopBarSpec.centeredTitle,
+                                        modifier = Modifier
+                                            .align(Alignment.TopCenter)
+                                            .fillMaxWidth()
+                                            .zIndex(8f),
+                                    )
+                                    is SharedTopBarSpec.Detail -> DetailListTopBar(
+                                        title = currentSharedTopBarSpec.title,
+                                        subtitle = currentSharedTopBarSpec.subtitle,
+                                        onBack = currentSharedTopBarSpec.onBack,
+                                        modifier = Modifier
+                                            .align(Alignment.TopCenter)
+                                            .fillMaxWidth()
+                                            .zIndex(8f),
+                                    )
+                                }
                             }
                         }
                     }
@@ -1848,7 +1892,7 @@ fun ElovaireRoot(
                             CompactNowPlayingDockHost(
                                 playbackManager = container.playbackManager,
                                 song = currentSong,
-                                isPlaying = playbackState.isPlaying,
+                                isPlaying = isPlaybackActuallyPlaying,
                                 visible = showGlobalNowPlaying,
                                 suppressEnterAnimation = reenteringFromPlayer,
                                 onOpenPlayer = openPlayerIfAllowed,
@@ -5407,7 +5451,6 @@ private fun FavoriteAlbumsModule(
     } else {
         InkText.copy(alpha = 0.08f)
     }
-
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -5418,7 +5461,7 @@ private fun FavoriteAlbumsModule(
                 color = borderColor,
                 shape = RoundedCornerShape(ElovaireRadii.module),
             )
-            .padding(horizontal = 16.dp, vertical = 16.dp),
+            .padding(start = 14.dp, end = 14.dp, top = 16.dp, bottom = 14.dp),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(
@@ -5468,7 +5511,10 @@ private fun FavoriteAlbumsModule(
                 )
             }
 
-            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 albums.chunked(2).take(3).forEach { rowAlbums ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -5501,31 +5547,26 @@ private fun FavoriteAlbumCompactCell(
     val screenWidthPx = screenSizePx.width.toFloat()
     val screenHeightPx = screenSizePx.height.toFloat()
     var bounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
-    val darkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val cellColor = if (darkTheme) {
-        MaterialTheme.colorScheme.surface.copy(alpha = 0.34f)
-    } else {
-        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.82f)
-    }
+    val cellColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
 
     Surface(
         modifier = modifier
             .onGloballyPositioned { bounds = it.boundsInWindow() },
-        shape = RoundedCornerShape(ElovaireRadii.tile),
+        shape = RoundedCornerShape(10.dp),
         color = cellColor,
         onClick = { onOpen(bounds.toExpandOrigin(screenWidthPx, screenHeightPx)) },
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             ArtworkImage(
                 uri = album.artUri,
                 title = album.title,
-                modifier = Modifier.size(60.dp),
+                modifier = Modifier.size(48.dp),
                 cornerRadius = ElovaireRadii.artworkSmall,
                 showArtworkGlow = true,
             )
@@ -5536,13 +5577,13 @@ private fun FavoriteAlbumCompactCell(
                 Text(
                     text = album.title,
                     style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     text = album.artist,
                     style = MaterialTheme.typography.labelLarge,
-                    color = readableSecondaryTextColor(),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -6124,7 +6165,7 @@ private fun CompactAlbumRow(
                 modifier = Modifier.size(62.dp),
                 cornerRadius = ElovaireRadii.artworkSmall,
             )
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     text = album.title,
                     style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
@@ -6457,7 +6498,10 @@ private fun AlbumScreen(
                         )
                         Text(
                             text = album.artist,
-                            style = MaterialTheme.typography.bodyLarge,
+                            style = MaterialTheme.typography.bodyLarge.copy(
+                                fontSize = elovaireScaledSp(22f),
+                                fontWeight = FontWeight.Medium,
+                            ),
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.76f),
                             textAlign = TextAlign.Center,
                         )
@@ -8234,7 +8278,7 @@ private fun NowPlayingScreen(
                         onSpaciousnessAmountChanged = onSpaciousnessChanged,
                         statusText = queueStatusText,
                         onDismiss = { showQueueSheet = false },
-                        isPlaying = playbackState.isPlaying,
+                        isPlaying = isPlaybackActuallyPlaying,
                     )
                 }
             }
@@ -9844,6 +9888,9 @@ private fun PlaybackProgressBar(
     onScrubFinished: (Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val latestOnScrubStarted by rememberUpdatedState(onScrubStarted)
+    val latestOnScrubFractionChanged by rememberUpdatedState(onScrubFractionChanged)
+    val latestOnScrubFinished by rememberUpdatedState(onScrubFinished)
     Row(
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -9866,20 +9913,20 @@ private fun PlaybackProgressBar(
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
                             if (maxWidthPx <= 0f) return@awaitEachGesture
-                            onScrubStarted()
+                            latestOnScrubStarted()
                             var latestFraction = (down.position.x / maxWidthPx).coerceIn(0f, 1f)
-                            onScrubFractionChanged(latestFraction)
+                            latestOnScrubFractionChanged(latestFraction)
 
                             while (true) {
                                 val event = awaitPointerEvent()
                                 val change = event.changes.firstOrNull() ?: break
                                 if (!change.pressed) break
                                 latestFraction = (change.position.x / maxWidthPx).coerceIn(0f, 1f)
-                                onScrubFractionChanged(latestFraction)
+                                latestOnScrubFractionChanged(latestFraction)
                                 change.consume()
                             }
 
-                            onScrubFinished(latestFraction)
+                            latestOnScrubFinished(latestFraction)
                         }
                     },
             )
@@ -11787,14 +11834,22 @@ private fun EqResponseGraph(
     modifier: Modifier = Modifier,
 ) {
     val graphPointCount = EqualizerDspModel.BAND_COUNT
-    val bandValues = remember(settings.bands) {
-        normalizeEqBandValues(settings.bands, graphPointCount)
+    val animatedBandValues = List(graphPointCount) { index ->
+        val target = settings.bands.getOrElse(index) { 0f }.coerceIn(-1f, 1f)
+        val animated by animateFloatAsState(
+            targetValue = target,
+            animationSpec = tween(220, easing = FastOutSlowInEasing),
+            label = "eq_band_$index",
+        )
+        animated
     }
-    val bandFractions = remember {
-        eqBandFractions()
+    val bandValues = remember(animatedBandValues) {
+        normalizeEqBandValues(animatedBandValues, graphPointCount)
     }
+    val bandFractions = remember { eqBandFractions() }
     val lineColor = Color(0xFF39E38E)
     val guideColor = MaterialTheme.colorScheme.onSurface
+    val isFlatState = remember(bandValues) { bandValues.all { kotlin.math.abs(it) <= 0.0005f } }
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(ElovaireRadii.module))
@@ -11848,15 +11903,6 @@ private fun EqResponseGraph(
                     strokeWidth = 1.dp.toPx(),
                 )
             }
-            repeat(bandValues.lastIndex + 1) { index ->
-                val x = size.width * bandFractions.getOrElse(index) { 0f }
-                drawLine(
-                    color = guideColor.copy(alpha = 0.035f),
-                    start = Offset(x, 0f),
-                    end = Offset(x, size.height),
-                    strokeWidth = 1.dp.toPx(),
-                )
-            }
 
             val points = bandValues.mapIndexed { index, band ->
                 val x = size.width * bandFractions.getOrElse(index) { 0f }
@@ -11872,21 +11918,40 @@ private fun EqResponseGraph(
                 close()
             }
 
-            drawPath(
-                path = fillPath,
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        lineColor.copy(alpha = 0.34f),
-                        lineColor.copy(alpha = 0.1f),
-                        Color.Transparent,
+            if (!isFlatState) {
+                drawPath(
+                    path = fillPath,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            lineColor.copy(alpha = 0.28f),
+                            lineColor.copy(alpha = 0.08f),
+                            Color.Transparent,
+                        ),
+                        endY = size.height,
                     ),
-                    endY = size.height,
-                ),
-            )
+                )
+            }
             drawPath(
                 path = strokePath,
-                color = lineColor,
-                style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round),
+                brush = Brush.horizontalGradient(
+                    colors = if (isFlatState) {
+                        listOf(
+                            lineColor.copy(alpha = 0.18f),
+                            lineColor.copy(alpha = 0.28f),
+                            lineColor.copy(alpha = 0.18f),
+                        )
+                    } else {
+                        listOf(
+                            lineColor.copy(alpha = 0.92f),
+                            lineColor,
+                            lineColor.copy(alpha = 0.92f),
+                        )
+                    },
+                ),
+                style = Stroke(
+                    width = if (isFlatState) 2.5.dp.toPx() else 3.dp.toPx(),
+                    cap = StrokeCap.Round,
+                ),
             )
         }
     }
@@ -11903,7 +11968,7 @@ private fun EqBandFrequencyLabels(
     BoxWithConstraints(modifier = modifier) {
         val density = LocalDensity.current
         val widthPx = with(density) { maxWidth.toPx() }
-        val labelWidth = 32.dp
+        val labelWidth = 38.dp
         labels.forEachIndexed { index, label ->
             val xOffset = with(density) {
                 ((widthPx * fractions.getOrElse(index) { 0f }).toDp() - (labelWidth / 2f))
@@ -12130,16 +12195,9 @@ private fun ThinContinuousSlider(
 }
 
 private fun eqBandFractions(): List<Float> {
-    val frequencies = EqualizerDspModel.BAND_CENTER_FREQUENCIES_HZ
-    if (frequencies.isEmpty()) return emptyList()
-    val minFrequency = frequencies.first().coerceAtLeast(1f)
-    val maxFrequency = frequencies.last().coerceAtLeast(minFrequency + 1f)
-    val minLog = kotlin.math.ln(minFrequency)
-    val maxLog = kotlin.math.ln(maxFrequency)
-    val span = (maxLog - minLog).takeIf { it > 0f } ?: 1f
-    return frequencies.map { frequency ->
-        ((kotlin.math.ln(frequency.coerceAtLeast(minFrequency)) - minLog) / span).coerceIn(0f, 1f)
-    }
+    val count = EqualizerDspModel.BAND_COUNT
+    if (count <= 1) return emptyList()
+    return List(count) { index -> index.toFloat() / (count - 1).toFloat() }
 }
 
 private fun nearestEqBandIndex(
@@ -12195,16 +12253,15 @@ private fun eqPreset(
     air: Float,
 ): EqPresetDefinition {
     val bandShape = List(EqualizerDspModel.BAND_COUNT) { index ->
-        when (index) {
-            0, 1 -> bass
-            2, 3 -> subBass
-            4, 5, 6 -> lowBass
-            7, 8, 9, 10 -> lowMid
-            11, 12, 13, 14 -> presence
-            15, 16, 17 -> upperMid
-            18, 19, 20, 21 -> brilliance
-            22, 23 -> air
-            else -> 0f
+        when (EqualizerDspModel.bandDefinition(index).frequencyHz) {
+            in 0f..30f -> bass
+            in 30.0001f..60f -> subBass
+            in 60.0001f..140f -> lowBass
+            in 140.0001f..500f -> lowMid
+            in 500.0001f..1_250f -> presence
+            in 1_250.0001f..3_150f -> upperMid
+            in 3_150.0001f..7_500f -> brilliance
+            else -> air
         }.coerceIn(-1f, 1f)
     }
     val settings = EqSettings(
