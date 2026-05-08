@@ -8,7 +8,8 @@
     -->
     <release version="1.8">
         <item>more streamlined flow upon initial app launch after installing</item>
-        <item>improved lyrics matching, timing to playback and overall accuracy</item>
+        <item>layout improvements to EQ interface, card modules in Home an Search</item>
         <item>improved sound from built-in EQ preset profiles</item>
+        <item>animations built on a new framework, still to be improved further</item>
     </release>
 </changelog>
