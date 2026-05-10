@@ -43,7 +43,7 @@ Elovaire is a native Android music player made for people who still care about t
 
 It gives your albums, artists, playlists, lyrics, queue, and now-playing screen the kind of visual attention they deserve — without turning the experience into something noisy or overcomplicated. The app is designed to feel refined, responsive, and personal, whether you are quickly starting a song or settling into a full album
 
-Unlike streaming-first players, Elovaire focuses on music stored directly on your device. It is offline-first, tag-aware, and built around Android’s local media system, with a clean interface that keeps playback controls close and displays your music collection beautifully
+Unlike streaming-first players, Elovaire focuses on music stored directly on your device. It is offline-first, tag-aware, and built around Android’s local media system. A clean interface keeps playback controls organized and intuitive while album-centric UI displays your music collection beautifully
 
 ## Highlights
 
