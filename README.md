@@ -31,8 +31,7 @@
 </p>
 
 <p align="center">
-  Elovaire is an Android music player built for local libraries, album-first browsing,
-  adaptive artwork-led surfaces, and calm, polished playback
+  Elovaire is an Android music player built for local libraries & great overall listening experience
 </p>
 
 ---
