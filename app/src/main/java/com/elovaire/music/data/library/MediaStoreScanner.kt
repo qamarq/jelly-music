@@ -96,8 +96,10 @@ class MediaStoreScanner(
                 val id = cursor.getLong(idIndex)
                 val albumId = cursor.getLong(albumIdIndex)
                 val songUri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id)
-                val title = cursor.getString(titleIndex).orUnknown("Untitled Track")
+                val rawTitle = cursor.getString(titleIndex).orUnknown("Untitled Track")
                 val fileName = cursor.getString(fileNameIndex).orUnknown("unknown-file")
+                val isExplicit = detectExplicit(rawTitle, fileName)
+                val title = sanitizeDisplayTitle(rawTitle, isExplicit)
                 val fileSizeBytes = sizeIndex.takeIf { it >= 0 }?.let(cursor::getLong)?.takeIf { it > 0L }
                 val durationMs = cursor.getLong(durationIndex).coerceAtLeast(0L)
                 val dateAddedSeconds = cursor.getLong(dateAddedIndex)
@@ -139,7 +141,7 @@ class MediaStoreScanner(
                 songs += Song(
                     id = id,
                     title = title,
-                    isExplicit = detectExplicit(title, fileName),
+                    isExplicit = isExplicit,
                     artist = cursor.getString(artistIndex).orUnknown("Unknown Artist"),
                     album = cursor.getString(albumIndex).orUnknown("Unknown Album"),
                     releaseYear = songMetadata.releaseYear,
@@ -384,6 +386,18 @@ class MediaStoreScanner(
         return EXPLICIT_MARKERS.any { marker ->
             normalizedTitle.contains(marker) || normalizedFileName.contains(marker)
         }
+    }
+
+    private fun sanitizeDisplayTitle(
+        title: String,
+        isExplicit: Boolean,
+    ): String {
+        if (!isExplicit) return title
+        return title
+            .replace(Regex("""\s*[\[(]explicit[\])]\s*$""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\s+\?{3,}\s*$"""), "")
+            .trim()
+            .ifBlank { title }
     }
 
     private fun readSongMetadata(

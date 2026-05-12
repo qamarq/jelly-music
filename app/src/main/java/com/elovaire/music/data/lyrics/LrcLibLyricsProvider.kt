@@ -26,6 +26,9 @@ internal class LrcLibLyricsProvider : LyricsProvider {
 
         return variants
             .flatMap(::searchCandidates)
+            .ifEmpty {
+                variants.flatMap(::searchCandidatesByFreeText)
+            }
             .distinctBy(LyricsCandidate::providerId)
     }
 
@@ -44,6 +47,10 @@ internal class LrcLibLyricsProvider : LyricsProvider {
             !syncedLines.isNullOrEmpty() -> LyricsPayload(
                 lines = syncedLines,
                 isSynced = true,
+                displayTimingOffsetMs = estimateRemoteDisplayTimingOffsetMs(
+                    lines = syncedLines,
+                    durationMs = candidate.durationMs ?: identity.durationMs,
+                ),
                 providerName = providerName,
                 confidence = score,
             )
@@ -97,6 +104,51 @@ internal class LrcLibLyricsProvider : LyricsProvider {
                 response.optJSONObject(index)?.toLyricsCandidate()?.let(::add)
             }
         }
+    }
+
+    private fun searchCandidatesByFreeText(variant: LyricsQueryVariant): List<LyricsCandidate> {
+        val response = getJsonArray(
+            buildUrl(
+                LRCLIB_SEARCH_URL,
+                linkedMapOf(
+                    "q" to listOf(variant.artist, variant.title, variant.album.orEmpty())
+                        .filter { it.isNotBlank() }
+                        .joinToString(" "),
+                ),
+            ),
+        ) ?: return emptyList()
+        return buildList {
+            repeat(response.length()) { index ->
+                response.optJSONObject(index)?.toLyricsCandidate()?.let(::add)
+            }
+        }
+    }
+
+    private fun estimateRemoteDisplayTimingOffsetMs(
+        lines: List<LyricsLine>,
+        durationMs: Long,
+    ): Long {
+        val timedLines = lines.mapNotNull { line -> line.startTimeMs?.let { it to line.text } }
+        if (timedLines.size < 4) return 0L
+        val firstTimestampMs = timedLines.first().first
+        if (firstTimestampMs !in 0L..2_000L) return 0L
+        val linesWithinIntroWindow = timedLines.count { (timeMs, text) ->
+            timeMs in 0L..18_000L && text.isNotBlank()
+        }
+        if (linesWithinIntroWindow < 4) return 0L
+        val earlyGapAverageMs = timedLines
+            .zipWithNext()
+            .take(4)
+            .map { (current, next) -> (next.first - current.first).coerceAtLeast(0L) }
+            .average()
+        val durationFactor = when {
+            durationMs >= 7 * 60 * 1000L -> 0.7
+            durationMs >= 4 * 60 * 1000L -> 0.85
+            else -> 1.0
+        }
+        return ((firstTimestampMs + earlyGapAverageMs * 1.15) * durationFactor)
+            .toLong()
+            .coerceIn(0L, 12_000L)
     }
 
     private fun getJsonObject(url: String): JSONObject? = getText(url)?.let(::JSONObject)
@@ -202,7 +254,7 @@ internal class LrcLibLyricsProvider : LyricsProvider {
     private companion object {
         const val TAG = "LyricsProvider"
         const val CONNECT_TIMEOUT_MS = 900
-        const val READ_TIMEOUT_MS = 2200
+        const val READ_TIMEOUT_MS = 2600
         const val MAX_QUERY_VARIANTS = 8
         const val LRCLIB_BASE_URL = "https://lrclib.net/api/"
         const val LRCLIB_GET_URL = "${LRCLIB_BASE_URL}get"

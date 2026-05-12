@@ -96,7 +96,7 @@ class LyricsServiceTest {
     }
 
     @Test
-    fun `payload current line index follows exact synced timestamps`() {
+    fun `payload current line index applies conservative highlight grace`() {
         val payload = LyricsPayload(
             lines = listOf(
                 LyricsLine(text = "Line one", startTimeMs = 1_000L, endTimeMs = 4_000L, index = 0),
@@ -107,8 +107,9 @@ class LyricsServiceTest {
         )
 
         assertNull(payload.currentLineIndexAt(positionMs = 900L))
-        assertEquals(0, payload.currentLineIndexAt(positionMs = 1_000L))
-        assertEquals(1, payload.currentLineIndexAt(positionMs = 4_010L))
+        assertNull(payload.currentLineIndexAt(positionMs = 1_000L))
+        assertEquals(0, payload.currentLineIndexAt(positionMs = 1_300L))
+        assertEquals(1, payload.currentLineIndexAt(positionMs = 4_310L))
         assertEquals(2, payload.currentLineIndexAt(positionMs = 9_500L))
     }
 

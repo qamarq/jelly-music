@@ -58,23 +58,28 @@ data class LyricsPayload(
     fun currentLineIndexAt(
         positionMs: Long,
         timingOffsetMs: Long = 0L,
-        switchGraceMs: Long = 0L,
+        switchGraceMs: Long = 300L,
     ): Int? {
-        return if (isSynced) {
-            resolveActiveLyricLineIndex(
-                lines = lines,
-                positionMs = positionMs,
-                timingOffsetMs = timingOffsetMs + displayTimingOffsetMs,
-            )
-        } else {
-            null
-        }
+        if (!isSynced) return null
+        val correctedPositionMs = (
+            positionMs -
+                displayTimingOffsetMs -
+                timingOffsetMs -
+                switchGraceMs
+            ).coerceAtLeast(0L)
+        val firstTimestampMs = lines.firstNotNullOfOrNull { it.startTimeMs } ?: return null
+        if (correctedPositionMs < firstTimestampMs) return null
+        return resolveActiveLyricLineIndex(
+            lines = lines,
+            positionMs = correctedPositionMs,
+            timingOffsetMs = 0L,
+        )
     }
 
     fun currentLineAt(
         positionMs: Long,
         timingOffsetMs: Long = 0L,
-        switchGraceMs: Long = 0L,
+        switchGraceMs: Long = 300L,
     ): LyricsLine? = currentLineIndexAt(positionMs, timingOffsetMs, switchGraceMs)?.let(lines::get)
 }
 

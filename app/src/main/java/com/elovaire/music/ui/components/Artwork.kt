@@ -52,10 +52,11 @@ fun ArtworkImage(
     modifier: Modifier = Modifier,
     title: String = "",
     cornerRadius: Dp = ElovaireRadii.artwork,
+    requestedSizePx: Int = 384,
     showArtworkGlow: Boolean = false,
     overlay: (@Composable BoxScope.() -> Unit)? = null,
 ) {
-    val image = rememberArtworkBitmap(uri = uri, size = 768)
+    val image = rememberArtworkBitmap(uri = uri, size = requestedSizePx)
     val gradient = rememberArtworkGradient(uri).value
     val shape = RoundedCornerShape(cornerRadius)
 
@@ -206,7 +207,7 @@ private fun loadBitmap(
 
     decodeBitmapStream(context, uri, size)?.let { return it }
 
-    return decodeEmbeddedArtwork(context, uri)
+    return decodeEmbeddedArtwork(context, uri, size)
 }
 
 private fun decodeBitmapStream(
@@ -236,6 +237,7 @@ private fun decodeBitmapStream(
 private fun decodeEmbeddedArtwork(
     context: Context,
     uri: Uri,
+    targetSize: Int,
 ): Bitmap? {
     return runCatching {
         val retriever = MediaMetadataRetriever()
@@ -249,7 +251,7 @@ private fun decodeEmbeddedArtwork(
                 inSampleSize = calculateInSampleSize(
                     outWidth = bounds.outWidth,
                     outHeight = bounds.outHeight,
-                    targetSize = 768,
+                    targetSize = targetSize,
                 )
             }
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, sampledOptions)

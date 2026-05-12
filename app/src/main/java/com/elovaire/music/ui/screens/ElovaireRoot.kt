@@ -148,6 +148,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -226,6 +227,7 @@ import elovaire.music.app.data.lyrics.LyricsLine
 import elovaire.music.app.data.lyrics.LyricsPayload
 import elovaire.music.app.data.lyrics.LyricsResult
 import elovaire.music.app.data.lyrics.LyricsService
+import elovaire.music.app.data.playback.EqualizerDspConfig
 import elovaire.music.app.data.playback.EqualizerDspModel
 import elovaire.music.app.data.playback.PlaybackManager
 import elovaire.music.app.data.playback.PlaybackProgressState
@@ -266,7 +268,6 @@ import kotlin.math.roundToInt
 import kotlin.math.pow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -408,6 +409,7 @@ private val LocalUseSharedTopBarBackdrop = compositionLocalOf { false }
 private val LocalSharedTopBarController = compositionLocalOf<SharedTopBarController?> { null }
 private val LocalRenderSharedTopBarContent = compositionLocalOf { false }
 private val LocalSharedBackIconPainter = compositionLocalOf<Painter?> { null }
+private val LocalSharedSettingsIconPainter = compositionLocalOf<Painter?> { null }
 
 private sealed interface SharedTopBarSpec {
     data class Unified(
@@ -631,10 +633,8 @@ private fun rememberChromeBackdropSnapshot(
             bitmap = null
             return@LaunchedEffect
         }
-        while (isActive) {
-            bitmap = runCatching { hostView.rootView.drawToDownsampledBitmap() }.getOrNull()
-            delay(180L)
-        }
+        withFrameNanos { }
+        bitmap = runCatching { hostView.rootView.drawToDownsampledBitmap() }.getOrNull()
     }
 
     return bitmap
@@ -941,7 +941,6 @@ fun ElovaireRoot(
     val context = LocalContext.current
     val libraryState by container.libraryRepository.state.collectAsStateWithLifecycle()
     val playbackState by container.playbackManager.state.collectAsStateWithLifecycle()
-    val playbackProgress by container.playbackManager.progressState.collectAsStateWithLifecycle()
     val eqSettings by container.preferenceStore.eqSettings.collectAsStateWithLifecycle()
     val themeMode by container.preferenceStore.themeMode.collectAsStateWithLifecycle()
     val textSizePreset by container.preferenceStore.textSizePreset.collectAsStateWithLifecycle()
@@ -1175,6 +1174,7 @@ fun ElovaireRoot(
     val chromeHazeState = rememberHazeState()
     val sharedTopBarController = remember { SharedTopBarController() }
     val sharedBackIconPainter = painterResource(id = R.drawable.ic_lucide_chevron_left)
+    val sharedSettingsIconPainter = painterResource(id = R.drawable.ic_lucide_settings)
     val playerArtworkGradient = rememberArtworkGradient(playbackState.currentSong?.artUri).value
     val playerAdaptivePalette = remember(
         playbackState.currentSong?.id,
@@ -1289,6 +1289,7 @@ fun ElovaireRoot(
         LocalSongMenuActions provides songMenuActions,
         LocalChromeHazeState provides chromeHazeState,
         LocalSharedBackIconPainter provides sharedBackIconPainter,
+        LocalSharedSettingsIconPainter provides sharedSettingsIconPainter,
     ) {
         Box(
             modifier = Modifier
@@ -1984,7 +1985,6 @@ fun ElovaireRoot(
                             CompactNowPlayingDockHost(
                                 playbackManager = container.playbackManager,
                                 song = currentSong,
-                                isPlaying = isPlaybackActuallyPlaying,
                                 visible = showGlobalNowPlaying,
                                 suppressEnterAnimation = reenteringFromPlayer,
                                 onOpenPlayer = openPlayerIfAllowed,
@@ -2049,6 +2049,18 @@ fun ElovaireRoot(
                     modifier = Modifier
                         .fillMaxSize()
                         .clipToBounds()
+                        .pointerInput(Unit) {
+                            awaitPointerEventScope {
+                                while (true) {
+                                    val event = awaitPointerEvent(PointerEventPass.Final)
+                                    event.changes.forEach { change ->
+                                        if (!change.isConsumed) {
+                                            change.consume()
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         .zIndex(20f),
                 ) {
                     NowPlayingScreen(
@@ -2084,7 +2096,6 @@ fun ElovaireRoot(
 private fun CompactNowPlayingDockHost(
     playbackManager: PlaybackManager,
     song: Song,
-    isPlaying: Boolean,
     visible: Boolean,
     suppressEnterAnimation: Boolean,
     onOpenPlayer: (NowPlayingTransitionSnapshot?) -> Unit,
@@ -2094,6 +2105,9 @@ private fun CompactNowPlayingDockHost(
     modifier: Modifier = Modifier,
 ) {
     val playbackProgress by playbackManager.progressState.collectAsStateWithLifecycle()
+    val isActuallyPlaying = remember(playbackProgress.currentMediaId, playbackProgress.isPlaying, song.id) {
+        playbackProgress.currentMediaId == song.id && playbackProgress.isPlaying
+    }
     val progress = remember(playbackProgress.displayPositionMs, playbackProgress.durationMs) {
         if (playbackProgress.durationMs > 0L) {
             (playbackProgress.displayPositionMs.toFloat() / playbackProgress.durationMs.toFloat()).coerceIn(0f, 1f)
@@ -2103,7 +2117,7 @@ private fun CompactNowPlayingDockHost(
     }
     StandaloneNowPlayingDock(
         song = song,
-        isPlaying = isPlaying,
+        isPlaying = isActuallyPlaying,
         progress = progress,
         visible = visible,
         suppressEnterAnimation = suppressEnterAnimation,
@@ -2383,10 +2397,11 @@ private fun HeaderIconButton(
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val sharedBackPainter = LocalSharedBackIconPainter.current
-    val iconPainter = if (iconResId == R.drawable.ic_lucide_chevron_left && sharedBackPainter != null) {
-        sharedBackPainter
-    } else {
-        painterResource(id = iconResId)
+    val sharedSettingsPainter = LocalSharedSettingsIconPainter.current
+    val iconPainter = when {
+        iconResId == R.drawable.ic_lucide_chevron_left && sharedBackPainter != null -> sharedBackPainter
+        iconResId == R.drawable.ic_lucide_settings && sharedSettingsPainter != null -> sharedSettingsPainter
+        else -> painterResource(id = iconResId)
     }
     val scale by animateFloatAsState(
         targetValue = if (pressed && enabled) 0.88f else 1f,
@@ -2723,6 +2738,7 @@ private fun NowPlayingBar(
                         .size(48.dp)
                         .onGloballyPositioned { artworkBounds = it.boundsInRoot() },
                     cornerRadius = ElovaireRadii.artworkSmall,
+                    requestedSizePx = 192,
                 )
                 Column(
                     modifier = Modifier.weight(1f),
@@ -4785,23 +4801,38 @@ private fun PlaylistArtworkPreview(
         ) {
             when {
                 usesCollage -> {
-                    LazyVerticalGrid(
-                        overscrollEffect = null,
-                        columns = GridCells.Fixed(2),
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(1f),
-                        userScrollEnabled = false,
                         verticalArrangement = Arrangement.spacedBy(1.dp),
-                        horizontalArrangement = Arrangement.spacedBy(1.dp),
                     ) {
-                        itemsIndexed(collageSongs, key = { index, song -> "${song.id}_$index" }) { _, song ->
-                            ArtworkImage(
-                                uri = song.artUri,
-                                title = song.title,
-                                modifier = Modifier.fillMaxSize(),
-                                cornerRadius = 0.dp,
-                            )
+                        repeat(2) { rowIndex ->
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                horizontalArrangement = Arrangement.spacedBy(1.dp),
+                            ) {
+                                repeat(2) { columnIndex ->
+                                    val song = collageSongs.getOrNull((rowIndex * 2) + columnIndex)
+                                    if (song != null) {
+                                        ArtworkImage(
+                                            uri = song.artUri,
+                                            title = song.title,
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .fillMaxHeight(),
+                                            cornerRadius = 0.dp,
+                                            requestedSizePx = 160,
+                                        )
+                                    } else {
+                                        Spacer(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                            .fillMaxHeight(),
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -4812,6 +4843,7 @@ private fun PlaylistArtworkPreview(
                         title = coverSong?.title ?: title,
                         modifier = Modifier.fillMaxSize(),
                         cornerRadius = ElovaireRadii.artwork,
+                        requestedSizePx = 384,
                     )
                 }
 
@@ -7791,7 +7823,7 @@ private fun NowPlayingScreen(
     val lyricsUiState by produceState<LyricsUiState>(
         initialValue = when {
             !showLyricsSheet || currentSong == null -> LyricsUiState.Hidden
-            else -> lyricsService.cachedLyrics(currentSong, includeNotFound = true)?.toUiState() ?: LyricsUiState.Loading
+            else -> lyricsService.cachedLyrics(currentSong, includeNotFound = false)?.toUiState() ?: LyricsUiState.Loading
         },
         key1 = showLyricsSheet,
         key2 = currentSong?.id,
@@ -7801,13 +7833,43 @@ private fun NowPlayingScreen(
             return@produceState
         }
 
-        lyricsService.cachedLyrics(currentSong, includeNotFound = true)?.let { cached ->
+        lyricsService.cachedLyrics(currentSong, includeNotFound = false)?.let { cached ->
             value = cached.toUiState()
             return@produceState
         }
 
         value = LyricsUiState.Loading
-        value = lyricsService.fetchLyrics(currentSong, allowCachedNotFound = true).toUiState()
+        val retryDelaysMs = longArrayOf(0L, 320L, 620L)
+        var resolvedState: LyricsUiState = LyricsUiState.Loading
+        retryDelaysMs.forEachIndexed { index, retryDelay ->
+            if (retryDelay > 0L) {
+                delay(retryDelay)
+            }
+            val fetchedState = lyricsService.fetchLyrics(
+                currentSong,
+                allowCachedNotFound = false,
+            ).toUiState()
+            when {
+                fetchedState is LyricsUiState.Ready -> {
+                    resolvedState = fetchedState
+                    return@forEachIndexed
+                }
+                lyricsService.isLookupInFlight(currentSong) -> {
+                    resolvedState = LyricsUiState.Loading
+                }
+                fetchedState != LyricsUiState.Empty -> {
+                    resolvedState = fetchedState
+                    return@forEachIndexed
+                }
+                index == retryDelaysMs.lastIndex -> {
+                    resolvedState = LyricsUiState.Empty
+                }
+                else -> {
+                    resolvedState = LyricsUiState.Loading
+                }
+            }
+        }
+        value = resolvedState
     }
     DisposableEffect(currentSong?.id) {
         onDispose {
@@ -8066,7 +8128,13 @@ private fun NowPlayingScreen(
                     0f
                 }
             }
-            val isPlaybackActuallyPlaying = playbackState.isPlaying && playbackState.currentSong != null
+            val isPlaybackActuallyPlaying = remember(
+                renderedPlaybackProgress.currentMediaId,
+                renderedPlaybackProgress.isPlaying,
+                currentSong.id,
+            ) {
+                renderedPlaybackProgress.currentMediaId == currentSong.id && renderedPlaybackProgress.isPlaying
+            }
             val spaciousnessEnabled = eqSettings.spaciousness > 0.02f
             val favoriteAlpha by animateFloatAsState(
                 targetValue = if (showQueueSheet) 0f else 1f,
@@ -8191,6 +8259,7 @@ private fun NowPlayingScreen(
                                         .width(animatedArtworkWidth)
                                         .aspectRatio(1f),
                                     cornerRadius = animatedArtworkCornerRadius,
+                                    requestedSizePx = 1024,
                                 )
                             }
                         }
@@ -8683,7 +8752,7 @@ private fun NowPlayingScreen(
         ) {
             LyricsOverlay(
                 song = currentSong,
-                playbackProgress = playbackProgress,
+                playbackProgress = renderedPlaybackProgress,
                 lyricsUiState = lyricsUiState,
                 tintColor = baseSurface.copy(alpha = 0.66f),
                 contentColor = contentColor,
@@ -10025,7 +10094,7 @@ private fun LyricsOverlay(
                                     val isActive = index == activeLyricLineIndex
                                     val lineFontSize by animateFloatAsState(
                                         targetValue = if (isActive) {
-                                            MaterialTheme.typography.headlineMedium.fontSize.value
+                                            MaterialTheme.typography.headlineMedium.fontSize.value + 1f
                                         } else {
                                             MaterialTheme.typography.headlineMedium.fontSize.value - 4f
                                         },
@@ -10036,10 +10105,10 @@ private fun LyricsOverlay(
                                         text = line.text,
                                         style = MaterialTheme.typography.headlineMedium.copy(
                                             fontSize = lineFontSize.sp,
-                                            fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Medium,
+                                            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
                                             lineHeight = 37.sp,
                                         ),
-                                        color = if (isActive) contentColor.copy(alpha = 1f) else contentColor.copy(alpha = 0.42f),
+                                        color = if (isActive) contentColor.copy(alpha = 1f) else contentColor.copy(alpha = 0.5f),
                                         textAlign = androidx.compose.ui.text.style.TextAlign.Start,
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -10051,7 +10120,6 @@ private fun LyricsOverlay(
                                                         lines = lyricLines,
                                                         index = index,
                                                         isSynced = state.payload.isSynced,
-                                                        displayTimingOffsetMs = state.payload.displayTimingOffsetMs,
                                                     )?.let(onSeekTo)
                                                 },
                                             ),
@@ -12169,6 +12237,7 @@ private fun EqResponseGraph(
     onBandChanged: (Int, Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val eqGraphConfig = remember { EqualizerDspConfig() }
     val graphPointCount = EqualizerDspModel.BAND_COUNT
     val animatedBandValues = List(graphPointCount) { index ->
         val target = settings.bands.getOrElse(index) { 0f }.coerceIn(-1f, 1f)
@@ -12195,8 +12264,11 @@ private fun EqResponseGraph(
                         fraction = (offset.x / size.width.toFloat()).coerceIn(0f, 1f),
                         bandFractions = bandFractions,
                     )
-                    val normalized = (1f - (offset.y / size.height.toFloat())).coerceIn(0f, 1f)
-                    onBandChanged(bandIndex, ((normalized * 2f) - 1f).coerceIn(-1f, 1f))
+                    val verticalFraction = (1f - (offset.y / size.height.toFloat())).coerceIn(0f, 1f)
+                    onBandChanged(
+                        bandIndex,
+                        EqualizerDspModel.graphFractionToNormalized(verticalFraction, eqGraphConfig),
+                    )
                 }
             }
             .pointerInput(bandFractions) {
@@ -12217,8 +12289,11 @@ private fun EqResponseGraph(
                             fraction = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f),
                             bandFractions = bandFractions,
                         )
-                        val normalized = (1f - (change.position.y / size.height.toFloat())).coerceIn(0f, 1f)
-                        onBandChanged(index, ((normalized * 2f) - 1f).coerceIn(-1f, 1f))
+                        val verticalFraction = (1f - (change.position.y / size.height.toFloat())).coerceIn(0f, 1f)
+                        onBandChanged(
+                            index,
+                            EqualizerDspModel.graphFractionToNormalized(verticalFraction, eqGraphConfig),
+                        )
                     },
                 )
             },
@@ -12227,12 +12302,14 @@ private fun EqResponseGraph(
             val topPadding = size.height * 0.08f
             val bottomPadding = size.height * 0.12f
             val graphHeight = size.height - topPadding - bottomPadding
-            val midY = topPadding + (graphHeight / 2f)
+            val zeroDbFraction = ((0f - eqGraphConfig.minBandGainDb) / (eqGraphConfig.maxBandGainDb - eqGraphConfig.minBandGainDb))
+                .coerceIn(0f, 1f)
+            val midY = topPadding + (graphHeight * (1f - zeroDbFraction))
 
-            repeat(5) { step ->
-                val y = topPadding + (graphHeight * (step / 4f))
+            eqDbLevels().forEach { levelDb ->
+                val y = topPadding + (graphHeight * (1f - eqLevelFraction(levelDb, eqGraphConfig)))
                 drawLine(
-                    color = guideColor.copy(alpha = if (step == 2) 0.12f else 0.05f),
+                    color = guideColor.copy(alpha = if (levelDb == 0f) 0.12f else 0.05f),
                     start = Offset(0f, y),
                     end = Offset(size.width, y),
                     strokeWidth = 1.dp.toPx(),
@@ -12241,33 +12318,27 @@ private fun EqResponseGraph(
 
             val points = bandValues.mapIndexed { index, band ->
                 val x = size.width * bandFractions.getOrElse(index) { 0f }
-                val y = midY - (band.coerceIn(-1f, 1f) * (graphHeight * 0.46f))
+                val y = topPadding + (graphHeight * (1f - EqualizerDspModel.bandGraphFraction(band, eqGraphConfig)))
                 Offset(x, y)
             }
 
             val strokePath = smoothPathFromPoints(points)
+            val fillPath = androidx.compose.ui.graphics.Path().apply {
+                addPath(strokePath)
+                lineTo(points.lastOrNull()?.x ?: 0f, midY)
+                lineTo(points.firstOrNull()?.x ?: 0f, midY)
+                close()
+            }
             drawPath(
-                path = strokePath,
-                color = lineColor.copy(alpha = 0.08f),
-                style = Stroke(
-                    width = 32.dp.toPx(),
-                    cap = StrokeCap.Round,
-                ),
-            )
-            drawPath(
-                path = strokePath,
+                path = fillPath,
                 brush = Brush.verticalGradient(
                     colors = listOf(
-                        lineColor.copy(alpha = 0.22f),
-                        lineColor.copy(alpha = 0.12f),
-                        lineColor.copy(alpha = 0.04f),
+                        lineColor.copy(alpha = 0.2f),
+                        lineColor.copy(alpha = 0.08f),
+                        Color.Transparent,
                     ),
-                    startY = topPadding,
-                    endY = size.height - bottomPadding,
-                ),
-                style = Stroke(
-                    width = 18.dp.toPx(),
-                    cap = StrokeCap.Round,
+                    startY = 0f,
+                    endY = size.height,
                 ),
             )
             drawPath(
@@ -12292,14 +12363,15 @@ private fun EqResponseGraph(
 private fun EqDbScale(
     modifier: Modifier = Modifier,
 ) {
+    val eqGraphConfig = remember { EqualizerDspConfig() }
     val markerColor = readableSecondaryTextColor().copy(alpha = 0.78f)
-    val levels = remember { listOf("+12", "+6", "0", "-6", "-12") }
+    val levels = remember { eqDbLevels() }
     BoxWithConstraints(modifier = modifier) {
         val topPadding = maxHeight * 0.08f
         val bottomPadding = maxHeight * 0.12f
         val graphHeight = maxHeight - topPadding - bottomPadding
-        levels.forEachIndexed { index, label ->
-            val positionY = topPadding + (graphHeight * (index / 4f))
+        levels.forEach { levelDb ->
+            val positionY = topPadding + (graphHeight * (1f - eqLevelFraction(levelDb, eqGraphConfig)))
             Row(
                 modifier = Modifier
                     .align(Alignment.TopStart)
@@ -12308,7 +12380,7 @@ private fun EqDbScale(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = label,
+                    text = formatEqDbLabel(levelDb),
                     style = MaterialTheme.typography.labelSmall.copy(fontSize = elovaireScaledSp(9f)),
                     color = markerColor,
                 )
@@ -12576,6 +12648,24 @@ private fun eqBandFractions(): List<Float> {
     return List(count) { index -> index.toFloat() / (count - 1).toFloat() }
 }
 
+private fun eqDbLevels(): List<Float> = listOf(8f, 4f, 0f, -5f, -10f)
+
+private fun eqLevelFraction(
+    levelDb: Float,
+    config: EqualizerDspConfig = EqualizerDspConfig(),
+): Float {
+    return ((levelDb - config.minBandGainDb) / (config.maxBandGainDb - config.minBandGainDb))
+        .coerceIn(0f, 1f)
+}
+
+private fun formatEqDbLabel(levelDb: Float): String {
+    return when {
+        levelDb > 0f -> "+${levelDb.roundToInt()}"
+        levelDb < 0f -> levelDb.roundToInt().toString()
+        else -> "0"
+    }
+}
+
 private fun nearestEqBandIndex(
     fraction: Float,
     bandFractions: List<Float>,
@@ -12802,13 +12892,11 @@ private fun lyricsSeekPositionMs(
     lines: List<LyricsLine>,
     index: Int,
     isSynced: Boolean,
-    displayTimingOffsetMs: Long = 0L,
 ): Long? {
     if (lines.isEmpty() || index !in lines.indices) return null
 
     if (isSynced) {
         return lines[index].startTimeMs
-            ?.plus(displayTimingOffsetMs)
             ?.coerceAtLeast(0L)
     }
 

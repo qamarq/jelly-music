@@ -23,7 +23,7 @@ internal data class EqualizerPreset(
 ) {
     fun sanitized(config: EqualizerDspConfig = EqualizerDspConfig()): EqualizerPreset {
         val safeBands = List(config.bandCenterFrequenciesHz.size) { index ->
-            bandGainsDb.getOrElse(index) { 0f }.coerceIn(-config.maxBandGainDb, config.maxBandGainDb)
+            bandGainsDb.getOrElse(index) { 0f }.coerceIn(config.minBandGainDb, config.maxBandGainDb)
         }
         return copy(
             bandGainsDb = safeBands,
@@ -34,7 +34,8 @@ internal data class EqualizerPreset(
 
 internal data class EqualizerDspConfig(
     val bandCenterFrequenciesHz: FloatArray = EqualizerDspModel.BAND_CENTER_FREQUENCIES_HZ,
-    val maxBandGainDb: Float = 13.5f,
+    val minBandGainDb: Float = -10f,
+    val maxBandGainDb: Float = 8f,
     val minPreampDb: Float = -12f,
     val maxPreampDb: Float = 6f,
     val smoothingTimeMs: Int = 42,
@@ -56,6 +57,7 @@ internal data class EqualizerDspConfig(
 ) {
     fun sanitized(): EqualizerDspConfig {
         return copy(
+            minBandGainDb = minBandGainDb.coerceIn(-18f, -3f),
             maxBandGainDb = maxBandGainDb.coerceIn(3f, 15f),
             minPreampDb = minPreampDb.coerceIn(-24f, 0f),
             maxPreampDb = maxPreampDb.coerceIn(0f, 12f),
@@ -127,8 +129,35 @@ internal object EqualizerDspModel {
         return if (clamped >= 0f) {
             curvedMagnitude * safeConfig.maxBandGainDb
         } else {
-            -curvedMagnitude * safeConfig.maxBandGainDb
+            curvedMagnitude * safeConfig.minBandGainDb
         }
+    }
+
+    fun bandGraphFraction(
+        normalized: Float,
+        config: EqualizerDspConfig = EqualizerDspConfig(),
+    ): Float {
+        val safeConfig = config.sanitized()
+        val dbValue = normalizedBandToDb(normalized, safeConfig)
+        return ((dbValue - safeConfig.minBandGainDb) / (safeConfig.maxBandGainDb - safeConfig.minBandGainDb))
+            .coerceIn(0f, 1f)
+    }
+
+    fun graphFractionToNormalized(
+        fraction: Float,
+        config: EqualizerDspConfig = EqualizerDspConfig(),
+    ): Float {
+        val safeConfig = config.sanitized()
+        val clampedFraction = fraction.coerceIn(0f, 1f)
+        val dbValue = safeConfig.minBandGainDb +
+            ((safeConfig.maxBandGainDb - safeConfig.minBandGainDb) * clampedFraction)
+        val magnitude = if (dbValue >= 0f) {
+            (dbValue / safeConfig.maxBandGainDb).coerceIn(0f, 1f)
+        } else {
+            (dbValue / safeConfig.minBandGainDb).coerceIn(0f, 1f)
+        }
+        val normalizedMagnitude = magnitude.toDouble().pow(1.0 / 0.86).toFloat().coerceIn(0f, 1f)
+        return if (dbValue >= 0f) normalizedMagnitude else -normalizedMagnitude
     }
 
     fun activeBandFrequencies(sampleRateHz: Int): FloatArray {
@@ -166,7 +195,7 @@ internal object EqualizerDspModel {
         val combinedPositiveBoostDb = (peakResponseDb + bassPregainDb).coerceAtLeast(0f)
         if (combinedPositiveBoostDb <= 0f) return 0f
         return -((combinedPositiveBoostDb * safeConfig.headroomBlend) + safeConfig.headroomSafetyMarginDb)
-            .coerceIn(0f, 12f)
+            .coerceIn(0f, abs(safeConfig.minPreampDb))
     }
 
     fun smoothingAlpha(

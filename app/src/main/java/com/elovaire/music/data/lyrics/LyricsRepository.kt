@@ -25,7 +25,10 @@ internal class LyricsRepository(
     private val applicationContext = appContext.applicationContext
     private val cache = LyricsCache(applicationContext)
     private val localLyricsResolver = LocalLyricsResolver(applicationContext)
-    private val providers: List<LyricsProvider> = listOf(LrcLibLyricsProvider())
+    private val providers: List<LyricsProvider> = listOf(
+        LrcLibLyricsProvider(),
+        LyricsOvhProvider(),
+    )
     private val serviceScope = CoroutineScope(SupervisorJob() + ioDispatcher)
     private val inFlightRequests = ConcurrentHashMap<String, Deferred<LyricsLookupOutcome>>()
 
@@ -68,7 +71,13 @@ internal class LyricsRepository(
         allowCachedNotFound: Boolean,
     ): LyricsResult = coroutineScope {
         val identity = song.toLyricsIdentity()
-        cache.get(identity, includeNotFound = allowCachedNotFound)?.let { return@coroutineScope it }
+        cache.get(identity, includeNotFound = allowCachedNotFound)?.let { cachedResult ->
+            logDebug("cache hit for ${identity.normalizedLookupKey}")
+            return@coroutineScope cachedResult
+        }
+        if (!allowCachedNotFound && cache.get(identity, includeNotFound = true) is LyricsResult.NotFound) {
+            logDebug("cached NotFound ignored for ${identity.normalizedLookupKey}")
+        }
 
         val existing = inFlightRequests[identity.normalizedLookupKey]
         if (existing != null) {
@@ -133,8 +142,8 @@ internal class LyricsRepository(
             }
             return@coroutineScope LyricsLookupOutcome(
                 result = LyricsResult.NotFound,
-                cacheTtlMs = null,
-                state = LyricsLookupState.NotFound,
+                cacheTtlMs = OFFLINE_CACHE_TTL_MS,
+                state = LyricsLookupState.Error,
             )
         }
 
@@ -156,7 +165,18 @@ internal class LyricsRepository(
         }
 
         val remote = remoteDeferred.await()
+        if (remoteDeferred.isCancelled) {
+            return@coroutineScope LyricsLookupOutcome(
+                result = LyricsResult.NotFound,
+                cacheTtlMs = REMOTE_TIMEOUT_CACHE_TTL_MS,
+                state = LyricsLookupState.Error,
+            )
+        }
         if (remote != null) {
+            logDebug(
+                "remote source selected ${remote.providerName} for ${identity.normalizedLookupKey} " +
+                    "offset=${remote.payload.displayTimingOffsetMs}ms",
+            )
             return@coroutineScope LyricsLookupOutcome(
                 result = LyricsResult.Found(remote.payload),
                 cacheTtlMs = POSITIVE_CACHE_TTL_MS,
@@ -175,6 +195,7 @@ internal class LyricsRepository(
             )
         }
 
+        logDebug("final NotFound source for ${identity.normalizedLookupKey}")
         return@coroutineScope LyricsLookupOutcome(
             result = LyricsResult.NotFound,
             cacheTtlMs = NOT_FOUND_CACHE_TTL_MS,
@@ -238,8 +259,10 @@ internal class LyricsRepository(
     private companion object {
         const val TAG = "LyricsRepository"
         const val POSITIVE_CACHE_TTL_MS = 30L * 24L * 60L * 60L * 1000L
-        const val NOT_FOUND_CACHE_TTL_MS = 30L * 60L * 1000L
-        const val REMOTE_LOOKUP_TIMEOUT_MS = 3_200L
+        const val NOT_FOUND_CACHE_TTL_MS = 20L * 1000L
+        const val OFFLINE_CACHE_TTL_MS = 75L * 1000L
+        const val REMOTE_TIMEOUT_CACHE_TTL_MS = 15L * 1000L
+        const val REMOTE_LOOKUP_TIMEOUT_MS = 4_600L
         const val MIN_FALLBACK_SCORE = 78
     }
 }
