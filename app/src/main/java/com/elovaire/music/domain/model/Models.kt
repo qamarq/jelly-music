@@ -90,6 +90,7 @@ enum class SpaciousnessMode {
     StereoWidth,
     CrossfeedDepth,
     EarlyReflectionRoom,
+    Philharmony,
     HaasSpace,
     HarmonicAir,
 }

@@ -61,6 +61,7 @@ internal object SpaciousnessProcessorModel {
             SpaciousnessMode.StereoWidth -> 0.34f + (amount * 0.62f)
             SpaciousnessMode.CrossfeedDepth -> 0.12f + (amount * 0.26f)
             SpaciousnessMode.EarlyReflectionRoom -> 0.18f + (amount * 0.42f)
+            SpaciousnessMode.Philharmony -> 0.22f + (amount * 0.48f)
             SpaciousnessMode.HaasSpace -> 0.24f + (amount * 0.5f)
             SpaciousnessMode.HarmonicAir -> 0.16f + (amount * 0.3f)
         }
@@ -209,6 +210,7 @@ internal class SpaciousnessProcessor {
             SpaciousnessMode.StereoWidth -> processStereoWidth(dryLeft, dryRight, amount)
             SpaciousnessMode.CrossfeedDepth -> processCrossfeedDepth(dryLeft, dryRight, amount)
             SpaciousnessMode.EarlyReflectionRoom -> processEarlyReflectionRoom(dryLeft, dryRight, amount)
+            SpaciousnessMode.Philharmony -> processPhilharmony(dryLeft, dryRight, amount)
             SpaciousnessMode.HaasSpace -> processHaasSpace(dryLeft, dryRight, amount)
             SpaciousnessMode.HarmonicAir -> processHarmonicAir(dryLeft, dryRight, amount)
         }
@@ -330,6 +332,50 @@ internal class SpaciousnessProcessor {
         return StereoPair(
             left = (left * dryGain) + (reflectionLeft * wetGain),
             right = (right * dryGain) + (reflectionRight * wetGain),
+        )
+    }
+
+    private fun processPhilharmony(
+        left: Float,
+        right: Float,
+        amount: Float,
+    ): StereoPair {
+        val mid = (left + right) * 0.5f
+        val side = (left - right) * 0.5f
+        val lowSide = if (activeConfig.preserveBassMono) {
+            sideLowPass.process(side, sampleRateHz, 170f)
+        } else {
+            0f
+        }
+        val airySide = side - lowSide
+        val widthBloom = widthDecorrelator.process(airySide)
+        val tap1Ms = 3.2f + (1.1f * amount)
+        val tap2Ms = 6.4f + (1.7f * amount)
+        val tap3Ms = 9.6f + (2.1f * amount)
+        val hallLeft = reflectionLowPassL.process(
+            (readDelayInterpolated(leftDelay, tap1Ms) * 0.44f) +
+                (readDelayInterpolated(rightDelay, tap2Ms) * 0.26f) +
+                (readDelayInterpolated(leftDelay, tap3Ms) * 0.14f),
+            sampleRateHz,
+            6_400f,
+        )
+        val hallRight = reflectionLowPassR.process(
+            (readDelayInterpolated(rightDelay, tap1Ms + 0.28f) * 0.44f) +
+                (readDelayInterpolated(leftDelay, tap2Ms + 0.42f) * 0.26f) +
+                (readDelayInterpolated(rightDelay, tap3Ms + 0.76f) * 0.14f),
+            sampleRateHz,
+            6_400f,
+        )
+        val hallDecorrLeft = reflectionDecorrelatorL.process(hallLeft)
+        val hallDecorrRight = reflectionDecorrelatorR.process(hallRight)
+        val preservedCenter = mid * (1f + (amount * 0.012f))
+        val widenedSide = lowSide * 0.96f +
+            (airySide * (1f + (amount * 0.14f))) +
+            (widthBloom * (0.05f + (amount * 0.11f)))
+        val hallGain = 0.026f + (amount * 0.072f)
+        return StereoPair(
+            left = preservedCenter + widenedSide + (hallDecorrLeft * hallGain),
+            right = preservedCenter - widenedSide + (hallDecorrRight * hallGain),
         )
     }
 

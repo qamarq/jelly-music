@@ -48,6 +48,7 @@ data class PlaybackUiState(
     val queue: List<Song> = emptyList(),
     val currentIndex: Int = -1,
     val isPlaying: Boolean = false,
+    val transportShowsPause: Boolean = false,
     val repeatMode: PlaybackRepeatMode = PlaybackRepeatMode.Off,
     val shuffleEnabled: Boolean = false,
     val sourceLabel: String? = null,
@@ -503,6 +504,7 @@ class PlaybackManager(
             queue = emptyList(),
             currentIndex = -1,
             isPlaying = false,
+            transportShowsPause = false,
             sourceLabel = null,
             audioSessionId = 0,
         )
@@ -539,6 +541,9 @@ class PlaybackManager(
         val updatedState = existingState.copy(
             currentIndex = currentIndex,
             isPlaying = if (isPauseTransitioningToStopped) false else player.isPlaying,
+            transportShowsPause = !isPauseTransitioningToStopped &&
+                currentSong != null &&
+                player.playWhenReady,
             repeatMode = player.repeatMode.toPlaybackRepeatMode(),
             shuffleEnabled = player.shuffleModeEnabled,
             sourceLabel = existingState.sourceLabel ?: currentSong?.album,
@@ -581,7 +586,7 @@ class PlaybackManager(
         if (!requestAudioFocus()) return
         isPauseTransitioningToStopped = false
         shouldResumeAfterTransientFocusLoss = false
-        player.volume = effectivePlayerGain()
+        player.volume = targetPlayerOutputGain()
         player.play()
     }
 
@@ -602,7 +607,6 @@ class PlaybackManager(
                 }
             }
             player.pause()
-            player.volume = effectivePlayerGain()
             abandonAudioFocus()
             pauseFadeJob = null
             updateState()
@@ -613,7 +617,7 @@ class PlaybackManager(
         pauseFadeJob?.cancel()
         pauseFadeJob = null
         if (resetVolume) {
-            player.volume = effectivePlayerGain()
+            player.volume = targetPlayerOutputGain()
         }
     }
 
@@ -734,7 +738,7 @@ class PlaybackManager(
         if (usesFixedVolumeOutput()) {
             userVolume = targetVolume
             volumeFineGain = targetVolume
-            player.volume = effectivePlayerGain()
+            player.volume = targetPlayerOutputGain()
             return
         }
         val manager = audioManager
@@ -763,14 +767,14 @@ class PlaybackManager(
     private fun syncFromObservedSystemVolume() {
         if (usbDacHardwareVolumeManager.shouldBypassSoftwareVolume()) {
             ignoreObservedSystemVolumeStep = null
-            player.volume = 1f
+            player.volume = if (isPauseTransitioningToStopped && !player.isPlaying) 0f else 1f
             userVolume = currentEffectiveVolumeFraction()
             updateState()
             return
         }
         if (usesFixedVolumeOutput()) {
             ignoreObservedSystemVolumeStep = null
-            player.volume = effectivePlayerGain()
+            player.volume = targetPlayerOutputGain()
             updateState()
             return
         }
@@ -782,8 +786,19 @@ class PlaybackManager(
             volumeFineGain = if (observedSystemStep <= 0) 0f else 1f
             userVolume = currentSystemVolumeFraction().quantizedVolume()
         }
-        player.volume = effectivePlayerGain()
+        player.volume = targetPlayerOutputGain()
         updateState()
+    }
+
+    private fun targetPlayerOutputGain(): Float {
+        if (pauseFadeJob?.isActive == true) {
+            return player.volume.coerceIn(0f, 1f)
+        }
+        return if (isPauseTransitioningToStopped && !player.isPlaying) {
+            0f
+        } else {
+            effectivePlayerGain()
+        }
     }
 
     private fun currentEffectiveVolumeFraction(): Float {

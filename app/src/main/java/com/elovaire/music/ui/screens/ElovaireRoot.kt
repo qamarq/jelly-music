@@ -73,8 +73,6 @@ import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.overscroll
 import androidx.compose.foundation.rememberOverscrollEffect
 import androidx.compose.foundation.gestures.rememberScrollableState
-import androidx.compose.foundation.text.InlineTextContent
-import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -191,12 +189,11 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.Placeholder
-import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -2054,6 +2051,16 @@ fun ElovaireRoot(
                             onMonoPlaybackChanged = container.preferenceStore::updateMonoPlaybackEnabled,
                             onOpenEqualizer = { navController.navigate(EQUALIZER_ROUTE) },
                             onOpenChangelog = { navController.navigate(CHANGELOG_ROUTE) },
+                            onScanLibrary = {
+                                container.libraryRepository.refresh(
+                                    forceMediaIndex = true,
+                                    enrichMetadata = true,
+                                    showLoadingIndicator = true,
+                                )
+                            },
+                            onCheckForUpdates = {
+                                container.appUpdateManager.checkForUpdates(force = true)
+                            },
                         )
                     }
 
@@ -2319,8 +2326,8 @@ private fun CompactNowPlayingDockHost(
     modifier: Modifier = Modifier,
 ) {
     val playbackProgress by playbackManager.progressState.collectAsStateWithLifecycle()
-    val isActuallyPlaying = remember(playbackState.currentSong?.id, playbackState.isPlaying, song.id) {
-        playbackState.currentSong?.id == song.id && playbackState.isPlaying
+    val transportShowsPause = remember(playbackState.currentSong?.id, playbackState.transportShowsPause, song.id) {
+        playbackState.currentSong?.id == song.id && playbackState.transportShowsPause
     }
     val progress = remember(playbackProgress.displayPositionMs, playbackProgress.durationMs) {
         if (playbackProgress.durationMs > 0L) {
@@ -2331,7 +2338,7 @@ private fun CompactNowPlayingDockHost(
     }
     StandaloneNowPlayingDock(
         song = song,
-        isPlaying = isActuallyPlaying,
+        isPlaying = transportShowsPause,
         progress = progress,
         visible = visible,
         suppressEnterAnimation = suppressEnterAnimation,
@@ -6688,8 +6695,6 @@ private fun RecentSongRow(
     }
 }
 
-private const val EXPLICIT_INLINE_CONTENT_ID = "explicit_badge"
-
 @Composable
 private fun ExplicitTitleText(
     title: String,
@@ -6701,47 +6706,26 @@ private fun ExplicitTitleText(
     overflow: TextOverflow = TextOverflow.Ellipsis,
 ) {
     val badgeFontSize = remember(style.fontSize) {
-        if (style.fontSize == androidx.compose.ui.unit.TextUnit.Unspecified) 10.sp else (style.fontSize.value * 0.68f).sp
+        if (style.fontSize == androidx.compose.ui.unit.TextUnit.Unspecified) 10.sp else (style.fontSize.value * 0.56f).sp
     }
     val titleText = remember(title, isExplicit) {
         buildAnnotatedString {
             append(title)
             if (isExplicit) {
                 append(" ")
-                appendInlineContent(EXPLICIT_INLINE_CONTENT_ID, "🅴")
+                pushStyle(
+                    SpanStyle(
+                        fontSize = badgeFontSize,
+                        fontWeight = FontWeight.Medium,
+                    ),
+                )
+                append("🅴")
+                pop()
             }
         }
     }
-    val inlineContent =
-        if (!isExplicit) {
-            emptyMap()
-        } else {
-            mapOf(
-                EXPLICIT_INLINE_CONTENT_ID to InlineTextContent(
-                    placeholder = Placeholder(
-                        width = badgeFontSize * 1.05f,
-                        height = badgeFontSize * 1.2f,
-                        placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
-                    ),
-                ) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = "🅴",
-                            fontSize = badgeFontSize,
-                            fontWeight = FontWeight.Medium,
-                            color = color,
-                            maxLines = 1,
-                        )
-                    }
-                },
-            )
-        }
     Text(
         text = titleText,
-        inlineContent = inlineContent,
         style = style,
         color = color,
         maxLines = maxLines,
@@ -7018,9 +7002,24 @@ private fun CompactAlbumRow(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = "${album.songCount} tracks  •  ${formatDuration(album.durationMs)}",
+                    text = buildAnnotatedString {
+                        withStyle(
+                            SpanStyle(
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 1f),
+                            ),
+                        ) {
+                            append(formatCountLabel(album.songCount, "track"))
+                        }
+                        append("  •  ")
+                        withStyle(
+                            SpanStyle(
+                                color = readableSecondaryTextColor().copy(alpha = 0.7f),
+                            ),
+                        ) {
+                            append(formatDuration(album.durationMs))
+                        }
+                    },
                     style = MaterialTheme.typography.labelLarge,
-                    color = readableSecondaryTextColor(),
                 )
             }
         }
@@ -8580,12 +8579,12 @@ private fun NowPlayingScreen(
                     0f
                 }
             }
-            val isPlaybackActuallyPlaying = remember(
+            val transportShowsPause = remember(
                 playbackState.currentSong?.id,
-                playbackState.isPlaying,
+                playbackState.transportShowsPause,
                 currentSong.id,
             ) {
-                playbackState.currentSong?.id == currentSong.id && playbackState.isPlaying
+                playbackState.currentSong?.id == currentSong.id && playbackState.transportShowsPause
             }
             val spaciousnessEnabled = eqSettings.spaciousness > 0.02f
             val favoriteAlpha by animateFloatAsState(
@@ -8994,8 +8993,8 @@ private fun NowPlayingScreen(
                                             onClick = onSkipPrevious,
                                         )
                                         PlayerTransportButton(
-                                            iconResId = if (isPlaybackActuallyPlaying) R.drawable.ic_elovaire_pause_filled else R.drawable.ic_lucide_play,
-                                            contentDescription = if (isPlaybackActuallyPlaying) "Pause" else "Play",
+                                            iconResId = if (transportShowsPause) R.drawable.ic_elovaire_pause_filled else R.drawable.ic_lucide_play,
+                                            contentDescription = if (transportShowsPause) "Pause" else "Play",
                                             tint = contentColor,
                                             iconSize = 46.dp,
                                             onClick = onTogglePlayback,
@@ -9111,7 +9110,7 @@ private fun NowPlayingScreen(
                         onSpaciousnessAmountChanged = onSpaciousnessChanged,
                         statusText = queueStatusText,
                         onDismiss = { showQueueSheet = false },
-                        isPlaying = isPlaybackActuallyPlaying,
+                        isPlaying = playbackState.isPlaying,
                     )
                 }
             }
@@ -10240,7 +10239,7 @@ private fun TopBarContextMenuOverlay(
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .statusBarsPadding()
-                .padding(top = 42.dp, end = 14.dp),
+                .padding(top = 6.dp, end = 10.dp),
             enter = fadeIn(animationSpec = tween(170, easing = LinearOutSlowInEasing)) +
                 scaleIn(
                     initialScale = 0.94f,
@@ -10260,36 +10259,45 @@ private fun TopBarContextMenuOverlay(
             label = "TopBarContextMenuVisibility",
         ) {
             FrostedContextMenuSurface(
-                modifier = Modifier.width(212.dp),
+                modifier = Modifier.width(190.dp),
             ) {
-                SongContextMenuItem(
-                    iconResId = R.drawable.ic_lucide_settings,
-                    text = "Settings",
-                    tint = MaterialTheme.colorScheme.onSurface,
-                    onClick = onOpenSettings,
-                )
-                DividerLine()
-                SongContextMenuItem(
-                    iconResId = R.drawable.ic_lucide_audio_waveform,
-                    text = "Equalizer",
-                    tint = MaterialTheme.colorScheme.onSurface,
-                    onClick = onOpenEqualizer,
-                )
-                DividerLine()
-                SongContextMenuItem(
-                    iconResId = R.drawable.ic_lucide_list,
-                    text = "Changelog",
-                    tint = MaterialTheme.colorScheme.onSurface,
-                    onClick = onOpenChangelog,
-                )
-                DividerLine()
-                SongContextMenuItem(
-                    iconResId = R.drawable.ic_lucide_info,
-                    text = "About",
-                    tint = MaterialTheme.colorScheme.onSurface,
-                    bottomPadding = 10.dp,
-                    onClick = onOpenAbout,
-                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    SongContextMenuItem(
+                        iconResId = R.drawable.ic_lucide_settings,
+                        text = "Settings",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        topPadding = 8.dp,
+                        onClick = onOpenSettings,
+                    )
+                    DividerLine()
+                    SongContextMenuItem(
+                        iconResId = R.drawable.ic_lucide_audio_waveform,
+                        text = "Equalizer",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        onClick = onOpenEqualizer,
+                    )
+                    DividerLine()
+                    SongContextMenuItem(
+                        iconResId = R.drawable.ic_lucide_list,
+                        text = "Changelog",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        onClick = onOpenChangelog,
+                    )
+                    DividerLine()
+                    SongContextMenuItem(
+                        iconResId = R.drawable.ic_lucide_info,
+                        text = "About",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        topPadding = 6.dp,
+                        bottomPadding = 8.dp,
+                        onClick = onOpenAbout,
+                    )
+                }
             }
         }
     }
@@ -10301,13 +10309,14 @@ private fun SongContextMenuItem(
     text: String,
     tint: Color,
     containerColor: Color = Color.Transparent,
+    topPadding: Dp = 6.dp,
     bottomPadding: Dp = 6.dp,
     onClick: () -> Unit,
 ) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 10.dp, top = 6.dp, end = 10.dp, bottom = bottomPadding)
+            .padding(start = 10.dp, top = topPadding, end = 10.dp, bottom = bottomPadding)
             .clip(RoundedCornerShape(ElovaireRadii.card * 0.72f))
             .background(containerColor)
             .clickable(onClick = onClick)
@@ -10435,14 +10444,15 @@ private fun LyricsOverlay(
     var autoScrollHeld by remember(song?.id) { mutableStateOf(false) }
     var autoScrollResumeJob by remember(song?.id) { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var selectedLyricLineIndex by remember(song?.id) { mutableStateOf<Int?>(null) }
+    var userLyricsScrollActive by remember(song?.id) { mutableStateOf(false) }
     val readyLyricsPayload = (lyricsUiState as? LyricsUiState.Ready)?.payload
     val autoScrollCenterOffsetPx = with(LocalDensity.current) { 180.dp.roundToPx() }
-    val activeLyricLineIndex by remember(readyLyricsPayload, playbackProgress.positionMs) {
+    val activeLyricLineIndex by remember(readyLyricsPayload, playbackProgress.displayPositionMs) {
         derivedStateOf {
             readyLyricsPayload
                 ?.takeIf { it.isSynced }
                 ?.currentLineIndexAt(
-                    positionMs = playbackProgress.positionMs,
+                    positionMs = playbackProgress.displayPositionMs,
                     timingOffsetMs = 0L,
                     switchGraceMs = 180L,
                 )
@@ -10476,6 +10486,30 @@ private fun LyricsOverlay(
                 index = activeLyricLineIndex,
                 scrollOffset = -autoScrollCenterOffsetPx,
             )
+        }
+    }
+
+    LaunchedEffect(listState.isScrollInProgress, userLyricsScrollActive) {
+        if (userLyricsScrollActive && !listState.isScrollInProgress) {
+            autoScrollResumeJob?.cancel()
+            autoScrollResumeJob = scope.launch {
+                delay(1_600L)
+                autoScrollHeld = false
+                userLyricsScrollActive = false
+            }
+        }
+    }
+
+    val lyricsScrollObserver = remember(song?.id) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (source == NestedScrollSource.UserInput && available.y != 0f) {
+                    autoScrollHeld = true
+                    userLyricsScrollActive = true
+                    autoScrollResumeJob?.cancel()
+                }
+                return Offset.Zero
+            }
         }
     }
 
@@ -10652,20 +10686,7 @@ private fun LyricsOverlay(
                                                 blendMode = BlendMode.DstIn,
                                             )
                                         }
-                                        .pointerInput(song?.id, lyricLines.size) {
-                                            awaitEachGesture {
-                                                awaitFirstDown(requireUnconsumed = false)
-                                                autoScrollHeld = true
-                                                autoScrollResumeJob?.cancel()
-                                                do {
-                                                    val event = awaitPointerEvent()
-                                                } while (event.changes.any { it.pressed })
-                                                autoScrollResumeJob = scope.launch {
-                                                    delay(1_600L)
-                                                    autoScrollHeld = false
-                                                }
-                                            }
-                                        }
+                                        .nestedScroll(lyricsScrollObserver)
                                         .ensureSingleItemRubberBand(listState),
                                     contentPadding = PaddingValues(
                                         top = 12.dp,
@@ -10676,7 +10697,7 @@ private fun LyricsOverlay(
                                     itemsIndexed(lyricLines) { index, line ->
                                         val isActive = index == highlightedLyricLineIndex
                                         val lineFontSize by animateFloatAsState(
-                                            targetValue = if (isActive) 22f else 20f,
+                                            targetValue = if (isActive) 24f else 22f,
                                             animationSpec = tween(ElovaireMotion.Standard, easing = FastOutSlowInEasing),
                                             label = "lyrics_line_font_$index",
                                         )
@@ -10693,7 +10714,7 @@ private fun LyricsOverlay(
                                             style = MaterialTheme.typography.headlineMedium.copy(
                                                 fontSize = lineFontSize.sp,
                                                 fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Medium,
-                                                lineHeight = if (isActive) 29.sp else 27.sp,
+                                                lineHeight = if (isActive) 31.sp else 29.sp,
                                             ),
                                             color = lineColor,
                                             textAlign = androidx.compose.ui.text.style.TextAlign.Start,
@@ -11452,7 +11473,7 @@ private fun EqualizerScreen(
                                 modifier = Modifier
                                     .horizontalGestureSafe()
                                     .horizontalScroll(graphScrollState),
-                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
                             ) {
                                 EqResponseGraph(
                                     settings = settings,
@@ -11461,12 +11482,14 @@ private fun EqualizerScreen(
                                         .width(graphContentWidth)
                                         .height(248.dp),
                                 )
+                                EqBandFrequencyLabels(
+                                    contentWidth = graphContentWidth,
+                                )
                             }
                         }
                         EqHorizontalScrollbar(
                             scrollState = graphScrollState,
                             contentWidth = graphContentWidth,
-                            leadingInset = EQ_DB_SCALE_WIDTH + EQ_DB_SCALE_GAP,
                         )
                         EqPresetMenu(
                             currentSettings = settings,
@@ -11544,6 +11567,8 @@ private fun SettingsScreen(
     onMonoPlaybackChanged: (Boolean) -> Unit,
     onOpenEqualizer: () -> Unit,
     onOpenChangelog: () -> Unit,
+    onScanLibrary: () -> Unit,
+    onCheckForUpdates: () -> Unit,
 ) {
     val listState = rememberLazyListState()
     Box(
@@ -11588,7 +11613,9 @@ private fun SettingsScreen(
                             ThemeModeSegmentedPicker(
                                 selectedMode = themeMode,
                                 onModeSelected = onThemeModeSelected,
-                                modifier = Modifier.fillMaxWidth(0.9f),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 2.dp),
                             )
                         }
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -11603,7 +11630,9 @@ private fun SettingsScreen(
                                 TextSizeStepper(
                                     selectedPreset = textSizePreset,
                                     onPresetSelected = onTextSizePresetSelected,
-                                    modifier = Modifier.fillMaxWidth(0.9f),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 2.dp),
                                 )
                             }
                         }
@@ -11623,12 +11652,10 @@ private fun SettingsScreen(
                     Column(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        SectionTitleRow(
-                            title = "Sound shaping",
-                            compact = true,
-                        )
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 2.dp),
                             horizontalArrangement = Arrangement.spacedBy(20.dp),
                         ) {
                             DigitalSoundKnob(
@@ -11647,7 +11674,9 @@ private fun SettingsScreen(
                             )
                         }
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 2.dp),
                             horizontalArrangement = Arrangement.Center,
                         ) {
                             Button(onClick = onOpenEqualizer) {
@@ -11664,6 +11693,16 @@ private fun SettingsScreen(
                                 )
                             }
                         }
+                        SettingToggleRow(
+                            title = "Enable mono",
+                            subtitle = "Switches stereo playback to mono",
+                            enabled = eqSettings.monoEnabled,
+                            onEnabledChanged = onMonoPlaybackChanged,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 2.dp)
+                                .align(Alignment.CenterHorizontally),
+                        )
                     }
                 }
             }
@@ -11680,14 +11719,25 @@ private fun SettingsScreen(
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(0.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
-                        SettingToggleRow(
-                            title = "Enable mono",
-                            subtitle = "Switches stereo playback to mono",
-                            enabled = eqSettings.monoEnabled,
-                            onEnabledChanged = onMonoPlaybackChanged,
-                            modifier = Modifier.fillMaxWidth(0.9f),
+                        SettingActionRow(
+                            title = "Scan library",
+                            subtitle = "Refresh indexing in search for new media",
+                            actionLabel = "Scan",
+                            onAction = onScanLibrary,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 2.dp),
+                        )
+                        SettingActionRow(
+                            title = "Check for updates",
+                            subtitle = "Check if there's new version available",
+                            actionLabel = "Check",
+                            onAction = onCheckForUpdates,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 2.dp),
                         )
                     }
                 }
@@ -11908,7 +11958,7 @@ private fun ChangelogBottomSheetOverlay(
                     .fillMaxWidth()
                     .fillMaxHeight(0.5f),
                 shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
-                overlayAlpha = 0.7f,
+                overlayAlpha = 0.6f,
                 borderColor = null,
             ) {
                 Column(
@@ -11934,7 +11984,7 @@ private fun ChangelogBottomSheetOverlay(
                             )
                             Surface(
                                 shape = RoundedCornerShape(ElovaireRadii.pill),
-                                color = readableCardSurfaceColor().copy(alpha = 0.72f),
+                                color = MaterialTheme.colorScheme.background,
                                 contentColor = MaterialTheme.colorScheme.onSurface,
                             ) {
                                 Text(
@@ -11976,7 +12026,7 @@ private fun ChangelogBottomSheetOverlay(
                                 .fillMaxWidth()
                                 .fillMaxHeight()
                                 .clip(RoundedCornerShape(ElovaireRadii.card))
-                                .background(readableCardSurfaceColor()),
+                                .background(MaterialTheme.colorScheme.background),
                         ) {
                             LazyColumn(
                                 state = listState,
@@ -12445,6 +12495,50 @@ private fun SettingToggleRow(
 }
 
 @Composable
+private fun SettingActionRow(
+    title: String,
+    subtitle: String,
+    actionLabel: String,
+    onAction: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+            )
+        }
+        Spacer(modifier = Modifier.width(18.dp))
+        Surface(
+            onClick = onAction,
+            shape = RoundedCornerShape(ElovaireRadii.pill),
+            color = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+        ) {
+            Text(
+                text = actionLabel,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+            )
+        }
+    }
+}
+
+@Composable
 private fun MonoPlaybackToggle(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
@@ -12617,20 +12711,20 @@ private fun DigitalSoundKnob(
         Color.White
     }
     val tickColor = if (MaterialTheme.colorScheme.background.luminance() > 0.5f) {
-        InkText.copy(alpha = 0.3f)
+        InkText.copy(alpha = 0.2f)
     } else {
-        Color.White.copy(alpha = 0.3f)
+        Color.White.copy(alpha = 0.2f)
     }
 
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(138.dp)
+                .height(132.dp)
                 .horizontalGestureSafe()
                 .pointerInput(title) {
                     detectTapGestures { offset ->
@@ -12666,10 +12760,10 @@ private fun DigitalSoundKnob(
             ) {
                 val strokeWidth = 5.dp.toPx()
                 val horizontalInset = 10.dp.toPx()
-                val topInset = 10.dp.toPx()
+                val topInset = 14.dp.toPx()
                 val radius = min(
                     ((size.width - (horizontalInset * 2f)) / 2f).coerceAtLeast(1f),
-                    ((size.height - topInset - 22.dp.toPx()) * 0.44f).coerceAtLeast(1f),
+                    ((size.height - topInset - 14.dp.toPx()) * 0.48f).coerceAtLeast(1f),
                 )
                 val center = Offset(size.width / 2f, topInset + radius)
                 val startAngle = 180f
@@ -12700,8 +12794,8 @@ private fun DigitalSoundKnob(
                     )
                 }
 
-                val tickOuterRadius = (radius - 18.dp.toPx()).coerceAtLeast(1f)
-                val tickInnerRadius = (tickOuterRadius - 12.dp.toPx()).coerceAtLeast(1f)
+                val tickOuterRadius = (radius - 9.dp.toPx()).coerceAtLeast(1f)
+                val tickInnerRadius = (tickOuterRadius - 8.dp.toPx()).coerceAtLeast(1f)
                 val tickCount = 34
                 repeat(tickCount) { tickIndex ->
                     val fraction = tickIndex / (tickCount - 1).toFloat()
@@ -12726,7 +12820,7 @@ private fun DigitalSoundKnob(
             }
 
             Column(
-                modifier = Modifier.padding(top = 40.dp),
+                modifier = Modifier.padding(top = 38.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
@@ -13010,6 +13104,7 @@ private fun SpaciousnessModeMenu(
             SpaciousnessMode.StereoWidth,
             SpaciousnessMode.CrossfeedDepth,
             SpaciousnessMode.EarlyReflectionRoom,
+            SpaciousnessMode.Philharmony,
             SpaciousnessMode.HaasSpace,
             SpaciousnessMode.HarmonicAir,
         )
@@ -13046,6 +13141,7 @@ private fun SpaciousnessMode.displayLabel(): String {
         SpaciousnessMode.StereoWidth -> "Stereo Width"
         SpaciousnessMode.CrossfeedDepth -> "Crossfeed"
         SpaciousnessMode.EarlyReflectionRoom -> "Room"
+        SpaciousnessMode.Philharmony -> "Philharmony"
         SpaciousnessMode.HaasSpace -> "Haas Space"
         SpaciousnessMode.HarmonicAir -> "Harmonic Air"
     }
@@ -13293,7 +13389,6 @@ private fun EqBandFrequencyLabels(
 private fun EqHorizontalScrollbar(
     scrollState: androidx.compose.foundation.ScrollState,
     contentWidth: Dp,
-    leadingInset: Dp = 0.dp,
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
@@ -13354,31 +13449,7 @@ private fun EqHorizontalScrollbar(
         ) {
             Box(
                 modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .fillMaxWidth()
-                    .height(18.dp)
-                    .clipToBounds(),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Spacer(modifier = Modifier.width(leadingInset))
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clipToBounds(),
-                    ) {
-                        EqBandFrequencyLabels(
-                            contentWidth = contentWidth,
-                            modifier = Modifier.offset { IntOffset(-scrollState.value, 0) },
-                        )
-                    }
-                }
-            }
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
+                    .align(Alignment.Center)
                     .fillMaxWidth()
                     .height(2.dp)
                     .clip(RoundedCornerShape(ElovaireRadii.pill))
@@ -13386,7 +13457,7 @@ private fun EqHorizontalScrollbar(
             )
             Box(
                 modifier = Modifier
-                    .align(Alignment.BottomStart)
+                    .align(Alignment.CenterStart)
                     .offset { IntOffset(x = thumbOffsetPx.roundToInt(), y = 0) }
                     .width(with(density) { thumbWidthPx.toDp() })
                     .height(4.dp)
