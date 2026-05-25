@@ -207,6 +207,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
@@ -450,6 +451,9 @@ private sealed interface SharedTopBarSpec {
     data class Unified(
         val title: String,
         val showSettings: Boolean,
+        @DrawableRes val supplementalActionIconResId: Int? = null,
+        val supplementalActionContentDescription: String? = null,
+        val onSupplementalAction: (() -> Unit)? = null,
         val onOpenMenu: () -> Unit,
     ) : SharedTopBarSpec
 
@@ -468,7 +472,7 @@ private sealed interface SharedTopBarSpec {
 
 private fun SharedTopBarSpec.visualSignature(): String {
     return when (this) {
-        is SharedTopBarSpec.Unified -> "unified|$title|$showSettings"
+        is SharedTopBarSpec.Unified -> "unified|$title|$showSettings|${supplementalActionIconResId ?: 0}|${supplementalActionContentDescription.orEmpty()}"
         is SharedTopBarSpec.Back -> "back|$title|$centeredTitle"
         is SharedTopBarSpec.Detail -> "detail|$title|${subtitle.orEmpty()}"
     }
@@ -940,7 +944,7 @@ private fun RegisterSharedTopBar(spec: SharedTopBarSpec) {
     val registrationId = remember { Any() }
     val specSignature = remember(spec) {
         when (spec) {
-            is SharedTopBarSpec.Unified -> "unified|${spec.title}|${spec.showSettings}"
+            is SharedTopBarSpec.Unified -> "unified|${spec.title}|${spec.showSettings}|${spec.supplementalActionIconResId ?: 0}|${spec.supplementalActionContentDescription.orEmpty()}"
             is SharedTopBarSpec.Back -> "back|${spec.title}|${spec.centeredTitle}"
             is SharedTopBarSpec.Detail -> "detail|${spec.title}|${spec.subtitle.orEmpty()}"
         }
@@ -1239,6 +1243,7 @@ fun ElovaireRoot(
     val sharedTopMenuIconPainter = painterResource(id = R.drawable.ic_lucide_menu)
     var showTopBarMenu by rememberSaveable { mutableStateOf(false) }
     var showChangelogSheet by rememberSaveable { mutableStateOf(false) }
+    var showPlaylistCreateDialog by rememberSaveable { mutableStateOf(false) }
     val playerArtworkGradient = rememberArtworkGradient(playbackState.currentSong?.artUri).value
     val playerAdaptivePalette = remember(
         playbackState.currentSong?.id,
@@ -1292,11 +1297,19 @@ fun ElovaireRoot(
             navController.navigate(ABOUT_ROUTE)
         }
     }
+    val showPlaylistCreateAction = currentRoute == PLAYLISTS_ROUTE && playlists.isNotEmpty()
     val sharedTopBarSpec = sharedTopBarController.registration?.spec
         ?: if (showTopLevelChrome) {
             SharedTopBarSpec.Unified(
                 title = topBarTitle(currentRoute),
                 showSettings = currentRoute in setOf(HOME_ROUTE, ALBUMS_ROUTE, PLAYLISTS_ROUTE),
+                supplementalActionIconResId = if (showPlaylistCreateAction) R.drawable.ic_lucide_list_plus else null,
+                supplementalActionContentDescription = if (showPlaylistCreateAction) "Create playlist" else null,
+                onSupplementalAction = if (showPlaylistCreateAction) {
+                    { showPlaylistCreateDialog = true }
+                } else {
+                    null
+                },
                 onOpenMenu = { showTopBarMenu = true },
             )
         } else {
@@ -1316,6 +1329,9 @@ fun ElovaireRoot(
     }
     LaunchedEffect(currentRoute) {
         showTopBarMenu = false
+        if (currentRoute != PLAYLISTS_ROUTE) {
+            showPlaylistCreateDialog = false
+        }
     }
     SideEffect {
         val window = (rootView.context as? Activity)?.window ?: return@SideEffect
@@ -1711,9 +1727,7 @@ fun ElovaireRoot(
                             libraryState = libraryState,
                             topPadding = topContentPadding,
                             bottomPadding = bottomContentPadding,
-                            onCreatePlaylist = { name ->
-                                container.preferenceStore.createPlaylist(name)
-                            },
+                            onRequestCreatePlaylist = { showPlaylistCreateDialog = true },
                             onRenamePlaylist = container.preferenceStore::renamePlaylist,
                             onDeletePlaylists = container.preferenceStore::deletePlaylists,
                             onOpenPlaylist = { playlist, origin ->
@@ -2071,6 +2085,17 @@ fun ElovaireRoot(
                             onDismiss = { showChangelogSheet = false },
                         )
                     }
+                    if (showPlaylistCreateDialog) {
+                        PlaylistNameDialog(
+                            onDismiss = { showPlaylistCreateDialog = false },
+                            onConfirm = { name ->
+                                val createdId = container.preferenceStore.createPlaylist(name)
+                                if (createdId > 0L) {
+                                    showPlaylistCreateDialog = false
+                                }
+                            },
+                        )
+                    }
                     ElovaireAnimatedVisibility(
                         modifier = Modifier
                             .align(Alignment.TopCenter)
@@ -2359,6 +2384,9 @@ private fun StandaloneNowPlayingDock(
 private fun UnifiedTopBar(
     title: String,
     showSettings: Boolean,
+    @DrawableRes supplementalActionIconResId: Int? = null,
+    supplementalActionContentDescription: String? = null,
+    onSupplementalAction: (() -> Unit)? = null,
     onOpenMenu: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -2369,6 +2397,9 @@ private fun UnifiedTopBar(
             SharedTopBarSpec.Unified(
                 title = title,
                 showSettings = showSettings,
+                supplementalActionIconResId = supplementalActionIconResId,
+                supplementalActionContentDescription = supplementalActionContentDescription,
+                onSupplementalAction = onSupplementalAction,
                 onOpenMenu = onOpenMenu,
             ),
         )
@@ -2418,13 +2449,27 @@ private fun UnifiedTopBar(
                 )
             }
             if (showSettings) {
-                HeaderIconButton(
-                    iconResId = R.drawable.ic_lucide_menu,
-                    contentDescription = "Menu",
-                    showBackground = false,
-                    onClick = onOpenMenu,
-                    modifier = Modifier.zIndex(1f),
-                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (supplementalActionIconResId != null && onSupplementalAction != null) {
+                        HeaderIconButton(
+                            iconResId = supplementalActionIconResId,
+                            contentDescription = supplementalActionContentDescription ?: "Action",
+                            showBackground = false,
+                            onClick = onSupplementalAction,
+                            modifier = Modifier.zIndex(1f),
+                        )
+                    }
+                    HeaderIconButton(
+                        iconResId = R.drawable.ic_lucide_menu,
+                        contentDescription = "Menu",
+                        showBackground = false,
+                        onClick = onOpenMenu,
+                        modifier = Modifier.zIndex(1f),
+                    )
+                }
             } else {
                 SpacerTile(modifier = Modifier.size(40.dp))
             }
@@ -2589,12 +2634,25 @@ private fun SharedTopBarOverlay(
                         }
                     }
                     if (spec.showSettings) {
-                        HeaderIconButton(
-                            iconResId = R.drawable.ic_lucide_menu,
-                            contentDescription = "Menu",
-                            showBackground = false,
-                            onClick = spec.onOpenMenu,
-                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            if (spec.supplementalActionIconResId != null && spec.onSupplementalAction != null) {
+                                HeaderIconButton(
+                                    iconResId = spec.supplementalActionIconResId,
+                                    contentDescription = spec.supplementalActionContentDescription ?: "Action",
+                                    showBackground = false,
+                                    onClick = spec.onSupplementalAction,
+                                )
+                            }
+                            HeaderIconButton(
+                                iconResId = R.drawable.ic_lucide_menu,
+                                contentDescription = "Menu",
+                                showBackground = false,
+                                onClick = spec.onOpenMenu,
+                            )
+                        }
                     } else {
                         SpacerTile(modifier = Modifier.size(40.dp))
                     }
@@ -4013,12 +4071,11 @@ private fun PlaylistsScreen(
     libraryState: LibraryUiState,
     topPadding: Dp,
     bottomPadding: Dp,
-    onCreatePlaylist: (String) -> Long,
+    onRequestCreatePlaylist: () -> Unit,
     onRenamePlaylist: (Long, String) -> Unit,
     onDeletePlaylists: (Set<Long>) -> Unit,
     onOpenPlaylist: (Playlist, ExpandOrigin) -> Unit,
 ) {
-    var showCreateDialog by rememberSaveable { mutableStateOf(false) }
     var playlistBeingRenamed by remember { mutableStateOf<Playlist?>(null) }
     var selectedPlaylistIds by rememberSaveable { mutableStateOf(setOf<Long>()) }
     var deleteConfirmationVisible by rememberSaveable { mutableStateOf(false) }
@@ -4036,7 +4093,7 @@ private fun PlaylistsScreen(
                 modifier = Modifier
                     .align(Alignment.Center)
                     .padding(horizontal = 20.dp),
-                onCreate = { showCreateDialog = true },
+                onCreate = onRequestCreatePlaylist,
             )
         } else {
             LazyVerticalGrid(
@@ -4055,9 +4112,6 @@ private fun PlaylistsScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                item {
-                    CreatePlaylistTile(onClick = { showCreateDialog = true })
-                }
                 items(playlists, key = { it.id }) { playlist ->
                     PlaylistGridTile(
                         playlist = playlist,
@@ -4158,18 +4212,6 @@ private fun PlaylistsScreen(
                     }
                 }
             }
-        }
-
-        if (showCreateDialog) {
-            PlaylistNameDialog(
-                onDismiss = { showCreateDialog = false },
-                onConfirm = { name ->
-                    val createdId = onCreatePlaylist(name)
-                    if (createdId > 0) {
-                        showCreateDialog = false
-                    }
-                },
-            )
         }
 
         playlistBeingRenamed?.let { playlist ->
@@ -4366,13 +4408,11 @@ private fun LibraryCollectionScreen(
         LibraryCollectionKind.Songs -> SongCollectionScreen(
             songs = libraryState.songs,
             favoriteSongIds = favoriteSongIds,
-            layoutMode = songCollectionLayoutMode,
             sortMode = songSortMode,
             currentSongId = currentSongId,
             isCurrentSongPlaying = isCurrentSongPlaying,
             bottomPadding = bottomPadding,
             onBack = onBack,
-            onLayoutModeChanged = onSongCollectionLayoutModeChanged,
             onSortModeChanged = onSongSortModeChanged,
             onSongSelected = onSongSelected,
             onToggleFavorite = onToggleFavorite,
@@ -4419,20 +4459,17 @@ private fun LibraryCollectionScreen(
 private fun SongCollectionScreen(
     songs: List<Song>,
     favoriteSongIds: Set<Long>,
-    layoutMode: AlbumLayoutMode,
     sortMode: SongSortMode,
     currentSongId: Long?,
     isCurrentSongPlaying: Boolean,
     bottomPadding: Dp,
     onBack: () -> Unit,
-    onLayoutModeChanged: (AlbumLayoutMode) -> Unit,
     onSortModeChanged: (SongSortMode) -> Unit,
     onSongSelected: (Song, List<Song>) -> Unit,
     onToggleFavorite: (Long) -> Unit,
 ) {
     var showSortOptions by rememberSaveable { mutableStateOf(false) }
     val listState = rememberElovaireLazyListState("song_collection_list")
-    val gridState = rememberElovaireLazyGridState("song_collection_grid")
     val sortedSongs = remember(songs, sortMode) {
         when (sortMode) {
             SongSortMode.Title -> songs.sortedWith(
@@ -4454,113 +4491,53 @@ private fun SongCollectionScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        if (layoutMode == AlbumLayoutMode.Grid) {
-            LazyVerticalGrid(
-                state = gridState,
-                overscrollEffect = null,
-                columns = GridCells.Fixed(2),
-                modifier = Modifier
-                    .fillMaxSize()
-                    .ensureSingleItemRubberBand(gridState),
-                contentPadding = PaddingValues(
-                    start = 20.dp,
-                    top = detailTopBarOccupiedHeight() + ElovaireSpacing.detailListTopGap,
-                    end = 20.dp,
-                    bottom = bottomPadding,
-                ),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                item(span = { GridItemSpan(2) }) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        SongSortControl(
-                            selected = sortMode,
-                            expanded = showSortOptions,
-                            onToggleExpanded = { showSortOptions = !showSortOptions },
-                            onSelect = { selectedMode ->
-                                onSortModeChanged(selectedMode)
-                                showSortOptions = false
-                            },
-                        )
-                        Spacer(modifier = Modifier.width(11.dp))
-                        LibraryModeToggle(
-                            layoutMode = layoutMode,
-                            onLayoutModeChanged = onLayoutModeChanged,
-                        )
-                    }
-                }
-                items(sortedSongs, key = { it.id }) { song ->
-                    SongGridCard(
+        LazyColumn(
+            state = listState,
+            overscrollEffect = null,
+            modifier = Modifier
+                .fillMaxSize()
+                .ensureSingleItemRubberBand(listState),
+            contentPadding = PaddingValues(
+                start = 20.dp,
+                top = detailTopBarOccupiedHeight() + ElovaireSpacing.detailListTopGap,
+                end = 20.dp,
+                bottom = bottomPadding,
+            ),
+            verticalArrangement = Arrangement.spacedBy(0.dp),
+        ) {
+            item {
+                SongSortControl(
+                    selected = sortMode,
+                    expanded = showSortOptions,
+                    onToggleExpanded = { showSortOptions = !showSortOptions },
+                    onSelect = { selectedMode ->
+                        onSortModeChanged(selectedMode)
+                        showSortOptions = false
+                    },
+                )
+            }
+            item {
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+            itemsIndexed(
+                items = sortedSongs,
+                key = { _, song -> song.id },
+                contentType = { _, _ -> "song_row" },
+            ) { index, song ->
+                GroupedListRowContainer(
+                    index = index,
+                    lastIndex = sortedSongs.lastIndex,
+                ) {
+                    PlaylistSongRow(
                         song = song,
                         isFavorite = song.id in favoriteSongIds,
+                        isCurrentSong = song.id == currentSongId,
+                        isPlaybackActive = isCurrentSongPlaying,
                         onClick = { onSongSelected(song, sortedSongs) },
                         onToggleFavorite = { onToggleFavorite(song.id) },
+                        showOverflowMenu = true,
+                        showDivider = index != sortedSongs.lastIndex,
                     )
-                }
-            }
-        } else {
-            LazyColumn(
-                state = listState,
-                overscrollEffect = null,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .ensureSingleItemRubberBand(listState),
-                contentPadding = PaddingValues(
-                    start = 20.dp,
-                    top = detailTopBarOccupiedHeight() + ElovaireSpacing.detailListTopGap,
-                    end = 20.dp,
-                    bottom = bottomPadding,
-                ),
-                verticalArrangement = Arrangement.spacedBy(0.dp),
-            ) {
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        SongSortControl(
-                            selected = sortMode,
-                            expanded = showSortOptions,
-                            onToggleExpanded = { showSortOptions = !showSortOptions },
-                            onSelect = { selectedMode ->
-                                onSortModeChanged(selectedMode)
-                                showSortOptions = false
-                            },
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        LibraryModeToggle(
-                            layoutMode = layoutMode,
-                            onLayoutModeChanged = onLayoutModeChanged,
-                        )
-                    }
-                }
-                item {
-                    Spacer(modifier = Modifier.height(16.dp))
-                }
-                itemsIndexed(
-                    items = sortedSongs,
-                    key = { _, song -> song.id },
-                    contentType = { _, _ -> "song_row" },
-                ) { index, song ->
-                    GroupedListRowContainer(
-                        index = index,
-                        lastIndex = sortedSongs.lastIndex,
-                    ) {
-                        PlaylistSongRow(
-                            song = song,
-                            isFavorite = song.id in favoriteSongIds,
-                            isCurrentSong = song.id == currentSongId,
-                            isPlaybackActive = isCurrentSongPlaying,
-                            onClick = { onSongSelected(song, sortedSongs) },
-                            onToggleFavorite = { onToggleFavorite(song.id) },
-                            showDivider = index != sortedSongs.lastIndex,
-                        )
-                    }
                 }
             }
         }
@@ -4895,30 +4872,23 @@ private fun ArtistDetailScreen(
         ) {
             if (topSongs.isNotEmpty()) {
                 item {
-                    ModuleCard {
-                        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                            SectionTitleRow(
-                                title = "Most played songs",
-                                subtitle = "${topSongs.size} tracks you return to the most",
-                                compact = true,
-                            )
-                            Column {
-                                topSongs.forEachIndexed { index, song ->
-                                    GroupedListRowContainer(
-                                        index = index,
-                                        lastIndex = topSongs.lastIndex,
-                                    ) {
-                                        PlaylistSongRow(
-                                            song = song,
-                                            isFavorite = song.id in favoriteSongIds,
-                                            isCurrentSong = song.id == currentSongId,
-                                            isPlaybackActive = isCurrentSongPlaying,
-                                            onClick = { onSongSelected(song, artistSongs) },
-                                            onToggleFavorite = { onToggleFavorite(song.id) },
-                                            showDivider = index != topSongs.lastIndex,
-                                        )
-                                    }
-                                }
+                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        SectionTitleRow(
+                            title = "Most played songs",
+                            subtitle = "${topSongs.size} tracks you return to the most",
+                            compact = true,
+                        )
+                        Column {
+                            topSongs.forEachIndexed { index, song ->
+                                HomeRecentSongRow(
+                                    song = song,
+                                    isFavorite = song.id in favoriteSongIds,
+                                    isCurrentSong = song.id == currentSongId,
+                                    isPlaybackActive = isCurrentSongPlaying,
+                                    onClick = { onSongSelected(song, artistSongs) },
+                                    onToggleFavorite = { onToggleFavorite(song.id) },
+                                    showDivider = index != topSongs.lastIndex,
+                                )
                             }
                         }
                     }
@@ -5260,32 +5230,92 @@ private fun PlaylistNameDialog(
     onConfirm: (String) -> Unit,
 ) {
     var name by rememberSaveable(initialName) { mutableStateOf(initialName) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                singleLine = true,
-                shape = RoundedCornerShape(ElovaireRadii.input),
-                placeholder = { Text("Playlist name") },
-            )
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { onConfirm(name) },
-                enabled = name.isNotBlank(),
+    Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onDismiss,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            DynamicBackdropSurface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {},
+                    ),
+                shape = RoundedCornerShape(ElovaireRadii.card),
+                overlayAlpha = 0.72f,
+                borderColor = blurSurfaceBorderColor(),
             ) {
-                Text(confirmLabel)
+                Column(
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(18.dp),
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.displayLarge.copy(fontSize = elovaireScaledSp(24f)),
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        singleLine = true,
+                        shape = RoundedCornerShape(ElovaireRadii.input),
+                        placeholder = { Text("Playlist name") },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.42f),
+                            unfocusedContainerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.32f),
+                            focusedBorderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.42f),
+                            unfocusedBorderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.22f),
+                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            cursorColor = MaterialTheme.colorScheme.onSurface,
+                            focusedPlaceholderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.44f),
+                            unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.44f),
+                        ),
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(onClick = onDismiss) {
+                            Text("Cancel")
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Surface(
+                            onClick = { onConfirm(name) },
+                            enabled = name.isNotBlank(),
+                            shape = RoundedCornerShape(ElovaireRadii.pill),
+                            color = if (name.isNotBlank()) {
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.92f)
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                            },
+                            contentColor = if (name.isNotBlank()) {
+                                MaterialTheme.colorScheme.onPrimary
+                            } else {
+                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.34f)
+                            },
+                        ) {
+                            Text(
+                                text = confirmLabel,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                            )
+                        }
+                    }
+                }
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        },
-    )
+        }
+    }
 }
 
 @Composable
@@ -6753,6 +6783,8 @@ private fun SearchSongRow(
 private fun HomeRecentSongRow(
     song: Song,
     isFavorite: Boolean,
+    isCurrentSong: Boolean = false,
+    isPlaybackActive: Boolean = false,
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
     showDivider: Boolean,
@@ -6766,13 +6798,35 @@ private fun HomeRecentSongRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            ArtworkImage(
-                uri = song.artUri,
-                title = song.title,
+            Box(
                 modifier = Modifier.size(44.dp),
-                cornerRadius = ElovaireRadii.artworkSmall,
-                showArtworkGlow = true,
-            )
+                contentAlignment = Alignment.Center,
+            ) {
+                ArtworkImage(
+                    uri = song.artUri,
+                    title = song.title,
+                    modifier = Modifier.matchParentSize(),
+                    cornerRadius = ElovaireRadii.artworkSmall,
+                    showArtworkGlow = true,
+                )
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = isCurrentSong && isPlaybackActive,
+                    enter = fadeIn(animationSpec = tween(160)),
+                    exit = fadeOut(animationSpec = tween(160)),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .background(Color.Black.copy(alpha = 0.22f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        AnimatedAudioLinesIcon(
+                            tint = Color.White.copy(alpha = 0.7f),
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
+            }
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -7741,6 +7795,7 @@ private fun PlaylistSongRow(
     isPlaybackActive: Boolean = false,
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
+    showOverflowMenu: Boolean = false,
     showDivider: Boolean,
 ) {
     Column {
@@ -7808,7 +7863,7 @@ private fun PlaylistSongRow(
                 )
             }
             Row(
-                modifier = Modifier.width(64.dp),
+                modifier = Modifier.width(if (showOverflowMenu) 96.dp else 64.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -7825,6 +7880,12 @@ private fun PlaylistSongRow(
                     tint = MaterialTheme.colorScheme.onSurface,
                     onClick = onToggleFavorite,
                 )
+                if (showOverflowMenu) {
+                    SongOverflowMenuButton(
+                        song = song,
+                        tint = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
             }
         }
         if (showDivider) {
