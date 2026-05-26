@@ -339,6 +339,35 @@ internal object EqualizerDspModel {
     }
 }
 
+internal object MonoDownmixProcessor {
+    fun downmixFrame(
+        frame: FloatArray,
+        channelCount: Int,
+    ): Float {
+        return when {
+            channelCount <= 0 || frame.isEmpty() -> 0f
+            channelCount == 1 -> frame[0].sanitizeAudioSample()
+            channelCount == 2 -> {
+                val left = frame[0].sanitizeAudioSample()
+                val right = frame[1].sanitizeAudioSample()
+                ((left + right) * 0.5f).coerceIn(-1f, 1f)
+            }
+            else -> {
+                val safeChannels = min(channelCount, frame.size)
+                var sum = 0f
+                for (index in 0 until safeChannels) {
+                    sum += frame[index].sanitizeAudioSample()
+                }
+                (sum / safeChannels.toFloat()).coerceIn(-1f, 1f)
+            }
+        }
+    }
+
+    private fun Float.sanitizeAudioSample(): Float {
+        return if (isFinite()) this else 0f
+    }
+}
+
 internal class EqualizerAudioProcessor(
     private val config: EqualizerDspConfig = EqualizerDspConfig(),
 ) : BaseAudioProcessor() {
@@ -387,7 +416,6 @@ internal class EqualizerAudioProcessor(
     private var bassEnergyEnvelope = FloatArray(0)
     private var scratchDryFrame = FloatArray(2)
     private var scratchWetFrame = FloatArray(2)
-    private var lastMonoEnabled = false
 
     fun updateSettings(settings: EqSettings) {
         val monoToggled = settings.monoEnabled != currentSettings.monoEnabled
@@ -403,7 +431,6 @@ internal class EqualizerAudioProcessor(
         )
         if (monoToggled && configInitialized) {
             resetFilterMemory()
-            lastMonoEnabled = settings.monoEnabled
         }
         targetsDirty = true
     }
@@ -448,14 +475,12 @@ internal class EqualizerAudioProcessor(
                 totalFrames - processedFrames,
             )
             repeat(blockFrames) {
-                var monoInputSample = 0f
                 for (channelIndex in 0 until channelCount) {
                     val drySample = readSample(inputBuffer, encoding)
                     scratchDryFrame[channelIndex] = drySample
-                    monoInputSample += drySample
                 }
                 if (currentSettings.monoEnabled && channelCount >= 2) {
-                    monoInputSample /= channelCount.toFloat()
+                    val monoInputSample = MonoDownmixProcessor.downmixFrame(scratchDryFrame, channelCount)
                     val monoWet = processChannelSample(channelIndex = 0, sample = monoInputSample)
                     val monoOutput = transparentSafetyLimit(monoWet)
                     for (channelIndex in 0 until channelCount) {
@@ -549,7 +574,6 @@ internal class EqualizerAudioProcessor(
         bassEnergyEnvelope.fill(0f)
         currentBandGainsDb.fill(0f)
         targetBandGainsDb.fill(0f)
-        lastMonoEnabled = currentSettings.monoEnabled
         resetFilterMemory()
     }
 

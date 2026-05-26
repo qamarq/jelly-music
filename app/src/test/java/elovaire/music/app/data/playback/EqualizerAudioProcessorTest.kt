@@ -96,6 +96,50 @@ class EqualizerAudioProcessorTest {
     }
 
     @Test
+    fun monoSettingAveragesStereoChannelsAndDuplicatesToBothOutputs() {
+        val processor = configuredProcessor(
+            settings = EqSettings(monoEnabled = true),
+            channelCount = 2,
+            encoding = C.ENCODING_PCM_FLOAT,
+        )
+        val source = floatArrayOf(
+            0.8f, -0.4f,
+            -0.2f, 0.6f,
+            0.25f, 0.75f,
+        )
+
+        processor.queueInput(source.toFloatBuffer())
+
+        val output = processor.outputAsFloats()
+        val expected = listOf(
+            0.2f, 0.2f,
+            0.2f, 0.2f,
+            0.5f, 0.5f,
+        )
+        assertEquals(expected.size, output.size)
+        expected.forEachIndexed { index, value ->
+            assertEquals(value, output[index], 0.000001f)
+        }
+    }
+
+    @Test
+    fun monoDisabledPreservesStereoChannelSamplesForFlatPcm() {
+        val processor = configuredProcessor(
+            settings = EqSettings(monoEnabled = false),
+            channelCount = 2,
+            encoding = C.ENCODING_PCM_FLOAT,
+        )
+        val source = floatArrayOf(0.8f, -0.4f, -0.2f, 0.6f)
+
+        processor.queueInput(source.toFloatBuffer())
+
+        val output = processor.outputAsFloats()
+        source.forEachIndexed { index, value ->
+            assertEquals(value, output[index], 0.000001f)
+        }
+    }
+
+    @Test
     fun silenceRemainsSilence() {
         val processor = configuredProcessor(
             settings = EqSettings(bands = List(EqualizerDspModel.BAND_COUNT) { if (it == 6) 0.5f else 0f }),
