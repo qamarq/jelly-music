@@ -9,6 +9,8 @@
     <release version="1.9.2">
         <item>Added bit-perfect playback for Android 13 devices or newer</item>
         <item>All new About screen added available from top bar context menu</item>
+        <item>Improved interactions and animations in Search screen</item>
+        <item>UI tweaks for equalizer screen</item>
         <item>Bug fixes</item>
     </release>
 </changelog>

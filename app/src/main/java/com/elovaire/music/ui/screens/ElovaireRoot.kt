@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Shader
 import android.net.Uri
 import android.os.Build
@@ -272,6 +273,7 @@ import elovaire.music.app.ui.theme.rememberElovaireOverscrollFactory
 import elovaire.music.app.ui.theme.InkText
 import elovaire.music.app.ui.theme.RoseAccent
 import elovaire.music.app.ui.theme.ToggleEnabledGreen
+import java.net.URL
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.ceil
@@ -308,8 +310,9 @@ private const val ALBUM_HEADER_TITLE_TEXT_SIZE_SP = 23f
 private const val ALBUM_HEADER_ARTIST_TEXT_SIZE_SP = 18f
 private val EQ_DB_SCALE_WIDTH = 30.dp
 private val EQ_DB_SCALE_GAP = 10.dp
-private const val EQ_GRAPH_MIN_WIDTH_MULTIPLIER = 2.8f
-private val EQ_GRAPH_MIN_WIDTH = 1080.dp
+private val EQ_BAND_SPACING = 40.dp
+private val EQ_GRAPH_EDGE_PADDING = 18.dp
+private val aboutLogoImageCache = java.util.concurrent.ConcurrentHashMap<String, androidx.compose.ui.graphics.ImageBitmap>()
 
 private data class TopLevelDestination(
     val route: String,
@@ -445,34 +448,48 @@ private fun Context.loadAboutScreenModel(): AboutScreenModel {
     val sections = mutableListOf<AboutSection>()
     var currentSectionTitle = ""
     var currentSectionDescription: String? = null
+    var sectionOpen = false
     var currentEntries = mutableListOf<AboutEntry>()
     var currentEntryTitle: String? = null
     var currentEntryDescription: String? = null
+    var currentEntryLogoUri: String? = null
     var currentLinks = mutableListOf<AboutLink>()
 
     fun closeEntry() {
         val entryTitle = currentEntryTitle
         if (!entryTitle.isNullOrBlank()) {
-            currentEntries += AboutEntry(
+            val entry = AboutEntry(
                 title = entryTitle,
                 description = currentEntryDescription?.takeIf { it.isNotBlank() },
+                logoUri = currentEntryLogoUri?.takeIf { it.isNotBlank() },
                 links = currentLinks.toList(),
             )
+            if (sectionOpen) {
+                currentEntries += entry
+            } else {
+                sections += AboutSection(
+                    title = entry.title,
+                    description = null,
+                    entries = listOf(entry),
+                )
+            }
         }
         currentEntryTitle = null
         currentEntryDescription = null
+        currentEntryLogoUri = null
         currentLinks = mutableListOf()
     }
 
     fun closeSection() {
         closeEntry()
-        if (currentSectionTitle.isNotBlank()) {
+        if (sectionOpen && (currentSectionTitle.isNotBlank() || currentEntries.isNotEmpty())) {
             sections += AboutSection(
                 title = currentSectionTitle,
                 description = currentSectionDescription?.takeIf { it.isNotBlank() },
                 entries = currentEntries.toList(),
             )
         }
+        sectionOpen = false
         currentSectionTitle = ""
         currentSectionDescription = null
         currentEntries = mutableListOf()
@@ -483,6 +500,7 @@ private fun Context.loadAboutScreenModel(): AboutScreenModel {
             XmlPullParser.START_TAG -> when (parser.name) {
                 "section" -> {
                     closeSection()
+                    sectionOpen = true
                     currentSectionTitle = parser.getAttributeValue(null, "title").orEmpty()
                     currentSectionDescription = parser.getAttributeValue(null, "description")
                 }
@@ -491,6 +509,8 @@ private fun Context.loadAboutScreenModel(): AboutScreenModel {
                     closeEntry()
                     currentEntryTitle = parser.getAttributeValue(null, "title")
                     currentEntryDescription = parser.getAttributeValue(null, "description")
+                    currentEntryLogoUri = parser.getAttributeValue(null, "logoUrl")
+                        ?: parser.getAttributeValue(null, "logoUri")
                 }
 
                 "link" -> {
@@ -602,6 +622,7 @@ private data class AboutSection(
 private data class AboutEntry(
     val title: String,
     val description: String?,
+    val logoUri: String?,
     val links: List<AboutLink>,
 )
 
@@ -5592,9 +5613,6 @@ private fun SearchScreen(
     val collapseAllSongResults: () -> Unit = {
         showAllSongResults = false
         showSearchSongSortOptions = false
-        isSearchFieldFocused = false
-        keyboardController?.hide()
-        focusManager.clearFocus(force = true)
     }
     val resetSearchToMain: () -> Unit = {
         query = ""
@@ -11772,12 +11790,8 @@ private fun EqualizerScreen(
         ) {
             item {
                 BoxWithConstraints {
-                    val scaledGraphWidth = maxWidth * EQ_GRAPH_MIN_WIDTH_MULTIPLIER
-                    val graphContentWidth = if (scaledGraphWidth > EQ_GRAPH_MIN_WIDTH) {
-                        scaledGraphWidth
-                    } else {
-                        EQ_GRAPH_MIN_WIDTH
-                    }
+                    val graphContentWidth = EQ_GRAPH_EDGE_PADDING * 2 +
+                        EQ_BAND_SPACING * (EqualizerDspModel.BAND_COUNT - 1).coerceAtLeast(0).toFloat()
                     Column {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -11833,7 +11847,7 @@ private fun EqualizerScreen(
                     Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
                         SettingsCategoryText(
                             title = "Tone shaping",
-                            iconResId = R.drawable.ic_lucide_sliders_horizontal,
+                            iconResId = R.drawable.ic_lucide_audio_waveform,
                         )
                         EqMacroSliderRow(
                             title = "Bass",
@@ -12105,9 +12119,9 @@ private fun SettingsScreen(
                             Surface(
                                 shape = RoundedCornerShape(ElovaireRadii.pill),
                                 color = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) {
-                                    Color.White.copy(alpha = 0.16f)
+                                    Color.White.copy(alpha = 0.05f)
                                 } else {
-                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
                                 },
                                 contentColor = MaterialTheme.colorScheme.onSurface,
                                 onClick = onOpenChangelog,
@@ -12467,6 +12481,7 @@ private fun AboutScreen(
                 AboutSectionCard(
                     section = section,
                     renderOnBackground = index == 0,
+                    showEntryLogo = index == 0,
                 )
             }
         }
@@ -12482,6 +12497,7 @@ private fun AboutScreen(
 private fun AboutSectionCard(
     section: AboutSection,
     renderOnBackground: Boolean = false,
+    showEntryLogo: Boolean = false,
 ) {
     val content: @Composable () -> Unit = {
         Column(
@@ -12494,6 +12510,7 @@ private fun AboutSectionCard(
                     horizontalScrollableLinks = renderOnBackground,
                     useCardAccentButtons = !renderOnBackground,
                     useRoseAccentButtons = renderOnBackground,
+                    showLogo = showEntryLogo && index == 0,
                 )
                 if (index != section.entries.lastIndex) {
                     DividerLine()
@@ -12522,20 +12539,26 @@ private fun AboutEntryBlock(
     horizontalScrollableLinks: Boolean = false,
     useCardAccentButtons: Boolean = false,
     useRoseAccentButtons: Boolean = false,
+    showLogo: Boolean = false,
 ) {
     val context = LocalContext.current
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text(
-            text = entry.title,
-            style = MaterialTheme.typography.displayLarge.copy(fontSize = elovaireScaledSp(22f)),
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        entry.description?.takeIf { it.isNotBlank() }?.let { description ->
-            Text(
-                text = description,
-                style = secondaryBodyTextStyle(),
-                color = readableSecondaryTextColor(),
-            )
+        if (showLogo) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(20.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AboutEntryLogo(
+                    logoUri = entry.logoUri,
+                    title = entry.title,
+                )
+                AboutEntryTextStack(
+                    entry = entry,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        } else {
+            AboutEntryTextStack(entry = entry)
         }
         if (entry.links.isNotEmpty()) {
             if (horizontalScrollableLinks) {
@@ -12589,6 +12612,134 @@ private fun AboutEntryBlock(
             }
         }
     }
+}
+
+@Composable
+private fun AboutEntryTextStack(
+    entry: AboutEntry,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Text(
+            text = entry.title,
+            style = MaterialTheme.typography.displayLarge.copy(fontSize = elovaireScaledSp(22f)),
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        entry.description?.takeIf { it.isNotBlank() }?.let { description ->
+            Text(
+                text = description,
+                style = secondaryBodyTextStyle(),
+                color = readableSecondaryTextColor(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun AboutEntryLogo(
+    logoUri: String?,
+    title: String,
+) {
+    val context = LocalContext.current
+    val drawableRes = remember(context, logoUri) {
+        context.resolveAboutLogoDrawableRes(logoUri)
+    }
+    val remoteBitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(
+        initialValue = logoUri?.trim()?.let(aboutLogoImageCache::get),
+        key1 = logoUri,
+        key2 = drawableRes,
+    ) {
+        val source = logoUri?.trim()?.takeIf { it.isNotBlank() } ?: return@produceState
+        if (drawableRes != null) return@produceState
+        aboutLogoImageCache[source]?.let {
+            value = it
+            return@produceState
+        }
+        value = null
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                when {
+                    source.startsWith("http://", ignoreCase = true) ||
+                        source.startsWith("https://", ignoreCase = true) -> {
+                        URL(source).openConnection().run {
+                            connectTimeout = 2_500
+                            readTimeout = 2_500
+                            getInputStream().use { BitmapFactory.decodeStream(it) }
+                        }
+                    }
+
+                    else -> context.contentResolver.openInputStream(Uri.parse(source))?.use { input ->
+                        BitmapFactory.decodeStream(input)
+                    }
+                }?.asImageBitmap()?.also { bitmap ->
+                    aboutLogoImageCache[source] = bitmap
+                }
+            }.getOrNull()
+        }
+    }
+    val uri = remember(logoUri, drawableRes, remoteBitmap) {
+        logoUri
+            ?.takeIf { it.isNotBlank() }
+            ?.takeIf { drawableRes == null && remoteBitmap == null }
+            ?.let(Uri::parse)
+    }
+    Box(
+        modifier = Modifier
+            .size(60.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        when {
+            drawableRes != null -> {
+                Image(
+                    painter = painterResource(id = drawableRes),
+                    contentDescription = title,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+            }
+
+            remoteBitmap != null -> {
+                Image(
+                    bitmap = remoteBitmap!!,
+                    contentDescription = title,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+            }
+
+            else -> {
+                ArtworkImage(
+                    uri = uri,
+                    title = title,
+                    modifier = Modifier.fillMaxSize(),
+                    cornerRadius = 30.dp,
+                    requestedSizePx = 160,
+                )
+            }
+        }
+    }
+}
+
+private fun Context.resolveAboutLogoDrawableRes(logoUri: String?): Int? {
+    val source = logoUri?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val drawableName = when {
+        source.startsWith("@drawable/") -> source.substringAfter("@drawable/")
+        source.startsWith("drawable/") -> source.substringAfter("drawable/")
+        source.startsWith("android.resource://") && "/drawable/" in source -> source.substringAfterLast("/drawable/")
+        else -> null
+    }
+        ?.substringBefore('?')
+        ?.substringBefore('#')
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+        ?: return null
+    return resources.getIdentifier(drawableName, "drawable", packageName)
+        .takeIf { it != 0 }
 }
 
 @Composable
@@ -13600,6 +13751,7 @@ private fun SpaciousnessModeMenu(
             EqPresetPill(
                 label = mode.displayLabel(),
                 selected = spaciousnessAmount > 0.001f && mode == currentMode,
+                useSubtleIdleBackground = true,
                 onClick = {
                     onModeSelected(
                         if (spaciousnessAmount > 0.001f && mode == currentMode) {
@@ -13631,12 +13783,15 @@ private fun EqPresetPill(
     label: String,
     selected: Boolean,
     emphasized: Boolean = false,
+    useSubtleIdleBackground: Boolean = false,
     onClick: () -> Unit,
 ) {
     val backgroundColor = if (emphasized) {
         MaterialTheme.colorScheme.primary
     } else if (selected) {
         MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+    } else if (useSubtleIdleBackground) {
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
     } else {
         MaterialTheme.colorScheme.surfaceVariant.copy(
             alpha = if (MaterialTheme.colorScheme.background.luminance() > 0.5f) 0.7f else 0.48f,
@@ -13686,14 +13841,17 @@ private fun EqResponseGraph(
     val bandFractions = remember { eqBandFractions() }
     val accentColor = Color(0xFF39E38E)
     val guideColor = MaterialTheme.colorScheme.onSurface
+    val density = LocalDensity.current
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(ElovaireRadii.module))
             .pointerInput(bandFractions) {
                 detectTapGestures { offset ->
                     if (size.width == 0 || size.height == 0) return@detectTapGestures
+                    val horizontalPadding = with(density) { EQ_GRAPH_EDGE_PADDING.toPx() }
+                    val graphWidth = (size.width.toFloat() - horizontalPadding * 2f).coerceAtLeast(1f)
                     val bandIndex = nearestEqBandIndex(
-                        fraction = (offset.x / size.width.toFloat()).coerceIn(0f, 1f),
+                        fraction = ((offset.x - horizontalPadding) / graphWidth).coerceIn(0f, 1f),
                         bandFractions = bandFractions,
                     )
                     val verticalFraction = (1f - (offset.y / size.height.toFloat())).coerceIn(0f, 1f)
@@ -13707,8 +13865,10 @@ private fun EqResponseGraph(
                 detectDragGestures(
                     onDragStart = { offset ->
                         if (size.width == 0 || size.height == 0) return@detectDragGestures
+                        val horizontalPadding = with(density) { EQ_GRAPH_EDGE_PADDING.toPx() }
+                        val graphWidth = (size.width.toFloat() - horizontalPadding * 2f).coerceAtLeast(1f)
                         val bandIndex = nearestEqBandIndex(
-                            fraction = (offset.x / size.width.toFloat()).coerceIn(0f, 1f),
+                            fraction = ((offset.x - horizontalPadding) / graphWidth).coerceIn(0f, 1f),
                             bandFractions = bandFractions,
                         )
                         val normalized = (1f - (offset.y / size.height.toFloat())).coerceIn(0f, 1f)
@@ -13717,8 +13877,10 @@ private fun EqResponseGraph(
                     onDrag = { change, _ ->
                         change.consume()
                         if (size.width == 0 || size.height == 0) return@detectDragGestures
+                        val horizontalPadding = with(density) { EQ_GRAPH_EDGE_PADDING.toPx() }
+                        val graphWidth = (size.width.toFloat() - horizontalPadding * 2f).coerceAtLeast(1f)
                         val index = nearestEqBandIndex(
-                            fraction = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f),
+                            fraction = ((change.position.x - horizontalPadding) / graphWidth).coerceIn(0f, 1f),
                             bandFractions = bandFractions,
                         )
                         val verticalFraction = (1f - (change.position.y / size.height.toFloat())).coerceIn(0f, 1f)
@@ -13734,6 +13896,8 @@ private fun EqResponseGraph(
             val topPadding = size.height * 0.08f
             val bottomPadding = size.height * 0.12f
             val graphHeight = size.height - topPadding - bottomPadding
+            val horizontalPadding = EQ_GRAPH_EDGE_PADDING.toPx()
+            val graphWidth = (size.width - horizontalPadding * 2f).coerceAtLeast(1f)
             val zeroDbFraction = ((0f - eqGraphConfig.minBandGainDb) / (eqGraphConfig.maxBandGainDb - eqGraphConfig.minBandGainDb))
                 .coerceIn(0f, 1f)
             val midY = topPadding + (graphHeight * (1f - zeroDbFraction))
@@ -13749,12 +13913,12 @@ private fun EqResponseGraph(
             }
 
             bandValues.forEachIndexed { index, band ->
-                val x = size.width * bandFractions.getOrElse(index) { 0f }
+                val x = horizontalPadding + graphWidth * bandFractions.getOrElse(index) { 0f }
                 val y = topPadding + (graphHeight * (1f - EqualizerDspModel.bandGraphFraction(band, eqGraphConfig)))
-                val trackWidth = 9.dp.toPx()
-                val activeWidth = 6.dp.toPx()
-                val thumbWidth = 14.dp.toPx()
-                val thumbHeight = 30.dp.toPx()
+                val trackWidth = 5.dp.toPx()
+                val activeWidth = 3.dp.toPx()
+                val thumbWidth = 9.dp.toPx()
+                val thumbHeight = 24.dp.toPx()
                 val activeTop = min(y, midY)
                 val activeHeight = max(2.dp.toPx(), kotlin.math.abs(y - midY))
                 drawRoundRect(
@@ -13773,7 +13937,7 @@ private fun EqResponseGraph(
                     color = accentColor.copy(alpha = 0.18f),
                     start = Offset(x, midY),
                     end = Offset(x, y),
-                    strokeWidth = activeWidth * 2.6f,
+                    strokeWidth = activeWidth * 2.1f,
                     cap = StrokeCap.Round,
                 )
                 drawRoundRect(
@@ -13925,13 +14089,21 @@ private fun EqBandFrequencyLabels(
     val labels = remember {
         EqualizerDspModel.BAND_CENTER_FREQUENCIES_HZ.map(::formatEqFrequencyLabel)
     }
-    Row(
-        modifier = modifier.width(contentWidth),
-        verticalAlignment = Alignment.CenterVertically,
+    val bandFractions = remember { eqBandFractions() }
+    BoxWithConstraints(
+        modifier = modifier
+            .width(contentWidth)
+            .height(18.dp),
     ) {
-        labels.forEach { label ->
+        val labelWidth = 36.dp
+        val graphWidth = maxWidth - (EQ_GRAPH_EDGE_PADDING * 2)
+        labels.forEachIndexed { index, label ->
+            val fraction = bandFractions.getOrElse(index) { 0f }
             Box(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .width(labelWidth)
+                    .align(Alignment.CenterStart)
+                    .offset(x = EQ_GRAPH_EDGE_PADDING + graphWidth * fraction - (labelWidth / 2)),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -14087,20 +14259,24 @@ private fun ThinContinuousSlider(
         val density = LocalDensity.current
         val maxWidthPx = with(density) { maxWidth.toPx() }
         val knobSizePx = with(density) { knobSize.toPx() }
+        val trackStartPx = knobSizePx / 2f
+        val trackWidthPx = (maxWidthPx - knobSizePx).coerceAtLeast(1f)
+        val trackStart = with(density) { trackStartPx.toDp() }
+        val trackWidth = with(density) { trackWidthPx.toDp() }
         val activeWidth by animateDpAsState(
-            targetValue = maxWidth * fraction,
+            targetValue = trackWidth * fraction,
             animationSpec = tween(durationMillis = 70),
             label = "eq_macro_slider_fill",
         )
         val knobOffset by animateDpAsState(
-            targetValue = with(density) { ((maxWidthPx * fraction) - (knobSizePx / 2f)).toDp() },
+            targetValue = with(density) { (trackStartPx + trackWidthPx * fraction - knobSizePx / 2f).toDp() },
             animationSpec = tween(durationMillis = 70),
             label = "eq_macro_slider_knob",
         )
 
         val updateFromX: (Float) -> Unit = { xPosition ->
             if (maxWidthPx > 0f) {
-                val normalized = (xPosition / maxWidthPx).coerceIn(0f, 1f)
+                val normalized = ((xPosition - trackStartPx) / trackWidthPx).coerceIn(0f, 1f)
                 val rangedValue = valueRange.start + ((valueRange.endInclusive - valueRange.start) * normalized)
                 currentOnValueChange(rangedValue.coerceIn(valueRange.start, valueRange.endInclusive))
             }
@@ -14127,7 +14303,8 @@ private fun ThinContinuousSlider(
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterStart)
-                    .fillMaxWidth()
+                    .offset(x = trackStart)
+                    .width(trackWidth)
                     .height(lineThickness)
                     .clip(RoundedCornerShape(ElovaireRadii.pill))
                     .background(inactiveLineColor),
@@ -14135,6 +14312,7 @@ private fun ThinContinuousSlider(
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterStart)
+                    .offset(x = trackStart)
                     .width(activeWidth)
                     .height(lineThickness)
                     .clip(RoundedCornerShape(ElovaireRadii.pill))
