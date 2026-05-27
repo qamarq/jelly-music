@@ -6,11 +6,10 @@
       2. Edit the bullet points inside that release.
       3. Add newer releases above older ones.
     -->
-    <release version="1.9.2">
-        <item>Added bit-perfect playback for Android 13 devices or newer</item>
-        <item>All new About screen added available from top bar context menu</item>
+    <release version="1.9.3">
+        <item>Some tweaks to queue menu in now playing screen</item>
         <item>Improved interactions and animations in Search screen</item>
+        <item>Improved micro animations</item>
         <item>UI tweaks for equalizer screen</item>
-        <item>Bug fixes</item>
     </release>
 </changelog>

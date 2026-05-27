@@ -268,7 +268,7 @@ object ElovaireMotion {
             targetOffsetX = targetOffsetX,
         ) +
         scaleOut(
-            animationSpec = fadeMedium(),
+            animationSpec = scaleSoft(),
             targetScale = 0.992f,
         )
 

@@ -2,8 +2,8 @@ object AppBuildConfig {
     const val packageName = "elovaire.music.app"
 
     // Internal build number used by Android for upgrades.
-    const val versionCode = 1052
+    const val versionCode = 1053
 
     // User-facing version shown in the app.
-    const val versionName = "1.9.2"
+    const val versionName = "1.9.3"
 }

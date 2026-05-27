@@ -216,6 +216,7 @@ import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavType
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
@@ -972,6 +973,25 @@ private fun rememberElovaireLazyGridState(vararg inputs: Any?): LazyGridState {
     }
 }
 
+@Composable
+private fun Modifier.elovairePressBounce(
+    interactionSource: MutableInteractionSource,
+    label: String,
+    pressedScale: Float = 0.9f,
+): Modifier {
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) pressedScale else 1f,
+        animationSpec = if (pressed) {
+            ElovaireMotion.pressDownSpec()
+        } else {
+            ElovaireMotion.bounceSpringSpec()
+        },
+        label = label,
+    )
+    return this.scale(scale)
+}
+
 @OptIn(ExperimentalHazeApi::class)
 @Composable
 private fun DynamicBackdropSurface(
@@ -1358,6 +1378,10 @@ fun ElovaireRoot(
     var isSearchQueryActive by rememberSaveable { mutableStateOf(false) }
     var browsingOriginRoute by rememberSaveable { mutableStateOf(HOME_ROUTE) }
     var selectedBottomRoute by rememberSaveable { mutableStateOf(HOME_ROUTE) }
+    var lastHomeTabRoute by rememberSaveable { mutableStateOf(HOME_ROUTE) }
+    var lastLibraryTabRoute by rememberSaveable { mutableStateOf(ALBUMS_ROUTE) }
+    var lastPlaylistsTabRoute by rememberSaveable { mutableStateOf(PLAYLISTS_ROUTE) }
+    var lastSearchTabRoute by rememberSaveable { mutableStateOf(SEARCH_ROUTE) }
     var homeScrollRequestVersion by rememberSaveable { mutableLongStateOf(0L) }
     val showTopLevelChrome = currentRoute in setOf(HOME_ROUTE, ALBUMS_ROUTE, PLAYLISTS_ROUTE, SEARCH_ROUTE)
     val showBottomNavigation = currentRoute in setOf(
@@ -1375,6 +1399,18 @@ fun ElovaireRoot(
         if (currentRoute in setOf(HOME_ROUTE, ALBUMS_ROUTE, PLAYLISTS_ROUTE, SEARCH_ROUTE)) {
             browsingOriginRoute = currentRoute.orEmpty()
             selectedBottomRoute = currentRoute.orEmpty()
+        }
+    }
+    LaunchedEffect(currentBackStackEntry, selectedBottomRoute) {
+        val concreteRoute = currentBackStackEntry?.elovaireConcreteRoute() ?: return@LaunchedEffect
+        if (concreteRoute in setOf(PLAYER_ROUTE, SETTINGS_ROUTE, EQUALIZER_ROUTE, CHANGELOG_ROUTE, ABOUT_ROUTE)) {
+            return@LaunchedEffect
+        }
+        when (selectedBottomRoute) {
+            HOME_ROUTE -> lastHomeTabRoute = concreteRoute
+            ALBUMS_ROUTE -> lastLibraryTabRoute = concreteRoute
+            PLAYLISTS_ROUTE -> lastPlaylistsTabRoute = concreteRoute
+            SEARCH_ROUTE -> lastSearchTabRoute = concreteRoute
         }
     }
     val activeBottomRoute = selectedBottomRoute
@@ -2433,7 +2469,14 @@ fun ElovaireRoot(
                                     }
                                 }
                             } else if (currentRoute != route) {
-                                navController.navigate(route) {
+                                val restoreRoute = when (route) {
+                                    HOME_ROUTE -> lastHomeTabRoute
+                                    ALBUMS_ROUTE -> lastLibraryTabRoute
+                                    PLAYLISTS_ROUTE -> lastPlaylistsTabRoute
+                                    SEARCH_ROUTE -> lastSearchTabRoute
+                                    else -> route
+                                }
+                                navController.navigate(restoreRoute) {
                                     launchSingleTop = true
                                     restoreState = true
                                     popUpTo(navController.graph.findStartDestination().id) {
@@ -6005,7 +6048,6 @@ private fun SearchScreen(
                                         onShowAll = {
                                             focusManager.clearFocus(force = true)
                                             keyboardController?.hide()
-                                            isSearchFieldFocused = false
                                             showAllSongResults = true
                                         },
                                     )
@@ -9238,7 +9280,7 @@ private fun NowPlayingScreen(
                     .align(Alignment.CenterHorizontally)
                     .weight(1f),
             ) {
-                val queueSheetTopExtension = 28.dp
+                val queueSheetTopExtension = 40.dp
                 Column(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(0.dp),
@@ -12028,18 +12070,38 @@ private fun SettingsScreen(
                                 .padding(horizontal = 2.dp),
                             horizontalArrangement = Arrangement.Center,
                         ) {
-                            Button(onClick = onOpenEqualizer) {
-                                Icon(
-                                    painter = painterResource(id = R.drawable.ic_lucide_audio_waveform),
-                                    contentDescription = null,
+                            val interactionSource = remember { MutableInteractionSource() }
+                            Surface(
+                                modifier = Modifier.elovairePressBounce(
+                                    interactionSource = interactionSource,
+                                    label = "settings_equalizer_button_scale",
+                                ),
+                                shape = RoundedCornerShape(ElovaireRadii.pill),
+                                color = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary,
+                            ) {
+                                Row(
                                     modifier = Modifier
-                                        .size(20.dp)
-                                        .padding(end = 8.dp),
-                                )
-                                Text(
-                                    text = "Equalizer",
-                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                                )
+                                        .clip(RoundedCornerShape(ElovaireRadii.pill))
+                                        .clickable(
+                                            interactionSource = interactionSource,
+                                            indication = null,
+                                            onClick = onOpenEqualizer,
+                                        )
+                                        .padding(horizontal = 18.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_lucide_audio_waveform),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                    Text(
+                                        text = "Equalizer",
+                                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                                    )
+                                }
                             }
                         }
                         SettingToggleRow(
@@ -13132,6 +13194,7 @@ private fun SettingActionRow(
     onAction: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -13154,14 +13217,24 @@ private fun SettingActionRow(
         }
         Spacer(modifier = Modifier.width(18.dp))
         Surface(
-            onClick = onAction,
+            modifier = Modifier.elovairePressBounce(
+                interactionSource = interactionSource,
+                label = "${actionLabel}_setting_action_scale",
+            ),
             shape = RoundedCornerShape(ElovaireRadii.pill),
             color = MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.colorScheme.onPrimary,
         ) {
             Text(
                 text = actionLabel,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(ElovaireRadii.pill))
+                    .clickable(
+                        interactionSource = interactionSource,
+                        indication = null,
+                        onClick = onAction,
+                    )
+                    .padding(horizontal = 16.dp, vertical = 9.dp),
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
             )
         }
@@ -13349,7 +13422,7 @@ private fun DigitalSoundKnob(
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
         BoxWithConstraints(
             modifier = Modifier
@@ -13425,7 +13498,7 @@ private fun DigitalSoundKnob(
                 }
 
                 val tickOuterRadius = (radius - 8.dp.toPx()).coerceAtLeast(1f)
-                val tickInnerRadius = (tickOuterRadius - 12.dp.toPx()).coerceAtLeast(1f)
+                val tickInnerRadius = (tickOuterRadius - 6.dp.toPx()).coerceAtLeast(1f)
                 val tickCount = 30
                 repeat(tickCount) { tickIndex ->
                     val fraction = tickIndex / (tickCount - 1).toFloat()
@@ -13456,7 +13529,7 @@ private fun DigitalSoundKnob(
             ) {
                 Text(
                     text = "${(animatedValue * 100f).roundToInt()}",
-                    style = MaterialTheme.typography.displayLarge.copy(fontSize = elovaireScaledSp(26f)),
+                    style = MaterialTheme.typography.displayLarge.copy(fontSize = elovaireScaledSp(20f)),
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.92f),
                 )
                 Box(
@@ -13469,6 +13542,9 @@ private fun DigitalSoundKnob(
         }
 
         Row(
+            modifier = Modifier
+                .offset(y = (-28).dp)
+                .padding(bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
@@ -13804,14 +13880,25 @@ private fun EqPresetPill(
     } else {
         MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f)
     }
+    val interactionSource = remember { MutableInteractionSource() }
     Surface(
-        onClick = onClick,
+        modifier = Modifier.elovairePressBounce(
+            interactionSource = interactionSource,
+            label = "${label}_eq_preset_scale",
+        ),
         shape = RoundedCornerShape(ElovaireRadii.pill),
         color = backgroundColor,
     ) {
         Text(
             text = label,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+            modifier = Modifier
+                .clip(RoundedCornerShape(ElovaireRadii.pill))
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = onClick,
+                )
+                .padding(horizontal = 14.dp, vertical = 9.dp),
             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
             color = contentColor,
         )
@@ -14678,6 +14765,17 @@ private fun String?.normalizedNavigationRoute(): String? {
         startsWith("$ARTIST_ROUTE/") -> "$ARTIST_ROUTE/{artistName}"
         startsWith("$LIBRARY_COLLECTION_ROUTE/") -> "$LIBRARY_COLLECTION_ROUTE/{kind}"
         else -> this
+    }
+}
+
+private fun NavBackStackEntry.elovaireConcreteRoute(): String? {
+    return when (destination.route) {
+        "$ALBUM_ROUTE/{albumId}" -> "$ALBUM_ROUTE/${arguments?.getLong("albumId") ?: return null}"
+        "$PLAYLIST_ROUTE/{playlistId}" -> "$PLAYLIST_ROUTE/${arguments?.getLong("playlistId") ?: return null}"
+        "$GENRE_ROUTE/{genre}" -> "$GENRE_ROUTE/${Uri.encode(arguments?.getString("genre") ?: return null)}"
+        "$ARTIST_ROUTE/{artistName}" -> "$ARTIST_ROUTE/${Uri.encode(arguments?.getString("artistName") ?: return null)}"
+        "$LIBRARY_COLLECTION_ROUTE/{kind}" -> "$LIBRARY_COLLECTION_ROUTE/${arguments?.getString("kind") ?: return null}"
+        else -> destination.route
     }
 }
 
