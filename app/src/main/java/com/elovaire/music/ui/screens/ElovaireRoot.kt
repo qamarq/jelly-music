@@ -305,6 +305,12 @@ private const val ALBUM_ROUTE = "album"
 private const val LIBRARY_COLLECTION_ROUTE = "library_collection"
 private const val GENRE_ROUTE = "genre"
 private const val ARTIST_ROUTE = "artist"
+private val TopLevelRoutes = setOf(
+    HOME_ROUTE,
+    ALBUMS_ROUTE,
+    PLAYLISTS_ROUTE,
+    SEARCH_ROUTE,
+)
 private const val NOW_PLAYING_TITLE_TEXT_SIZE_SP = 23f
 private const val NOW_PLAYING_ARTIST_TEXT_SIZE_SP = 18f
 private const val ALBUM_HEADER_TITLE_TEXT_SIZE_SP = 23f
@@ -1382,6 +1388,11 @@ fun ElovaireRoot(
     var lastLibraryTabRoute by rememberSaveable { mutableStateOf(ALBUMS_ROUTE) }
     var lastPlaylistsTabRoute by rememberSaveable { mutableStateOf(PLAYLISTS_ROUTE) }
     var lastSearchTabRoute by rememberSaveable { mutableStateOf(SEARCH_ROUTE) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var searchFieldFocused by rememberSaveable { mutableStateOf(false) }
+    var searchAllSongsVisible by rememberSaveable { mutableStateOf(false) }
+    var searchSongSortMode by rememberSaveable { mutableStateOf(SearchSongSortMode.Title) }
+    var searchSongSortOptionsVisible by rememberSaveable { mutableStateOf(false) }
     var homeScrollRequestVersion by rememberSaveable { mutableLongStateOf(0L) }
     val showTopLevelChrome = currentRoute in setOf(HOME_ROUTE, ALBUMS_ROUTE, PLAYLISTS_ROUTE, SEARCH_ROUTE)
     val showBottomNavigation = currentRoute in setOf(
@@ -1396,24 +1407,24 @@ fun ElovaireRoot(
         "$ARTIST_ROUTE/{artistName}",
     )
     LaunchedEffect(currentRoute) {
-        if (currentRoute in setOf(HOME_ROUTE, ALBUMS_ROUTE, PLAYLISTS_ROUTE, SEARCH_ROUTE)) {
+        if (currentRoute in TopLevelRoutes) {
             browsingOriginRoute = currentRoute.orEmpty()
             selectedBottomRoute = currentRoute.orEmpty()
         }
     }
-    LaunchedEffect(currentBackStackEntry, selectedBottomRoute) {
+    LaunchedEffect(currentBackStackEntry, browsingOriginRoute) {
         val concreteRoute = currentBackStackEntry?.elovaireConcreteRoute() ?: return@LaunchedEffect
         if (concreteRoute in setOf(PLAYER_ROUTE, SETTINGS_ROUTE, EQUALIZER_ROUTE, CHANGELOG_ROUTE, ABOUT_ROUTE)) {
             return@LaunchedEffect
         }
-        when (selectedBottomRoute) {
+        when (topLevelOwnerRoute(currentRoute, browsingOriginRoute)) {
             HOME_ROUTE -> lastHomeTabRoute = concreteRoute
             ALBUMS_ROUTE -> lastLibraryTabRoute = concreteRoute
             PLAYLISTS_ROUTE -> lastPlaylistsTabRoute = concreteRoute
             SEARCH_ROUTE -> lastSearchTabRoute = concreteRoute
         }
     }
-    val activeBottomRoute = selectedBottomRoute
+    val activeBottomRoute = topLevelOwnerRoute(currentRoute, browsingOriginRoute) ?: selectedBottomRoute
     val keyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
     val hideCompactNowPlaying = (keyboardVisible && currentRoute == PLAYLISTS_ROUTE) ||
         (currentRoute == SEARCH_ROUTE && isSearchQueryActive)
@@ -2001,6 +2012,16 @@ fun ElovaireRoot(
                             favoriteSongIds = favoriteSongIdSet,
                             topPadding = topContentPadding,
                             bottomPadding = bottomContentPadding,
+                            query = searchQuery,
+                            isSearchFieldFocused = searchFieldFocused,
+                            showAllSongResults = searchAllSongsVisible,
+                            searchSongSortMode = searchSongSortMode,
+                            showSearchSongSortOptions = searchSongSortOptionsVisible,
+                            onQueryChange = { searchQuery = it },
+                            onSearchFieldFocusedChange = { searchFieldFocused = it },
+                            onShowAllSongResultsChange = { searchAllSongsVisible = it },
+                            onSearchSongSortModeChange = { searchSongSortMode = it },
+                            onShowSearchSongSortOptionsChange = { searchSongSortOptionsVisible = it },
                             onSearchQueryActiveChanged = { isSearchQueryActive = it },
                             onSongSelected = { song, queue ->
                                 container.playbackManager.playSong(
@@ -2451,13 +2472,13 @@ fun ElovaireRoot(
                         suppressEnterAnimation = reenteringFromPlayer,
                         destinations = topLevelDestinations,
                         onNavigate = { route ->
+                            val currentTopLevelRoute = topLevelOwnerRoute(currentRoute, browsingOriginRoute)
                             if (route == HOME_ROUTE && currentRoute == HOME_ROUTE) {
                                 homeScrollRequestVersion += 1L
                             }
-                            val shouldReturnToTabRoot = route == activeBottomRoute && currentRoute != route
-                            browsingOriginRoute = route
-                            selectedBottomRoute = route
-                            if (shouldReturnToTabRoot) {
+                            if (route == currentTopLevelRoute && currentRoute != route) {
+                                browsingOriginRoute = route
+                                selectedBottomRoute = route
                                 val poppedToTabRoot = navController.popBackStack(route, inclusive = false)
                                 if (!poppedToTabRoot) {
                                     navController.navigate(route) {
@@ -2468,7 +2489,9 @@ fun ElovaireRoot(
                                         }
                                     }
                                 }
-                            } else if (currentRoute != route) {
+                            } else if (route != currentTopLevelRoute) {
+                                browsingOriginRoute = route
+                                selectedBottomRoute = route
                                 val restoreRoute = when (route) {
                                     HOME_ROUTE -> lastHomeTabRoute
                                     ALBUMS_ROUTE -> lastLibraryTabRoute
@@ -2863,104 +2886,163 @@ private fun SharedTopBarOverlay(
                     onClick = {},
                 ),
         )
-        when (spec) {
-            is SharedTopBarSpec.Unified -> {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .statusBarsPadding()
-                        .padding(start = 20.dp, end = 16.dp, top = 3.dp, bottom = 13.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(40.dp),
-                        contentAlignment = Alignment.CenterStart,
-                    ) {
-                        ElovaireAnimatedContent(
-                            targetState = spec.title,
-                            transitionSpec = {
-                                ElovaireMotion.sharedTopBarTransform()
-                            },
-                            label = "SharedTopBarUnifiedTitle",
-                        ) { currentTitle ->
-                            Text(
-                                text = currentTitle,
-                                style = MaterialTheme.typography.displayLarge.copy(fontSize = elovaireScaledSp(26f)),
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                            )
-                        }
+        ElovaireAnimatedContent(
+            targetState = spec,
+            transitionSpec = {
+                when {
+                    initialState is SharedTopBarSpec.Unified && targetState !is SharedTopBarSpec.Unified -> {
+                        ElovaireMotion.sharedTopBarForwardTransform()
                     }
-                    if (spec.showSettings) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            if (spec.supplementalActionIconResId != null && spec.onSupplementalAction != null) {
-                                HeaderIconButton(
-                                    iconResId = spec.supplementalActionIconResId,
-                                    contentDescription = spec.supplementalActionContentDescription ?: "Action",
-                                    showBackground = false,
-                                    onClick = spec.onSupplementalAction,
-                                )
-                            }
-                            HeaderIconButton(
-                                iconResId = R.drawable.ic_lucide_menu,
-                                contentDescription = "Menu",
-                                showBackground = false,
-                                onClick = spec.onOpenMenu,
-                            )
-                        }
-                    } else {
-                        SpacerTile(modifier = Modifier.size(40.dp))
-                    }
-                }
-            }
 
-            is SharedTopBarSpec.Back -> {
-                if (spec.centeredTitle) {
-                    Box(
+                    initialState !is SharedTopBarSpec.Unified && targetState is SharedTopBarSpec.Unified -> {
+                        ElovaireMotion.sharedTopBarBackTransform()
+                    }
+
+                    else -> ElovaireMotion.sharedTopBarTransform()
+                }
+            },
+            contentKey = { it.visualSignature() },
+            label = "SharedTopBarOverlayContent",
+        ) { currentSpec ->
+            when (currentSpec) {
+                is SharedTopBarSpec.Unified -> {
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .statusBarsPadding()
-                            .padding(start = 14.dp, end = 14.dp, top = 3.dp, bottom = 13.dp)
-                            .height(40.dp),
+                            .padding(start = 20.dp, end = 16.dp, top = 3.dp, bottom = 13.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
-                        HeaderIconButton(
-                            iconResId = R.drawable.ic_lucide_chevron_left,
-                            contentDescription = "Back",
-                            showBackground = false,
-                            onClick = spec.onBack,
-                            modifier = Modifier.align(Alignment.CenterStart),
-                        )
                         Box(
                             modifier = Modifier
-                                .align(Alignment.Center)
-                                .padding(horizontal = 64.dp),
-                            contentAlignment = Alignment.Center,
+                                .weight(1f)
+                                .height(40.dp),
+                            contentAlignment = Alignment.CenterStart,
                         ) {
                             ElovaireAnimatedContent(
-                                targetState = spec.title,
+                                targetState = currentSpec.title,
                                 transitionSpec = {
                                     ElovaireMotion.sharedTopBarTransform()
                                 },
-                                label = "SharedTopBarBackCenteredTitle",
+                                label = "SharedTopBarUnifiedTitle",
                             ) { currentTitle ->
                                 Text(
                                     text = currentTitle,
                                     style = MaterialTheme.typography.displayLarge.copy(fontSize = elovaireScaledSp(26f)),
                                     color = MaterialTheme.colorScheme.onSurface,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    textAlign = TextAlign.Center,
                                 )
                             }
                         }
+                        if (currentSpec.showSettings) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                if (currentSpec.supplementalActionIconResId != null && currentSpec.onSupplementalAction != null) {
+                                    HeaderIconButton(
+                                        iconResId = currentSpec.supplementalActionIconResId,
+                                        contentDescription = currentSpec.supplementalActionContentDescription ?: "Action",
+                                        showBackground = false,
+                                        onClick = currentSpec.onSupplementalAction,
+                                    )
+                                }
+                                HeaderIconButton(
+                                    iconResId = R.drawable.ic_lucide_menu,
+                                    contentDescription = "Menu",
+                                    showBackground = false,
+                                    onClick = currentSpec.onOpenMenu,
+                                )
+                            }
+                        } else {
+                            SpacerTile(modifier = Modifier.size(40.dp))
+                        }
                     }
-                } else {
+                }
+
+                is SharedTopBarSpec.Back -> {
+                    if (currentSpec.centeredTitle) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .statusBarsPadding()
+                                .padding(start = 14.dp, end = 14.dp, top = 3.dp, bottom = 13.dp)
+                                .height(40.dp),
+                        ) {
+                            HeaderIconButton(
+                                iconResId = R.drawable.ic_lucide_chevron_left,
+                                contentDescription = "Back",
+                                showBackground = false,
+                                onClick = currentSpec.onBack,
+                                modifier = Modifier.align(Alignment.CenterStart),
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.Center)
+                                    .padding(horizontal = 64.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                ElovaireAnimatedContent(
+                                    targetState = currentSpec.title,
+                                    transitionSpec = {
+                                        ElovaireMotion.sharedTopBarTransform()
+                                    },
+                                    label = "SharedTopBarBackCenteredTitle",
+                                ) { currentTitle ->
+                                    Text(
+                                        text = currentTitle,
+                                        style = MaterialTheme.typography.displayLarge.copy(fontSize = elovaireScaledSp(26f)),
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        textAlign = TextAlign.Center,
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .statusBarsPadding()
+                                .padding(start = 14.dp, end = 14.dp, top = 3.dp, bottom = 13.dp),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            HeaderIconButton(
+                                iconResId = R.drawable.ic_lucide_chevron_left,
+                                contentDescription = "Back",
+                                showBackground = false,
+                                onClick = currentSpec.onBack,
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(40.dp),
+                                contentAlignment = Alignment.CenterStart,
+                            ) {
+                                ElovaireAnimatedContent(
+                                    targetState = currentSpec.title,
+                                    transitionSpec = {
+                                        ElovaireMotion.sharedTopBarTransform()
+                                    },
+                                    label = "SharedTopBarBackTitle",
+                                ) { currentTitle ->
+                                    Text(
+                                        text = currentTitle,
+                                        style = MaterialTheme.typography.displayLarge.copy(fontSize = elovaireScaledSp(26f)),
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                is SharedTopBarSpec.Detail -> {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -2973,99 +3055,59 @@ private fun SharedTopBarOverlay(
                             iconResId = R.drawable.ic_lucide_chevron_left,
                             contentDescription = "Back",
                             showBackground = false,
-                            onClick = spec.onBack,
+                            onClick = currentSpec.onBack,
                         )
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(40.dp),
-                            contentAlignment = Alignment.CenterStart,
-                        ) {
-                            ElovaireAnimatedContent(
-                                targetState = spec.title,
-                                transitionSpec = {
-                                    ElovaireMotion.sharedTopBarTransform()
-                                },
-                                label = "SharedTopBarBackTitle",
-                            ) { currentTitle ->
+                        if (currentSpec.subtitle.isNullOrBlank()) {
+                            Box(
+                                modifier = Modifier.weight(1f),
+                                contentAlignment = Alignment.CenterStart,
+                            ) {
+                                ElovaireAnimatedContent(
+                                    targetState = currentSpec.title,
+                                    transitionSpec = {
+                                        fadeIn(animationSpec = tween(180, delayMillis = 40))
+                                            .togetherWith(fadeOut(animationSpec = tween(140)))
+                                    },
+                                    label = "SharedTopBarDetailTitleOnly",
+                                ) { currentTitle ->
+                                    Text(
+                                        text = currentTitle,
+                                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        } else {
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp),
+                            ) {
+                                ElovaireAnimatedContent(
+                                    targetState = currentSpec.title,
+                                    transitionSpec = {
+                                        fadeIn(animationSpec = tween(180, delayMillis = 40))
+                                            .togetherWith(fadeOut(animationSpec = tween(140)))
+                                    },
+                                    label = "SharedTopBarDetailTitleWithSubtitle",
+                                ) { currentTitle ->
+                                    Text(
+                                        text = currentTitle,
+                                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
                                 Text(
-                                    text = currentTitle,
-                                    style = MaterialTheme.typography.displayLarge.copy(fontSize = elovaireScaledSp(26f)),
-                                    color = MaterialTheme.colorScheme.onSurface,
+                                    text = currentSpec.subtitle,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
                             }
-                        }
-                    }
-                }
-            }
-
-            is SharedTopBarSpec.Detail -> {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .statusBarsPadding()
-                        .padding(start = 14.dp, end = 14.dp, top = 3.dp, bottom = 13.dp),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    HeaderIconButton(
-                        iconResId = R.drawable.ic_lucide_chevron_left,
-                        contentDescription = "Back",
-                        showBackground = false,
-                        onClick = spec.onBack,
-                    )
-                    if (spec.subtitle.isNullOrBlank()) {
-                        Box(
-                            modifier = Modifier.weight(1f),
-                            contentAlignment = Alignment.CenterStart,
-                        ) {
-                            ElovaireAnimatedContent(
-                                targetState = spec.title,
-                                transitionSpec = {
-                                    fadeIn(animationSpec = tween(180, delayMillis = 40))
-                                        .togetherWith(fadeOut(animationSpec = tween(140)))
-                                },
-                                label = "SharedTopBarDetailTitleOnly",
-                            ) { currentTitle ->
-                                Text(
-                                    text = currentTitle,
-                                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                        }
-                    } else {
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(2.dp),
-                        ) {
-                            ElovaireAnimatedContent(
-                                targetState = spec.title,
-                                transitionSpec = {
-                                    fadeIn(animationSpec = tween(180, delayMillis = 40))
-                                        .togetherWith(fadeOut(animationSpec = tween(140)))
-                                },
-                                label = "SharedTopBarDetailTitleWithSubtitle",
-                            ) { currentTitle ->
-                                Text(
-                                    text = currentTitle,
-                                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                            Text(
-                                text = spec.subtitle,
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
                         }
                     }
                 }
@@ -5634,6 +5676,16 @@ private fun SearchScreen(
     favoriteSongIds: Set<Long>,
     topPadding: Dp,
     bottomPadding: Dp,
+    query: String,
+    isSearchFieldFocused: Boolean,
+    showAllSongResults: Boolean,
+    searchSongSortMode: SearchSongSortMode,
+    showSearchSongSortOptions: Boolean,
+    onQueryChange: (String) -> Unit,
+    onSearchFieldFocusedChange: (Boolean) -> Unit,
+    onShowAllSongResultsChange: (Boolean) -> Unit,
+    onSearchSongSortModeChange: (SearchSongSortMode) -> Unit,
+    onShowSearchSongSortOptionsChange: (Boolean) -> Unit,
     onSearchQueryActiveChanged: (Boolean) -> Unit,
     onSongSelected: (Song, List<Song>) -> Unit,
     onAlbumSelected: (Album, ExpandOrigin) -> Unit,
@@ -5643,25 +5695,20 @@ private fun SearchScreen(
     onToggleFavorite: (Long) -> Unit,
     onClearSearchHistory: () -> Unit,
 ) {
-    var query by rememberSaveable { mutableStateOf("") }
-    var isSearchFieldFocused by rememberSaveable { mutableStateOf(false) }
-    var showAllSongResults by rememberSaveable { mutableStateOf(false) }
-    var searchSongSortMode by rememberSaveable { mutableStateOf(SearchSongSortMode.Title) }
-    var showSearchSongSortOptions by rememberSaveable { mutableStateOf(false) }
     val listState = rememberElovaireLazyListState("search_screen")
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val trimmedQuery = query.trim()
     val isSearchUiActive = trimmedQuery.isNotBlank() || isSearchFieldFocused || showAllSongResults
     val collapseAllSongResults: () -> Unit = {
-        showAllSongResults = false
-        showSearchSongSortOptions = false
+        onShowAllSongResultsChange(false)
+        onShowSearchSongSortOptionsChange(false)
     }
     val resetSearchToMain: () -> Unit = {
-        query = ""
-        isSearchFieldFocused = false
-        showAllSongResults = false
-        showSearchSongSortOptions = false
+        onQueryChange("")
+        onSearchFieldFocusedChange(false)
+        onShowAllSongResultsChange(false)
+        onShowSearchSongSortOptionsChange(false)
         keyboardController?.hide()
         focusManager.clearFocus(force = true)
     }
@@ -5676,7 +5723,7 @@ private fun SearchScreen(
     }
     BackHandler(enabled = isSearchUiActive) {
         when {
-            showSearchSongSortOptions -> showSearchSongSortOptions = false
+            showSearchSongSortOptions -> onShowSearchSongSortOptionsChange(false)
             showAllSongResults && trimmedQuery.isNotBlank() -> collapseAllSongResults()
             else -> resetSearchToMain()
         }
@@ -5686,8 +5733,8 @@ private fun SearchScreen(
     }
     LaunchedEffect(trimmedQuery) {
         if (trimmedQuery.isBlank()) {
-            showAllSongResults = false
-            showSearchSongSortOptions = false
+            onShowAllSongResultsChange(false)
+            onShowSearchSongSortOptionsChange(false)
         }
     }
     val contentMode = when {
@@ -5787,16 +5834,16 @@ private fun SearchScreen(
                 OutlinedTextField(
                     value = query,
                     onValueChange = {
-                        query = it
+                        onQueryChange(it)
                         if (it.trim().isBlank()) {
-                            showAllSongResults = false
-                            showSearchSongSortOptions = false
+                            onShowAllSongResultsChange(false)
+                            onShowSearchSongSortOptionsChange(false)
                         }
                     },
                     modifier = Modifier
                         .fillMaxWidth()
                         .onFocusChanged { focusState ->
-                            isSearchFieldFocused = focusState.isFocused
+                            onSearchFieldFocusedChange(focusState.isFocused)
                         },
                     shape = RoundedCornerShape(ElovaireRadii.input),
                     singleLine = true,
@@ -5917,11 +5964,11 @@ private fun SearchScreen(
                                     selected = searchSongSortMode,
                                     expanded = showSearchSongSortOptions,
                                     onToggleExpanded = {
-                                        showSearchSongSortOptions = !showSearchSongSortOptions
+                                        onShowSearchSongSortOptionsChange(!showSearchSongSortOptions)
                                     },
                                     onSelect = { selectedMode ->
-                                        searchSongSortMode = selectedMode
-                                        showSearchSongSortOptions = false
+                                        onSearchSongSortModeChange(selectedMode)
+                                        onShowSearchSongSortOptionsChange(false)
                                     },
                                 )
                                 Surface(
@@ -6048,7 +6095,8 @@ private fun SearchScreen(
                                         onShowAll = {
                                             focusManager.clearFocus(force = true)
                                             keyboardController?.hide()
-                                            showAllSongResults = true
+                                            onSearchFieldFocusedChange(false)
+                                            onShowAllSongResultsChange(true)
                                         },
                                     )
                                     Column {
@@ -14782,6 +14830,39 @@ private fun NavBackStackEntry.elovaireConcreteRoute(): String? {
 private fun String?.isExpandFromTileRoute(): Boolean {
     return this.normalizedNavigationRoute() == "$ALBUM_ROUTE/{albumId}" ||
         this.normalizedNavigationRoute() == "$PLAYLIST_ROUTE/{playlistId}"
+}
+
+private fun androidx.navigation.NavBackStackEntry.concreteNavigationRoute(): String? {
+    val route = destination.route ?: return null
+    val args = arguments
+    return when (route) {
+        "$ALBUM_ROUTE/{albumId}" -> args?.getLong("albumId")?.takeIf { it > 0L }?.let { "$ALBUM_ROUTE/$it" }
+        "$PLAYLIST_ROUTE/{playlistId}" -> args?.getLong("playlistId")?.takeIf { it > 0L }?.let { "$PLAYLIST_ROUTE/$it" }
+        "$LIBRARY_COLLECTION_ROUTE/{kind}" -> args?.getString("kind")?.let { "$LIBRARY_COLLECTION_ROUTE/$it" }
+        "$GENRE_ROUTE/{genre}" -> args?.getString("genre")?.let { "$GENRE_ROUTE/${Uri.encode(it)}" }
+        "$ARTIST_ROUTE/{artistName}" -> args?.getString("artistName")?.let { "$ARTIST_ROUTE/${Uri.encode(it)}" }
+        else -> route
+    }
+}
+
+private fun topLevelOwnerRoute(
+    route: String?,
+    browsingOriginRoute: String?,
+): String? {
+    return when (route.normalizedNavigationRoute()) {
+        HOME_ROUTE -> HOME_ROUTE
+        SEARCH_ROUTE -> SEARCH_ROUTE
+        ALBUMS_ROUTE -> ALBUMS_ROUTE
+        PLAYLISTS_ROUTE -> PLAYLISTS_ROUTE
+        "$LIBRARY_COLLECTION_ROUTE/{kind}" -> ALBUMS_ROUTE
+        "$PLAYLIST_ROUTE/{playlistId}" -> PLAYLISTS_ROUTE
+        "$GENRE_ROUTE/{genre}",
+        "$ARTIST_ROUTE/{artistName}",
+        "$ALBUM_ROUTE/{albumId}",
+        -> browsingOriginRoute.takeIf { it in TopLevelRoutes } ?: ALBUMS_ROUTE
+
+        else -> browsingOriginRoute.takeIf { it in TopLevelRoutes }
+    }
 }
 
 private fun ExpandOrigin.toTransformOrigin(): TransformOrigin {
