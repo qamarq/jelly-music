@@ -47,12 +47,10 @@ Unlike streaming-first players, Elovaire focuses on local files and Android's me
 ## Highlights
 
 - Offline-first playback for music stored on your Android device
-- Local library scanning through Android `MediaStore`
 - Artwork-led home, library, playlist, search, and now-playing screens
-- Dynamic glass-style top and bottom chrome using Haze
-- Smooth Jetpack Compose navigation and UI transitions
-- Media-session notification controls for background playback
-- GitHub release based update checking inside the app
+- Elegant, intuitive UI with frosted blur accents
+- Smooth navigation and UI transitions
+- Built-in update engine based on looking for the latest GitHub release
 
 ---
 
