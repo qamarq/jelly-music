@@ -87,7 +87,15 @@ Unlike streaming-first players, Elovaire focuses on local files and Android's me
 <p align="center">
   <img
     src="https://raw.githubusercontent.com/droidbeauty/elovaire-music/refs/heads/main/renders/4.png"
-    alt="Smooth listening experience for an offline music library"
+    alt="Refined listening experience for your offline music library"
+    width="100%"
+  />
+</p>
+
+<p align="center">
+  <img
+    src="https://raw.githubusercontent.com/droidbeauty/elovaire-music/refs/heads/main/renders/5.png"
+    alt="Customizable listening. Simple yet highly refined"
     width="100%"
   />
 </p>
@@ -106,6 +114,18 @@ Elovaire is a native Android project built with:
 - Android Storage Access Framework
 - Haze for frosted glass and backdrop blur surfaces
 - Gradle Kotlin DSL
+
+---
+
+<p align="center">
+  <img
+    src="https://raw.githubusercontent.com/droidbeauty/elovaire-music/refs/heads/main/renders/6.png"
+    alt="Your favorite music presented the way it deserves to be"
+    width="100%"
+  />
+</p>
+
+---
 
 ## Building
 
