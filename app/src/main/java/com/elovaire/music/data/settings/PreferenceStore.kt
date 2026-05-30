@@ -30,8 +30,8 @@ class PreferenceStore(context: Context) {
     private val _playbackVolume = MutableStateFlow(loadPlaybackVolume())
     val playbackVolume: StateFlow<Float> = _playbackVolume.asStateFlow()
 
-    private val _albumCollectionGridEnabled = MutableStateFlow(loadAlbumCollectionGridEnabled())
-    val albumCollectionGridEnabled: StateFlow<Boolean> = _albumCollectionGridEnabled.asStateFlow()
+    private val _albumCollectionLayoutMode = MutableStateFlow(loadAlbumCollectionLayoutMode())
+    val albumCollectionLayoutMode: StateFlow<String> = _albumCollectionLayoutMode.asStateFlow()
 
     private val _songCollectionGridEnabled = MutableStateFlow(loadSongCollectionGridEnabled())
     val songCollectionGridEnabled: StateFlow<Boolean> = _songCollectionGridEnabled.asStateFlow()
@@ -308,11 +308,12 @@ class PreferenceStore(context: Context) {
         _playbackVolume.value = volume
     }
 
-    fun setAlbumCollectionGridEnabled(enabled: Boolean) {
+    fun setAlbumCollectionLayoutMode(mode: String) {
+        val normalizedMode = mode.trim().ifBlank { DEFAULT_ALBUM_COLLECTION_LAYOUT_MODE }
         preferences.edit {
-            putBoolean(KEY_ALBUM_COLLECTION_GRID_ENABLED, enabled)
+            putString(KEY_ALBUM_COLLECTION_LAYOUT_MODE, normalizedMode)
         }
-        _albumCollectionGridEnabled.value = enabled
+        _albumCollectionLayoutMode.value = normalizedMode
     }
 
     fun setSongCollectionGridEnabled(enabled: Boolean) {
@@ -425,8 +426,16 @@ class PreferenceStore(context: Context) {
         return preferences.getFloat(KEY_PLAYBACK_VOLUME, 1f).coerceIn(0f, 1f)
     }
 
-    private fun loadAlbumCollectionGridEnabled(): Boolean {
-        return preferences.getBoolean(KEY_ALBUM_COLLECTION_GRID_ENABLED, true)
+    private fun loadAlbumCollectionLayoutMode(): String {
+        preferences.getString(KEY_ALBUM_COLLECTION_LAYOUT_MODE, null)
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { return it }
+        return if (preferences.getBoolean(KEY_ALBUM_COLLECTION_GRID_ENABLED, true)) {
+            "Grid"
+        } else {
+            "Compact"
+        }
     }
 
     private fun loadSongCollectionGridEnabled(): Boolean {
@@ -638,6 +647,7 @@ class PreferenceStore(context: Context) {
         const val KEY_RECENT_ALBUM_IDS = "recent_album_ids"
         const val KEY_PLAYBACK_VOLUME = "playback_volume"
         const val KEY_ALBUM_COLLECTION_GRID_ENABLED = "album_collection_grid_enabled"
+        const val KEY_ALBUM_COLLECTION_LAYOUT_MODE = "album_collection_layout_mode"
         const val KEY_SONG_COLLECTION_GRID_ENABLED = "song_collection_grid_enabled"
         const val KEY_ALBUM_COLLECTION_SORT_MODE = "album_collection_sort_mode"
         const val KEY_SONG_COLLECTION_SORT_MODE = "song_collection_sort_mode"
@@ -653,6 +663,7 @@ class PreferenceStore(context: Context) {
         const val KEY_REVERB_DURATION_MS = "eq_reverb_duration_ms"
         const val KEY_REVERB_PROFILE = "eq_reverb_profile"
         const val MAX_RECENT_PLAYBACK_IDS = 24
+        const val DEFAULT_ALBUM_COLLECTION_LAYOUT_MODE = "Grid"
         const val DEFAULT_ALBUM_COLLECTION_SORT_MODE = "Artist"
         const val DEFAULT_SONG_COLLECTION_SORT_MODE = "Title"
         const val REVERB_STEP_MS = 50

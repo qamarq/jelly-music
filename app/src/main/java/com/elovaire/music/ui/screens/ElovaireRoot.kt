@@ -73,6 +73,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.overscroll
 import androidx.compose.foundation.rememberOverscrollEffect
 import androidx.compose.foundation.gestures.rememberScrollableState
@@ -624,6 +625,7 @@ private class SharedTopBarController {
 private enum class AlbumLayoutMode {
     Compact,
     Grid,
+    CoverFlow,
 }
 
 private enum class SongSortMode(
@@ -657,6 +659,11 @@ private enum class AlbumSortMode(
 private fun String.toAlbumSortMode(): AlbumSortMode {
     return AlbumSortMode.entries.firstOrNull { it.name.equals(this, ignoreCase = true) }
         ?: AlbumSortMode.Artist
+}
+
+private fun String.toAlbumLayoutMode(): AlbumLayoutMode {
+    return AlbumLayoutMode.entries.firstOrNull { it.name.equals(this, ignoreCase = true) }
+        ?: AlbumLayoutMode.Grid
 }
 
 private fun String.toSongSortMode(): SongSortMode {
@@ -1247,12 +1254,13 @@ fun ElovaireRoot(
     val favoriteSongIdSet = remember(favoriteSongIds) { favoriteSongIds.toHashSet() }
     val albumPlayCounts by container.preferenceStore.albumPlayCounts.collectAsStateWithLifecycle()
     val songPlayCounts by container.preferenceStore.songPlayCounts.collectAsStateWithLifecycle()
-    val albumCollectionGridEnabled by container.preferenceStore.albumCollectionGridEnabled.collectAsStateWithLifecycle()
+    val albumCollectionLayoutModeName by container.preferenceStore.albumCollectionLayoutMode.collectAsStateWithLifecycle()
     val songCollectionGridEnabled by container.preferenceStore.songCollectionGridEnabled.collectAsStateWithLifecycle()
     val albumCollectionSortModeName by container.preferenceStore.albumCollectionSortMode.collectAsStateWithLifecycle()
     val songCollectionSortModeName by container.preferenceStore.songCollectionSortMode.collectAsStateWithLifecycle()
     val openPlayerRequestVersion by container.openPlayerRequestVersion.collectAsStateWithLifecycle()
     val appUpdateState by container.appUpdateManager.uiState.collectAsStateWithLifecycle()
+    val albumCollectionLayoutMode = albumCollectionLayoutModeName.toAlbumLayoutMode()
     val changelogReleases = remember(context) { ChangelogRepository(context).loadReleases() }
     val rootScope = rememberCoroutineScope()
     var hasPermission by remember { mutableStateOf(hasAudioPermission(context)) }
@@ -1521,8 +1529,12 @@ fun ElovaireRoot(
         ?: topLevelOwnerRoute(currentRoute, browsingOriginRoute)
         ?: selectedBottomRoute
     val keyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    val isAlbumCoverFlowRouteActive =
+        currentConcreteRoute == "$LIBRARY_COLLECTION_ROUTE/${LibraryCollectionKind.Albums.name}" &&
+            albumCollectionLayoutMode == AlbumLayoutMode.CoverFlow
     val hideCompactNowPlaying = (keyboardVisible && currentRoute == PLAYLISTS_ROUTE) ||
-        (currentRoute == SEARCH_ROUTE && isSearchQueryActive)
+        (currentRoute == SEARCH_ROUTE && isSearchQueryActive) ||
+        isAlbumCoverFlowRouteActive
     val reserveCompactNowPlayingSpace = playbackState.currentSong != null && !hideCompactNowPlaying
     val canHostCompactNowPlaying = playbackState.currentSong != null
     val showGlobalNowPlaying = canHostCompactNowPlaying && !hideCompactNowPlaying && !isPlayerOverlayVisible
@@ -2184,7 +2196,7 @@ fun ElovaireRoot(
                             playlists = playlists,
                             songPlayCounts = songPlayCounts,
                             favoriteSongIds = favoriteSongIdSet,
-                            albumCollectionLayoutMode = if (albumCollectionGridEnabled) AlbumLayoutMode.Grid else AlbumLayoutMode.Compact,
+                            albumCollectionLayoutMode = albumCollectionLayoutMode,
                             songCollectionLayoutMode = if (songCollectionGridEnabled) AlbumLayoutMode.Grid else AlbumLayoutMode.Compact,
                             albumSortMode = albumCollectionSortModeName.toAlbumSortMode(),
                             songSortMode = songCollectionSortModeName.toSongSortMode(),
@@ -2221,7 +2233,7 @@ fun ElovaireRoot(
                             },
                             onDeleteAlbumFromDevice = deleteAlbumFromDevice,
                             onAlbumCollectionLayoutModeChanged = { mode ->
-                                container.preferenceStore.setAlbumCollectionGridEnabled(mode == AlbumLayoutMode.Grid)
+                                container.preferenceStore.setAlbumCollectionLayoutMode(mode.name)
                             },
                             onSongCollectionLayoutModeChanged = { mode ->
                                 container.preferenceStore.setSongCollectionGridEnabled(mode == AlbumLayoutMode.Grid)
@@ -2250,12 +2262,12 @@ fun ElovaireRoot(
                             genre = genre,
                             libraryState = libraryState,
                             playlists = playlists,
-                            layoutMode = if (albumCollectionGridEnabled) AlbumLayoutMode.Grid else AlbumLayoutMode.Compact,
+                            layoutMode = albumCollectionLayoutMode,
                             sortMode = albumCollectionSortModeName.toAlbumSortMode(),
                             bottomPadding = detailBottomPadding,
                             onBack = navController::navigateUp,
                             onLayoutModeChanged = { mode ->
-                                container.preferenceStore.setAlbumCollectionGridEnabled(mode == AlbumLayoutMode.Grid)
+                                container.preferenceStore.setAlbumCollectionLayoutMode(mode.name)
                             },
                             onSortModeChanged = { mode ->
                                 container.preferenceStore.setAlbumCollectionSortMode(mode.name)
@@ -2311,6 +2323,8 @@ fun ElovaireRoot(
                             onTrebleChanged = container.preferenceStore::updateTreble,
                             onSpaciousnessChanged = container.preferenceStore::updateSpaciousness,
                             onSpaciousnessModeChanged = container.preferenceStore::updateSpaciousnessMode,
+                            onReverbDurationChanged = container.preferenceStore::updateReverbDurationMs,
+                            onReverbProfileChanged = container.preferenceStore::updateReverbProfile,
                             onApplyPreset = container.preferenceStore::setEqSettings,
                             onReset = container.preferenceStore::resetEqSettings,
                         )
@@ -2327,8 +2341,6 @@ fun ElovaireRoot(
                             onTextSizePresetSelected = container.preferenceStore::setTextSizePreset,
                             onBassChanged = container.preferenceStore::updateBass,
                             onSpaciousnessChanged = container.preferenceStore::updateSpaciousness,
-                            onReverbDurationChanged = container.preferenceStore::updateReverbDurationMs,
-                            onReverbProfileChanged = container.preferenceStore::updateReverbProfile,
                             onMonoPlaybackChanged = container.preferenceStore::updateMonoPlaybackEnabled,
                             onOpenEqualizer = { navController.navigate(EQUALIZER_ROUTE) },
                             onOpenChangelog = { navController.navigate(CHANGELOG_ROUTE) },
@@ -4231,6 +4243,7 @@ private fun AlbumCollectionContent(
     var showPlaylistPicker by rememberSaveable { mutableStateOf(false) }
     val listState = rememberElovaireLazyListState(title, "album_collection_list")
     val gridState = rememberElovaireLazyGridState(title, "album_collection_grid")
+    val coverFlowState = rememberElovaireLazyListState(title, "album_collection_coverflow")
     val selectionModeActive = selectedAlbumIds.isNotEmpty()
     val sortedAlbums = remember(albums, sortMode) {
         when (sortMode) {
@@ -4260,132 +4273,166 @@ private fun AlbumCollectionContent(
         showPlaylistPicker = false
     }
     Box(modifier = Modifier.fillMaxSize()) {
-        if (layoutMode == AlbumLayoutMode.Grid) {
-            LazyVerticalGrid(
-                state = gridState,
-                overscrollEffect = null,
-                columns = GridCells.Fixed(2),
-                modifier = Modifier
-                    .fillMaxSize()
-                    .ensureSingleItemRubberBand(gridState),
-                contentPadding = PaddingValues(
-                    start = 20.dp,
-                    top = topPadding + selectionTopInset + 8.dp,
-                    end = 20.dp,
-                    bottom = bottomPadding + 12.dp,
-                ),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                item(span = { GridItemSpan(2) }) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        AlbumSortControl(
-                            selected = sortMode,
-                            expanded = showSortOptions,
-                            onToggleExpanded = { showSortOptions = !showSortOptions },
-                            onSelect = { selectedMode ->
-                                onSortModeChanged(selectedMode)
-                                showSortOptions = false
+        when (layoutMode) {
+            AlbumLayoutMode.Grid -> {
+                LazyVerticalGrid(
+                    state = gridState,
+                    overscrollEffect = null,
+                    columns = GridCells.Fixed(2),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .ensureSingleItemRubberBand(gridState),
+                    contentPadding = PaddingValues(
+                        start = 20.dp,
+                        top = topPadding + selectionTopInset + 8.dp,
+                        end = 20.dp,
+                        bottom = bottomPadding + 12.dp,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    item(span = { GridItemSpan(2) }) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            AlbumSortControl(
+                                selected = sortMode,
+                                expanded = showSortOptions,
+                                onToggleExpanded = { showSortOptions = !showSortOptions },
+                                onSelect = { selectedMode ->
+                                    onSortModeChanged(selectedMode)
+                                    showSortOptions = false
+                                },
+                            )
+                            Spacer(modifier = Modifier.width(11.dp))
+                            LibraryModeToggle(
+                                layoutMode = layoutMode,
+                                onLayoutModeChanged = onLayoutModeChanged,
+                            )
+                        }
+                    }
+
+                    items(sortedAlbums, key = { it.id }) { album ->
+                        AlbumGridCard(
+                            album = album,
+                            selectionMode = selectionModeActive,
+                            selected = album.id in selectedAlbumIds,
+                            onOpen = { origin ->
+                                if (selectionModeActive) {
+                                    selectedAlbumIds = selectedAlbumIds.toggleSelection(album.id)
+                                } else {
+                                    onAlbumSelected(album, origin)
+                                }
                             },
-                        )
-                        Spacer(modifier = Modifier.width(11.dp))
-                        LibraryModeToggle(
-                            layoutMode = layoutMode,
-                            onLayoutModeChanged = onLayoutModeChanged,
+                            onLongPress = {
+                                showSortOptions = false
+                                selectedAlbumIds = selectedAlbumIds + album.id
+                            },
                         )
                     }
                 }
-
-                items(sortedAlbums, key = { it.id }) { album ->
-                    AlbumGridCard(
-                        album = album,
-                        selectionMode = selectionModeActive,
-                        selected = album.id in selectedAlbumIds,
-                        onOpen = { origin ->
-                            if (selectionModeActive) {
-                                selectedAlbumIds = selectedAlbumIds.toggleSelection(album.id)
-                            } else {
-                                onAlbumSelected(album, origin)
-                            }
-                        },
-                        onLongPress = {
-                            showSortOptions = false
-                            selectedAlbumIds = selectedAlbumIds + album.id
-                        },
-                    )
-                }
+                FastScrollbar(
+                    state = gridState,
+                    topInset = topPadding + selectionTopInset + 16.dp,
+                    bottomInset = bottomPadding + 16.dp,
+                )
             }
-            FastScrollbar(
-                state = gridState,
-                topInset = topPadding + selectionTopInset + 16.dp,
-                bottomInset = bottomPadding + 16.dp,
-            )
-        } else {
-            LazyColumn(
-                state = listState,
-                overscrollEffect = null,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .ensureSingleItemRubberBand(listState),
-                contentPadding = PaddingValues(
-                    start = 20.dp,
-                    top = topPadding + selectionTopInset + 8.dp,
-                    end = 20.dp,
-                    bottom = bottomPadding + 12.dp,
-                ),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        AlbumSortControl(
-                            selected = sortMode,
-                            expanded = showSortOptions,
-                            onToggleExpanded = { showSortOptions = !showSortOptions },
-                            onSelect = { selectedMode ->
-                                onSortModeChanged(selectedMode)
-                                showSortOptions = false
+
+            AlbumLayoutMode.Compact -> {
+                LazyColumn(
+                    state = listState,
+                    overscrollEffect = null,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .ensureSingleItemRubberBand(listState),
+                    contentPadding = PaddingValues(
+                        start = 20.dp,
+                        top = topPadding + selectionTopInset + 8.dp,
+                        end = 20.dp,
+                        bottom = bottomPadding + 12.dp,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            AlbumSortControl(
+                                selected = sortMode,
+                                expanded = showSortOptions,
+                                onToggleExpanded = { showSortOptions = !showSortOptions },
+                                onSelect = { selectedMode ->
+                                    onSortModeChanged(selectedMode)
+                                    showSortOptions = false
+                                },
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            LibraryModeToggle(
+                                layoutMode = layoutMode,
+                                onLayoutModeChanged = onLayoutModeChanged,
+                            )
+                        }
+                    }
+
+                    items(sortedAlbums, key = { it.id }) { album ->
+                        CompactAlbumRow(
+                            album = album,
+                            selectionMode = selectionModeActive,
+                            selected = album.id in selectedAlbumIds,
+                            onOpen = { origin ->
+                                if (selectionModeActive) {
+                                    selectedAlbumIds = selectedAlbumIds.toggleSelection(album.id)
+                                } else {
+                                    onAlbumSelected(album, origin)
+                                }
                             },
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        LibraryModeToggle(
-                            layoutMode = layoutMode,
-                            onLayoutModeChanged = onLayoutModeChanged,
+                            onLongPress = {
+                                showSortOptions = false
+                                selectedAlbumIds = selectedAlbumIds + album.id
+                            },
                         )
                     }
                 }
-
-                items(sortedAlbums, key = { it.id }) { album ->
-                    CompactAlbumRow(
-                        album = album,
-                        selectionMode = selectionModeActive,
-                        selected = album.id in selectedAlbumIds,
-                        onOpen = { origin ->
-                            if (selectionModeActive) {
-                                selectedAlbumIds = selectedAlbumIds.toggleSelection(album.id)
-                            } else {
-                                onAlbumSelected(album, origin)
-                            }
-                        },
-                        onLongPress = {
-                            showSortOptions = false
-                            selectedAlbumIds = selectedAlbumIds + album.id
-                        },
-                    )
-                }
+                FastScrollbar(
+                    state = listState,
+                    topInset = topPadding + selectionTopInset + 16.dp,
+                    bottomInset = bottomPadding + 16.dp,
+                )
             }
-            FastScrollbar(
-                state = listState,
-                topInset = topPadding + selectionTopInset + 16.dp,
-                bottomInset = bottomPadding + 16.dp,
-            )
+
+            AlbumLayoutMode.CoverFlow -> {
+                AlbumCoverFlowContent(
+                    albums = sortedAlbums,
+                    topPadding = topPadding + selectionTopInset + 8.dp,
+                    bottomPadding = bottomPadding,
+                    selectionMode = selectionModeActive,
+                    selectedAlbumIds = selectedAlbumIds,
+                    sortMode = sortMode,
+                    showSortOptions = showSortOptions,
+                    state = coverFlowState,
+                    onToggleSortOptions = { showSortOptions = !showSortOptions },
+                    onSortModeChanged = {
+                        onSortModeChanged(it)
+                        showSortOptions = false
+                    },
+                    onLayoutModeChanged = onLayoutModeChanged,
+                    onAlbumOpen = { album, origin ->
+                        if (selectionModeActive) {
+                            selectedAlbumIds = selectedAlbumIds.toggleSelection(album.id)
+                        } else {
+                            onAlbumSelected(album, origin)
+                        }
+                    },
+                    onAlbumLongPress = { album ->
+                        showSortOptions = false
+                        selectedAlbumIds = selectedAlbumIds + album.id
+                    },
+                )
+            }
         }
         AnimatedVisibility(
             visible = selectionModeActive,
@@ -4449,6 +4496,225 @@ private fun AlbumCollectionContent(
                 selectedAlbumIds = emptySet()
             },
         )
+    }
+}
+
+@Composable
+private fun AlbumCoverFlowContent(
+    albums: List<Album>,
+    topPadding: Dp,
+    bottomPadding: Dp,
+    selectionMode: Boolean,
+    selectedAlbumIds: Set<Long>,
+    sortMode: AlbumSortMode,
+    showSortOptions: Boolean,
+    state: LazyListState,
+    onToggleSortOptions: () -> Unit,
+    onSortModeChanged: (AlbumSortMode) -> Unit,
+    onLayoutModeChanged: (AlbumLayoutMode) -> Unit,
+    onAlbumOpen: (Album, ExpandOrigin) -> Unit,
+    onAlbumLongPress: (Album) -> Unit,
+) {
+    val snapFlingBehavior = rememberSnapFlingBehavior(lazyListState = state)
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val footerHeight = 80.dp
+        val footerBottomInset = (bottomPadding - ElovaireSpacing.scrollTailPadding).let { inset ->
+            if (inset > 0.dp) inset else 0.dp
+        }
+        val controlsTopInset = topPadding
+        val controlsHeight = 34.dp
+        val viewportTopInset = controlsTopInset + controlsHeight + 18.dp
+        val viewportBottomInset = footerBottomInset + footerHeight + 16.dp
+        val viewportHeight = (maxHeight - viewportTopInset - viewportBottomInset).let { available ->
+            if (available > 0.dp) available else 0.dp
+        }
+        val slotHeight = 122.dp
+        val cardSize = listOf(maxWidth * 0.6f, 280.dp, maxWidth - 88.dp).minBy { it.value }
+        val centerPadding = if (viewportHeight > slotHeight) {
+            (viewportHeight / 2f) - (slotHeight / 2f)
+        } else {
+            0.dp
+        }
+        val density = LocalDensity.current
+        val slotHeightPx = with(density) { slotHeight.toPx() }.coerceAtLeast(1f)
+        val centeredAlbumIndex by remember(state, albums) {
+            derivedStateOf {
+                if (albums.isEmpty()) {
+                    return@derivedStateOf 0
+                }
+                val layoutInfo = state.layoutInfo
+                val viewportCenter = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2
+                layoutInfo.visibleItemsInfo
+                    .filter { it.index in albums.indices }
+                    .minByOrNull { itemInfo ->
+                        kotlin.math.abs((itemInfo.offset + (itemInfo.size / 2)) - viewportCenter)
+                    }
+                    ?.index
+                    ?.coerceIn(0, albums.lastIndex)
+                    ?: 0
+            }
+        }
+        val focusedAlbum = albums.getOrNull(centeredAlbumIndex)
+
+        Box(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 20.dp, top = controlsTopInset, end = 20.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AlbumSortControl(
+                    selected = sortMode,
+                    expanded = showSortOptions,
+                    onToggleExpanded = onToggleSortOptions,
+                    onSelect = onSortModeChanged,
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                LibraryModeToggle(
+                    layoutMode = AlbumLayoutMode.CoverFlow,
+                    onLayoutModeChanged = onLayoutModeChanged,
+                )
+            }
+
+            LazyColumn(
+                state = state,
+                flingBehavior = snapFlingBehavior,
+                overscrollEffect = null,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = viewportTopInset)
+                    .padding(bottom = viewportBottomInset)
+                    .ensureSingleItemRubberBand(state),
+                contentPadding = PaddingValues(top = centerPadding, bottom = centerPadding),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                itemsIndexed(albums, key = { _, album -> album.id }) { index, album ->
+                    val layoutInfo = state.layoutInfo
+                    val itemInfo = layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
+                    val viewportCenter = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2f
+                    val distanceFraction = if (itemInfo != null) {
+                        (((itemInfo.offset + (itemInfo.size / 2f)) - viewportCenter) / slotHeightPx).coerceIn(-2.2f, 2.2f)
+                    } else {
+                        2.2f
+                    }
+                    val prominence = (1f - kotlin.math.abs(distanceFraction).coerceIn(0f, 1f))
+                    AlbumCoverFlowCard(
+                        album = album,
+                        cardSize = cardSize,
+                        slotHeight = slotHeight,
+                        depthFraction = distanceFraction,
+                        prominence = prominence,
+                        selectionMode = selectionMode,
+                        selected = album.id in selectedAlbumIds,
+                        enabled = index == centeredAlbumIndex,
+                        onOpen = { origin -> onAlbumOpen(album, origin) },
+                        onLongPress = { onAlbumLongPress(album) },
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(footerHeight)
+                    .padding(bottom = footerBottomInset),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text(
+                    text = focusedAlbum?.title.orEmpty(),
+                    modifier = Modifier.fillMaxWidth(0.8f),
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = focusedAlbum?.artist.orEmpty(),
+                    modifier = Modifier.fillMaxWidth(0.8f),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = readableSecondaryTextColor(),
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AlbumCoverFlowCard(
+    album: Album,
+    cardSize: Dp,
+    slotHeight: Dp,
+    depthFraction: Float,
+    prominence: Float,
+    selectionMode: Boolean,
+    selected: Boolean,
+    enabled: Boolean,
+    onOpen: (ExpandOrigin) -> Unit,
+    onLongPress: () -> Unit,
+) {
+    val screenSizePx = screenContainerSizePx()
+    val screenWidthPx = screenSizePx.width.toFloat()
+    val screenHeightPx = screenSizePx.height.toFloat()
+    var bounds by remember(album.id) { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+    val scale = 0.72f + (prominence * 0.28f)
+    val alpha = 0.34f + (prominence * 0.66f)
+    val rotationY = depthFraction * -32f
+    val translationX = depthFraction * 34f
+    val translationY = kotlin.math.abs(depthFraction) * 8f
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(slotHeight),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(cardSize)
+                .zIndex(1f - kotlin.math.abs(depthFraction).coerceIn(0f, 1f))
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    this.alpha = alpha
+                    this.rotationY = rotationY
+                    this.translationX = translationX.dp.toPx()
+                    this.translationY = translationY.dp.toPx()
+                    cameraDistance = 18f * density
+                }
+                .onGloballyPositioned { bounds = it.boundsInWindow() }
+                .combinedClickable(
+                    enabled = enabled,
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = { onOpen(bounds.toExpandOrigin(screenWidthPx, screenHeightPx)) },
+                    onLongClick = onLongPress,
+                ),
+        ) {
+            ArtworkImage(
+                uri = album.artUri,
+                title = album.title,
+                modifier = Modifier.matchParentSize(),
+                cornerRadius = ElovaireRadii.artwork,
+                requestedSizePx = 640,
+                showArtworkGlow = enabled,
+            )
+            if (selectionMode) {
+                SelectionIndicatorIcon(
+                    selected = selected,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(10.dp),
+                )
+            }
+        }
     }
 }
 
@@ -6924,6 +7190,12 @@ private fun LibraryModeToggle(
             selected = layoutMode == AlbumLayoutMode.Grid,
             contentDescription = "Grid",
             onClick = { onLayoutModeChanged(AlbumLayoutMode.Grid) },
+        )
+        ToggleIconChip(
+            iconResId = R.drawable.ic_lucide_gallery_vertical_end,
+            selected = layoutMode == AlbumLayoutMode.CoverFlow,
+            contentDescription = "Vertical cover flow",
+            onClick = { onLayoutModeChanged(AlbumLayoutMode.CoverFlow) },
         )
     }
 }
@@ -12481,6 +12753,8 @@ private fun EqualizerScreen(
     onTrebleChanged: (Float) -> Unit,
     onSpaciousnessChanged: (Float) -> Unit,
     onSpaciousnessModeChanged: (SpaciousnessMode) -> Unit,
+    onReverbDurationChanged: (Int) -> Unit,
+    onReverbProfileChanged: (ReverbProfile) -> Unit,
     onApplyPreset: (EqSettings) -> Unit,
     onReset: () -> Unit,
 ) {
@@ -12603,6 +12877,49 @@ private fun EqualizerScreen(
                             onValueChange = onSpaciousnessChanged,
                             valueRange = 0f..1f,
                         )
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = "Reverb",
+                                    style = MaterialTheme.typography.titleLarge.copy(
+                                        fontSize = elovaireScaledSp(16f),
+                                    ),
+                                )
+                                Text(
+                                    text = if (settings.reverbDurationMs <= 0) "Off" else "${settings.reverbDurationMs} ms",
+                                    style = MaterialTheme.typography.titleLarge.copy(fontSize = elovaireScaledSp(18f)),
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.84f),
+                                )
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalGestureSafe()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                ReverbProfile.entries.forEach { profile ->
+                                    EqPresetPill(
+                                        label = profile.displayLabel(),
+                                        selected = settings.reverbProfile == profile,
+                                        useSubtleIdleBackground = true,
+                                        onClick = { onReverbProfileChanged(profile) },
+                                    )
+                                }
+                            }
+                            ReverbStepSlider(
+                                valueMs = settings.reverbDurationMs,
+                                onValueChange = onReverbDurationChanged,
+                            )
+                        }
                     }
                 }
             }
@@ -12631,8 +12948,6 @@ private fun SettingsScreen(
     onTextSizePresetSelected: (TextSizePreset) -> Unit,
     onBassChanged: (Float) -> Unit,
     onSpaciousnessChanged: (Float) -> Unit,
-    onReverbDurationChanged: (Int) -> Unit,
-    onReverbProfileChanged: (ReverbProfile) -> Unit,
     onMonoPlaybackChanged: (Boolean) -> Unit,
     onOpenEqualizer: () -> Unit,
     onOpenChangelog: () -> Unit,
@@ -12740,51 +13055,6 @@ private fun SettingsScreen(
                                 value = eqSettings.spaciousness.coerceAtLeast(0f).coerceIn(0f, 1f),
                                 modifier = Modifier.weight(1f),
                                 onValueChange = onSpaciousnessChanged,
-                            )
-                        }
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 2.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    text = "Reverb",
-                                    style = MaterialTheme.typography.titleLarge.copy(
-                                        fontSize = elovaireScaledSp(16f),
-                                    ),
-                                )
-                                Text(
-                                    text = if (eqSettings.reverbDurationMs <= 0) "Off" else "${eqSettings.reverbDurationMs} ms",
-                                    style = MaterialTheme.typography.titleLarge.copy(fontSize = elovaireScaledSp(18f)),
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.84f),
-                                )
-                            }
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalGestureSafe()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                ReverbProfile.entries.forEach { profile ->
-                                    EqPresetPill(
-                                        label = profile.displayLabel(),
-                                        selected = eqSettings.reverbProfile == profile,
-                                        useSubtleIdleBackground = true,
-                                        onClick = { onReverbProfileChanged(profile) },
-                                    )
-                                }
-                            }
-                            ReverbStepSlider(
-                                valueMs = eqSettings.reverbDurationMs,
-                                onValueChange = onReverbDurationChanged,
                             )
                         }
                         Row(
@@ -15347,11 +15617,12 @@ private fun formatEqFrequencyLabel(frequencyHz: Float): String {
 }
 
 private fun formatEqKiloLabel(kiloValue: Float): String {
-    val formatted = when {
+    val rawLabel = when {
         kiloValue >= 10f || kiloValue % 1f == 0f -> kiloValue.roundToInt().toString()
         (kiloValue * 10f) % 1f == 0f -> String.format(java.util.Locale.ROOT, "%.1f", kiloValue)
         else -> String.format(java.util.Locale.ROOT, "%.2f", kiloValue)
-    }.trimEnd('0').trimEnd('.')
+    }
+    val formatted = if ('.' in rawLabel) rawLabel.trimEnd('0').trimEnd('.') else rawLabel
     return "${formatted}k"
 }
 
