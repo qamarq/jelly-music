@@ -1,5 +1,5 @@
 object AppBuildConfig {
-    const val packageName = "elovaire.music.app"
+    const val packageName = "elovaire.music.droidbeauty.app"
 
     // Internal build number used by Android for upgrades.
     const val versionCode = 1054

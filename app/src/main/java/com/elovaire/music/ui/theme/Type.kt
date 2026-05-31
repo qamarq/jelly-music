@@ -1,4 +1,4 @@
-package elovaire.music.app.ui.theme
+package elovaire.music.droidbeauty.app.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
@@ -10,7 +10,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.isUnspecified
 import androidx.compose.ui.unit.sp
-import elovaire.music.app.R
+import elovaire.music.droidbeauty.app.R
 
 // Primary font family used throughout the app.
 private val GeistFamily = FontFamily(

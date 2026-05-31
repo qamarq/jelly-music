@@ -1,4 +1,4 @@
-package elovaire.music.app.data.playback
+package elovaire.music.droidbeauty.app.data.playback
 
 import android.app.PendingIntent
 import android.content.Context
@@ -11,8 +11,8 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.NotificationUtil
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerNotificationManager
-import elovaire.music.app.MainActivity
-import elovaire.music.app.R
+import elovaire.music.droidbeauty.app.MainActivity
+import elovaire.music.droidbeauty.app.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collect
@@ -20,7 +20,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 
-const val EXTRA_OPEN_PLAYER_FROM_NOTIFICATION = "elovaire.music.app.extra.OPEN_PLAYER_FROM_NOTIFICATION"
+const val EXTRA_OPEN_PLAYER_FROM_NOTIFICATION = "elovaire.music.droidbeauty.app.extra.OPEN_PLAYER_FROM_NOTIFICATION"
 
 @UnstableApi
 class PlaybackNotificationController(
@@ -236,7 +236,7 @@ class PlaybackNotificationController(
     companion object {
         internal const val NOTIFICATION_CHANNEL_ID = "elovaire_playback"
         internal const val NOTIFICATION_ID = 1001
-        private const val ACTION_SHUFFLE = "elovaire.music.app.action.SHUFFLE"
+        private const val ACTION_SHUFFLE = "elovaire.music.droidbeauty.app.action.SHUFFLE"
         private const val PAUSE_NOTIFICATION_TIMEOUT_MS = 180_000L
 
         fun ensureNotificationChannel(context: Context) {

@@ -1,4 +1,4 @@
-package elovaire.music.app.data.playback
+package elovaire.music.droidbeauty.app.data.playback
 
 internal class UsbAudioClassVolumeParser {
     fun parse(

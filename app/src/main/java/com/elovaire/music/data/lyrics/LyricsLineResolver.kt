@@ -1,4 +1,4 @@
-package elovaire.music.app.data.lyrics
+package elovaire.music.droidbeauty.app.data.lyrics
 
 internal fun resolveActiveLyricLineIndex(
     lines: List<LyricsLine>,

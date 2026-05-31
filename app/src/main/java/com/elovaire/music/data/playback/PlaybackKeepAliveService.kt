@@ -1,4 +1,4 @@
-package elovaire.music.app.data.playback
+package elovaire.music.droidbeauty.app.data.playback
 
 import android.app.Notification
 import android.app.Service
@@ -53,10 +53,10 @@ class PlaybackKeepAliveService : Service() {
     }
 
     companion object {
-        private const val ACTION_START = "elovaire.music.app.action.PLAYBACK_SERVICE_START"
-        private const val ACTION_STOP = "elovaire.music.app.action.PLAYBACK_SERVICE_STOP"
-        private const val EXTRA_NOTIFICATION = "elovaire.music.app.extra.PLAYBACK_NOTIFICATION"
-        private const val EXTRA_NOTIFICATION_ID = "elovaire.music.app.extra.PLAYBACK_NOTIFICATION_ID"
+        private const val ACTION_START = "elovaire.music.droidbeauty.app.action.PLAYBACK_SERVICE_START"
+        private const val ACTION_STOP = "elovaire.music.droidbeauty.app.action.PLAYBACK_SERVICE_STOP"
+        private const val EXTRA_NOTIFICATION = "elovaire.music.droidbeauty.app.extra.PLAYBACK_NOTIFICATION"
+        private const val EXTRA_NOTIFICATION_ID = "elovaire.music.droidbeauty.app.extra.PLAYBACK_NOTIFICATION_ID"
 
         fun start(
             context: Context,

@@ -1,4 +1,4 @@
-package elovaire.music.app.data.playback
+package elovaire.music.droidbeauty.app.data.playback
 
 import android.content.Context
 import androidx.media3.common.audio.AudioProcessor

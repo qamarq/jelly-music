@@ -1,6 +1,6 @@
 # Animation Guidelines
 
-Elovaire animations should use `elovaire.music.app.ui.motion.ElovaireMotion` instead of raw `tween`, `spring`, or easing values in screen code. Shared timings, easings, springs, enter/exit transitions, and common animation specs live there so motion stays consistent across the app.
+Elovaire animations should use `elovaire.music.droidbeauty.app.ui.motion.ElovaireMotion` instead of raw `tween`, `spring`, or easing values in screen code. Shared timings, easings, springs, enter/exit transitions, and common animation specs live there so motion stays consistent across the app.
 
 Use the shared wrappers for common lifecycle animations:
 

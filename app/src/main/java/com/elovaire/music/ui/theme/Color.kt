@@ -1,4 +1,4 @@
-package elovaire.music.app.ui.theme
+package elovaire.music.droidbeauty.app.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

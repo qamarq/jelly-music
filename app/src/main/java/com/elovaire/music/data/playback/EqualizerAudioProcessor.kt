@@ -1,4 +1,4 @@
-package elovaire.music.app.data.playback
+package elovaire.music.droidbeauty.app.data.playback
 
 import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
@@ -14,7 +14,7 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sinh
 import kotlin.math.sqrt
-import elovaire.music.app.domain.model.EqSettings
+import elovaire.music.droidbeauty.app.domain.model.EqSettings
 
 internal data class EqualizerPreset(
     val name: String,

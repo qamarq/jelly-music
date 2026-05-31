@@ -1,4 +1,4 @@
-package elovaire.music.app.data.lyrics
+package elovaire.music.droidbeauty.app.data.lyrics
 
 import java.nio.charset.Charset
 import java.util.Locale

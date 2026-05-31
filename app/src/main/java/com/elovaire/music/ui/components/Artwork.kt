@@ -1,4 +1,4 @@
-package elovaire.music.app.ui.components
+package elovaire.music.droidbeauty.app.ui.components
 
 import android.content.Context
 import android.graphics.Bitmap
@@ -38,9 +38,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import android.net.Uri
-import elovaire.music.app.R
-import elovaire.music.app.ui.theme.ElovaireRadii
-import elovaire.music.app.ui.theme.elovaireScaledSp
+import elovaire.music.droidbeauty.app.R
+import elovaire.music.droidbeauty.app.ui.theme.ElovaireRadii
+import elovaire.music.droidbeauty.app.ui.theme.elovaireScaledSp
 import androidx.compose.ui.res.painterResource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

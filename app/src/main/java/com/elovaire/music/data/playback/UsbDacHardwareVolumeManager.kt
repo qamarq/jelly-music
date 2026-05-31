@@ -1,4 +1,4 @@
-package elovaire.music.app.data.playback
+package elovaire.music.droidbeauty.app.data.playback
 
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -13,7 +13,7 @@ import android.media.AudioManager
 import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
-import elovaire.music.app.BuildConfig
+import elovaire.music.droidbeauty.app.BuildConfig
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -456,7 +456,7 @@ internal class UsbDacHardwareVolumeManager(
     private companion object {
         const val TAG = "UsbDacVolume"
         const val PREFS_NAME = "usb_dac_hardware_volume"
-        const val ACTION_USB_DAC_PERMISSION = "elovaire.music.app.action.USB_DAC_PERMISSION"
+        const val ACTION_USB_DAC_PERMISSION = "elovaire.music.droidbeauty.app.action.USB_DAC_PERMISSION"
         const val CONTROL_SELECTOR_VOLUME = 0x02
         const val REQUEST_SET_CUR = 0x01
         const val REQUEST_GET_CUR = 0x81

@@ -1,4 +1,4 @@
-package elovaire.music.app.data.playback
+package elovaire.music.droidbeauty.app.data.playback
 
 data class PlaybackProgressState(
     val positionMs: Long = 0L,

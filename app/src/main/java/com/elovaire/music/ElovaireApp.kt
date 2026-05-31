@@ -1,7 +1,7 @@
-package elovaire.music.app
+package elovaire.music.droidbeauty.app
 
 import android.app.Application
-import elovaire.music.app.core.AppContainer
+import elovaire.music.droidbeauty.app.core.AppContainer
 
 class ElovaireApp : Application() {
     lateinit var container: AppContainer

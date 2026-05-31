@@ -1,16 +1,16 @@
-package elovaire.music.app.data.settings
+package elovaire.music.droidbeauty.app.data.settings
 
 import android.content.Context
 import android.net.Uri
 import androidx.core.content.edit
-import elovaire.music.app.domain.model.EqSettings
-import elovaire.music.app.domain.model.Playlist
-import elovaire.music.app.domain.model.ReverbProfile
-import elovaire.music.app.domain.model.SearchHistoryEntry
-import elovaire.music.app.domain.model.SearchHistoryKind
-import elovaire.music.app.domain.model.SpaciousnessMode
-import elovaire.music.app.domain.model.TextSizePreset
-import elovaire.music.app.domain.model.ThemeMode
+import elovaire.music.droidbeauty.app.domain.model.EqSettings
+import elovaire.music.droidbeauty.app.domain.model.Playlist
+import elovaire.music.droidbeauty.app.domain.model.ReverbProfile
+import elovaire.music.droidbeauty.app.domain.model.SearchHistoryEntry
+import elovaire.music.droidbeauty.app.domain.model.SearchHistoryKind
+import elovaire.music.droidbeauty.app.domain.model.SpaciousnessMode
+import elovaire.music.droidbeauty.app.domain.model.TextSizePreset
+import elovaire.music.droidbeauty.app.domain.model.ThemeMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

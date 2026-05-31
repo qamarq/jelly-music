@@ -1,6 +1,6 @@
-package elovaire.music.app.data.playback
+package elovaire.music.droidbeauty.app.data.playback
 
-import elovaire.music.app.domain.model.SpaciousnessMode
+import elovaire.music.droidbeauty.app.domain.model.SpaciousnessMode
 import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.max

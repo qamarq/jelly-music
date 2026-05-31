@@ -1,11 +1,11 @@
-package elovaire.music.app.data.update
+package elovaire.music.droidbeauty.app.data.update
 
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.core.content.FileProvider
-import elovaire.music.app.BuildConfig
-import elovaire.music.app.data.settings.PreferenceStore
+import elovaire.music.droidbeauty.app.BuildConfig
+import elovaire.music.droidbeauty.app.data.settings.PreferenceStore
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL

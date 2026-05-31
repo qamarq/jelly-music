@@ -1,4 +1,4 @@
-package elovaire.music.app.data.playback
+package elovaire.music.droidbeauty.app.data.playback
 
 import android.annotation.SuppressLint
 import android.app.PendingIntent
@@ -24,9 +24,9 @@ import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.session.MediaSession
-import elovaire.music.app.MainActivity
-import elovaire.music.app.domain.model.Album
-import elovaire.music.app.domain.model.Song
+import elovaire.music.droidbeauty.app.MainActivity
+import elovaire.music.droidbeauty.app.domain.model.Album
+import elovaire.music.droidbeauty.app.domain.model.Song
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay

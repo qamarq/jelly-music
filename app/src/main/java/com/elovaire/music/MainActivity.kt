@@ -1,4 +1,4 @@
-package elovaire.music.app
+package elovaire.music.droidbeauty.app
 
 import android.media.AudioManager
 import android.os.Bundle
@@ -30,13 +30,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import elovaire.music.app.data.playback.EXTRA_OPEN_PLAYER_FROM_NOTIFICATION
-import elovaire.music.app.ui.motion.ElovaireAnimatedVisibility
-import elovaire.music.app.ui.motion.ElovaireMotion
-import elovaire.music.app.ui.motion.rememberSystemAnimationScale
-import elovaire.music.app.ui.screens.ElovaireRoot
-import elovaire.music.app.ui.theme.ElovaireTheme
-import elovaire.music.app.ui.theme.themeBackgroundForMode
+import elovaire.music.droidbeauty.app.data.playback.EXTRA_OPEN_PLAYER_FROM_NOTIFICATION
+import elovaire.music.droidbeauty.app.ui.motion.ElovaireAnimatedVisibility
+import elovaire.music.droidbeauty.app.ui.motion.ElovaireMotion
+import elovaire.music.droidbeauty.app.ui.motion.rememberSystemAnimationScale
+import elovaire.music.droidbeauty.app.ui.screens.ElovaireRoot
+import elovaire.music.droidbeauty.app.ui.theme.ElovaireTheme
+import elovaire.music.droidbeauty.app.ui.theme.themeBackgroundForMode
 import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {

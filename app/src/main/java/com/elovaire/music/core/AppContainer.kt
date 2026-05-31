@@ -1,14 +1,14 @@
-package elovaire.music.app.core
+package elovaire.music.droidbeauty.app.core
 
 import android.annotation.SuppressLint
 import android.content.Context
-import elovaire.music.app.data.library.LibraryRepository
-import elovaire.music.app.data.library.MediaStoreScanner
-import elovaire.music.app.data.playback.PlaybackEffectsController
-import elovaire.music.app.data.playback.PlaybackManager
-import elovaire.music.app.data.playback.PlaybackNotificationController
-import elovaire.music.app.data.settings.PreferenceStore
-import elovaire.music.app.data.update.AppUpdateManager
+import elovaire.music.droidbeauty.app.data.library.LibraryRepository
+import elovaire.music.droidbeauty.app.data.library.MediaStoreScanner
+import elovaire.music.droidbeauty.app.data.playback.PlaybackEffectsController
+import elovaire.music.droidbeauty.app.data.playback.PlaybackManager
+import elovaire.music.droidbeauty.app.data.playback.PlaybackNotificationController
+import elovaire.music.droidbeauty.app.data.settings.PreferenceStore
+import elovaire.music.droidbeauty.app.data.update.AppUpdateManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob

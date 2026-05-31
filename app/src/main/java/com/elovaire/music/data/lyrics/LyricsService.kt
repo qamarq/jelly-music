@@ -1,7 +1,7 @@
-package elovaire.music.app.data.lyrics
+package elovaire.music.droidbeauty.app.data.lyrics
 
 import android.content.Context
-import elovaire.music.app.domain.model.Song
+import elovaire.music.droidbeauty.app.domain.model.Song
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 

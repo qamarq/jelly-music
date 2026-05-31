@@ -1,4 +1,4 @@
-package elovaire.music.app.data.library
+package elovaire.music.droidbeauty.app.data.library
 
 import android.content.Context
 import android.database.ContentObserver
@@ -7,8 +7,8 @@ import android.os.FileObserver
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
-import elovaire.music.app.domain.model.Album
-import elovaire.music.app.domain.model.Song
+import elovaire.music.droidbeauty.app.domain.model.Album
+import elovaire.music.droidbeauty.app.domain.model.Song
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

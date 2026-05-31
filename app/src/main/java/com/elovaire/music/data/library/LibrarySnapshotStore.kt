@@ -1,10 +1,10 @@
-package elovaire.music.app.data.library
+package elovaire.music.droidbeauty.app.data.library
 
 import android.content.Context
 import android.net.Uri
-import elovaire.music.app.domain.model.Album
-import elovaire.music.app.domain.model.LibrarySnapshot
-import elovaire.music.app.domain.model.Song
+import elovaire.music.droidbeauty.app.domain.model.Album
+import elovaire.music.droidbeauty.app.domain.model.LibrarySnapshot
+import elovaire.music.droidbeauty.app.domain.model.Song
 import org.json.JSONArray
 import org.json.JSONObject
 

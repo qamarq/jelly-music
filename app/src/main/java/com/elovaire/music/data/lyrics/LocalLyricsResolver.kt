@@ -1,11 +1,11 @@
-package elovaire.music.app.data.lyrics
+package elovaire.music.droidbeauty.app.data.lyrics
 
 import android.annotation.SuppressLint
 import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
 import android.provider.MediaStore
-import elovaire.music.app.domain.model.Song
+import elovaire.music.droidbeauty.app.domain.model.Song
 import java.io.BufferedInputStream
 import java.io.File
 import java.nio.ByteBuffer

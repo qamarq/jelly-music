@@ -1,7 +1,7 @@
-package elovaire.music.app.data.lyrics
+package elovaire.music.droidbeauty.app.data.lyrics
 
 import android.util.Log
-import elovaire.music.app.BuildConfig
+import elovaire.music.droidbeauty.app.BuildConfig
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope

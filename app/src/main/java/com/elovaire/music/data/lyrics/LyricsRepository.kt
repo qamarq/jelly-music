@@ -1,11 +1,11 @@
-package elovaire.music.app.data.lyrics
+package elovaire.music.droidbeauty.app.data.lyrics
 
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.util.Log
-import elovaire.music.app.BuildConfig
-import elovaire.music.app.domain.model.Song
+import elovaire.music.droidbeauty.app.BuildConfig
+import elovaire.music.droidbeauty.app.domain.model.Song
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred

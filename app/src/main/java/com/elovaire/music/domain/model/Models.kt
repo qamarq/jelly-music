@@ -1,4 +1,4 @@
-package elovaire.music.app.domain.model
+package elovaire.music.droidbeauty.app.domain.model
 
 import android.net.Uri
 

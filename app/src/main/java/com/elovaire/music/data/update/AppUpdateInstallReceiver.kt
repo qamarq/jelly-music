@@ -1,9 +1,9 @@
-package elovaire.music.app.data.update
+package elovaire.music.droidbeauty.app.data.update
 
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import elovaire.music.app.MainActivity
+import elovaire.music.droidbeauty.app.MainActivity
 import java.io.File
 
 class AppUpdateInstallReceiver : BroadcastReceiver() {

@@ -1,4 +1,4 @@
-package elovaire.music.app.data.library
+package elovaire.music.droidbeauty.app.data.library
 
 import android.content.ContentUris
 import android.content.Context
@@ -10,8 +10,8 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
-import elovaire.music.app.domain.model.LibrarySnapshot
-import elovaire.music.app.domain.model.Song
+import elovaire.music.droidbeauty.app.domain.model.LibrarySnapshot
+import elovaire.music.droidbeauty.app.domain.model.Song
 import java.io.File
 import java.util.Locale
 import java.util.concurrent.CountDownLatch

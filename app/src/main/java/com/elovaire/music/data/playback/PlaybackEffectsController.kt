@@ -1,8 +1,8 @@
-package elovaire.music.app.data.playback
+package elovaire.music.droidbeauty.app.data.playback
 
 import androidx.media3.common.audio.AudioProcessor
-import elovaire.music.app.domain.model.EqSettings
-import elovaire.music.app.domain.model.SpaciousnessMode
+import elovaire.music.droidbeauty.app.domain.model.EqSettings
+import elovaire.music.droidbeauty.app.domain.model.SpaciousnessMode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob

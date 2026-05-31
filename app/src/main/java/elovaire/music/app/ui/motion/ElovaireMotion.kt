@@ -1,4 +1,4 @@
-package elovaire.music.app.ui.motion
+package elovaire.music.droidbeauty.app.ui.motion
 
 import android.content.Context
 import android.database.ContentObserver

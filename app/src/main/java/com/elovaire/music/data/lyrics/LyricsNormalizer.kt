@@ -1,6 +1,6 @@
-package elovaire.music.app.data.lyrics
+package elovaire.music.droidbeauty.app.data.lyrics
 
-import elovaire.music.app.domain.model.Song
+import elovaire.music.droidbeauty.app.domain.model.Song
 import java.text.Normalizer
 import java.util.Locale
 

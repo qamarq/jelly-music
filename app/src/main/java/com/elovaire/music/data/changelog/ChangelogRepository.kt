@@ -1,7 +1,7 @@
-package elovaire.music.app.data.changelog
+package elovaire.music.droidbeauty.app.data.changelog
 
 import android.content.Context
-import elovaire.music.app.R
+import elovaire.music.droidbeauty.app.R
 import org.xmlpull.v1.XmlPullParser
 
 data class ChangelogRelease(
