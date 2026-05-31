@@ -560,6 +560,12 @@ private val LocalRenderSharedTopBarContent = compositionLocalOf { false }
 private val LocalSharedBackIconPainter = compositionLocalOf<Painter?> { null }
 private val LocalSharedTopMenuIconPainter = compositionLocalOf<Painter?> { null }
 
+private data class TopBarActionSpec(
+    @DrawableRes val iconResId: Int,
+    val contentDescription: String,
+    val onClick: () -> Unit,
+)
+
 private sealed interface SharedTopBarSpec {
     data class Unified(
         val title: String,
@@ -580,6 +586,7 @@ private sealed interface SharedTopBarSpec {
         val title: String,
         val subtitle: String?,
         val onBack: () -> Unit,
+        val actions: List<TopBarActionSpec> = emptyList(),
     ) : SharedTopBarSpec
 }
 
@@ -587,7 +594,7 @@ private fun SharedTopBarSpec.visualSignature(): String {
     return when (this) {
         is SharedTopBarSpec.Unified -> "unified|$title|$showSettings|${supplementalActionIconResId ?: 0}|${supplementalActionContentDescription.orEmpty()}"
         is SharedTopBarSpec.Back -> "back|$title|$centeredTitle"
-        is SharedTopBarSpec.Detail -> "detail|$title|${subtitle.orEmpty()}"
+        is SharedTopBarSpec.Detail -> "detail|$title|${subtitle.orEmpty()}|${actions.joinToString { "${it.iconResId}:${it.contentDescription}" }}"
     }
 }
 
@@ -647,6 +654,14 @@ private enum class SearchContentMode {
     Discover,
     Results,
     AllSongs,
+}
+
+private enum class PlaylistPickerTab(
+    val label: String,
+) {
+    Albums("Albums"),
+    Artists("Artists"),
+    Songs("Songs"),
 }
 
 private enum class AlbumSortMode(
@@ -1186,7 +1201,7 @@ private fun RegisterSharedTopBar(spec: SharedTopBarSpec) {
         when (spec) {
             is SharedTopBarSpec.Unified -> "unified|${spec.title}|${spec.showSettings}|${spec.supplementalActionIconResId ?: 0}|${spec.supplementalActionContentDescription.orEmpty()}"
             is SharedTopBarSpec.Back -> "back|${spec.title}|${spec.centeredTitle}"
-            is SharedTopBarSpec.Detail -> "detail|${spec.title}|${spec.subtitle.orEmpty()}"
+            is SharedTopBarSpec.Detail -> "detail|${spec.title}|${spec.subtitle.orEmpty()}|${spec.actions.joinToString { "${it.iconResId}:${it.contentDescription}" }}"
         }
     }
     LaunchedEffect(controller, registrationId, specSignature) {
@@ -2131,6 +2146,9 @@ fun ElovaireRoot(
                             onAddSongs = { songIds ->
                                 container.preferenceStore.addSongsToPlaylist(playlistId, songIds)
                             },
+                            onUpdateSongOrder = { songIds ->
+                                container.preferenceStore.updatePlaylistSongIds(playlistId, songIds)
+                            },
                             onToggleFavorite = container.preferenceStore::toggleFavoriteSong,
                         )
                     }
@@ -2687,10 +2705,28 @@ private fun StandaloneNowPlayingDock(
     val resolvedSurface = albumTint.compositeOver(baseTint)
     val contentColor = if (resolvedSurface.luminance() > 0.42f) InkText else Color.White
     val secondaryContentColor = contentColor.copy(alpha = 0.72f)
-    Box(
-        modifier = modifier.graphicsLayer {
-            alpha = if (visible) 1f else 0f
-        },
+    ElovaireAnimatedVisibility(
+        visible = visible,
+        modifier = modifier,
+        enter = fadeIn(animationSpec = ElovaireMotion.fadeMedium()) +
+            expandVertically(
+                expandFrom = Alignment.Bottom,
+                animationSpec = ElovaireMotion.standardTween(durationMillis = 260),
+            ) +
+            slideInVertically(
+                initialOffsetY = { it / 3 },
+                animationSpec = ElovaireMotion.offsetSoft(durationMillis = 260),
+            ),
+        exit = fadeOut(animationSpec = ElovaireMotion.fadeFast()) +
+            androidx.compose.animation.shrinkVertically(
+                shrinkTowards = Alignment.Bottom,
+                animationSpec = ElovaireMotion.standardTween(durationMillis = 220),
+            ) +
+            slideOutVertically(
+                targetOffsetY = { it / 4 },
+                animationSpec = ElovaireMotion.offsetSoft(durationMillis = 220),
+            ),
+        label = "CompactNowPlayingDockVisibility",
     ) {
         Box(
             modifier = Modifier
@@ -3181,6 +3217,21 @@ private fun SharedTopBarOverlay(
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
+                            }
+                        }
+                        if (currentSpec.actions.isNotEmpty()) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                currentSpec.actions.forEach { action ->
+                                    HeaderIconButton(
+                                        iconResId = action.iconResId,
+                                        contentDescription = action.contentDescription,
+                                        showBackground = false,
+                                        onClick = action.onClick,
+                                    )
+                                }
                             }
                         }
                     }
@@ -8993,6 +9044,7 @@ private fun PlaylistDetailScreen(
     onPlayPlaylist: (List<Song>, String) -> Unit,
     onSongSelected: (Song, List<Song>) -> Unit,
     onAddSongs: (List<Long>) -> Unit,
+    onUpdateSongOrder: (List<Long>) -> Unit,
     onToggleFavorite: (Long) -> Unit,
 ) {
     if (playlist == null) {
@@ -9002,12 +9054,51 @@ private fun PlaylistDetailScreen(
         return
     }
 
-    var showAddSongsDialog by rememberSaveable { mutableStateOf(false) }
     val songsById = remember(librarySongs) { librarySongs.associateBy { it.id } }
-    val playlistSongs = remember(playlist.songIds, songsById) {
-        playlist.songIds.mapNotNull(songsById::get)
+    var editMode by rememberSaveable(playlist.id) { mutableStateOf(false) }
+    var showAddSongsPicker by rememberSaveable(playlist.id) { mutableStateOf(false) }
+    var editableSongIds by rememberSaveable(playlist.id) { mutableStateOf(playlist.songIds) }
+    LaunchedEffect(playlist.id, playlist.songIds, editMode) {
+        if (!editMode) {
+            editableSongIds = playlist.songIds
+        }
     }
+    val displayedSongIds = if (editMode) editableSongIds else playlist.songIds
+    val playlistSongs = remember(displayedSongIds, songsById) {
+        displayedSongIds.mapNotNull(songsById::get)
+    }
+    val playlistDurationMs = remember(playlistSongs) { playlistSongs.sumOf { it.durationMs } }
     val detailTopPadding = detailTopBarOccupiedHeight()
+    val topBarActions = remember(editMode, playlist.isSystem) {
+        buildList {
+            if (editMode && !playlist.isSystem) {
+                add(
+                    TopBarActionSpec(
+                        iconResId = R.drawable.ic_lucide_square_plus,
+                        contentDescription = "Add songs",
+                        onClick = { showAddSongsPicker = true },
+                    ),
+                )
+            }
+            if (!playlist.isSystem) {
+                add(
+                    TopBarActionSpec(
+                        iconResId = if (editMode) R.drawable.ic_lucide_check else R.drawable.ic_lucide_square_pen,
+                        contentDescription = if (editMode) "Save playlist changes" else "Edit playlist",
+                        onClick = {
+                            if (editMode) {
+                                onUpdateSongOrder(editableSongIds)
+                                editMode = false
+                            } else {
+                                editableSongIds = playlist.songIds
+                                editMode = true
+                            }
+                        },
+                    ),
+                )
+            }
+        }
+    }
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -9030,7 +9121,7 @@ private fun PlaylistDetailScreen(
             verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
             item {
-                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
                     PlaylistArtworkPreview(
                         songs = playlistSongs,
                         title = playlist.name,
@@ -9038,27 +9129,53 @@ private fun PlaylistDetailScreen(
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.Bottom,
                     ) {
-                        Text(
-                            text = formatCountLabel(playlistSongs.size, "track"),
-                            style = MaterialTheme.typography.labelLarge.copy(fontSize = elovaireScaledSp(12f)),
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.76f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Text(
+                                text = playlist.name,
+                                style = MaterialTheme.typography.displayLarge.copy(
+                                    fontSize = elovaireScaledSp(ALBUM_HEADER_TITLE_TEXT_SIZE_SP),
+                                    fontWeight = FontWeight.SemiBold,
+                                    lineHeight = MaterialTheme.typography.displayLarge.lineHeight * 0.8f,
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = buildAnnotatedString {
+                                    withStyle(
+                                        SpanStyle(
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            fontWeight = FontWeight.Normal,
+                                        ),
+                                    ) {
+                                        append(formatCountLabel(playlistSongs.size, "track"))
+                                    }
+                                    append("  •  ")
+                                    withStyle(
+                                        SpanStyle(
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
+                                            fontWeight = FontWeight.Normal,
+                                        ),
+                                    ) {
+                                        append(formatPlaylistDuration(playlistDurationMs))
+                                    }
+                                },
+                                style = MaterialTheme.typography.labelLarge.copy(fontSize = elovaireScaledSp(12f)),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                         AlbumHeaderPlayButton(
                             tint = MaterialTheme.colorScheme.onSurface,
                             backgroundColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.92f),
                             onClick = { onPlayPlaylist(playlistSongs, playlist.name) },
-                        )
-                    }
-                    if (!playlist.isSystem) {
-                        SelectablePill(
-                            label = "Add songs",
-                            selected = true,
-                            onClick = { showAddSongsDialog = true },
                         )
                     }
                 }
@@ -9071,10 +9188,26 @@ private fun PlaylistDetailScreen(
 
             if (playlistSongs.isEmpty()) {
                 item {
-                    EmptyStateCard(
-                        title = "No songs yet",
-                        message = "Start building this playlist by adding songs from your offline library",
-                    )
+                    Column(
+                        modifier = Modifier
+                            .fillParentMaxWidth()
+                            .padding(top = 34.dp, bottom = 34.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text(
+                            text = "No songs yet",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            textAlign = TextAlign.Center,
+                        )
+                        Text(
+                            text = "Start building this playlist by adding songs from your offline library",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = readableSecondaryTextColor(),
+                            textAlign = TextAlign.Center,
+                        )
+                    }
                 }
             } else {
                 itemsIndexed(
@@ -9091,8 +9224,26 @@ private fun PlaylistDetailScreen(
                             isFavorite = song.id in favoriteSongIds,
                             isCurrentSong = song.id == currentSongId,
                             isPlaybackActive = isCurrentSongPlaying,
-                            onClick = { onSongSelected(song, playlistSongs) },
+                            editMode = editMode,
+                            onClick = {
+                                if (!editMode) {
+                                    onSongSelected(song, playlistSongs)
+                                }
+                            },
                             onToggleFavorite = { onToggleFavorite(song.id) },
+                            onMoveBy = { delta ->
+                                if (editMode && delta != 0) {
+                                    val fromIndex = editableSongIds.indexOf(song.id)
+                                    if (fromIndex >= 0) {
+                                        val targetIndex = (fromIndex + delta).coerceIn(0, editableSongIds.lastIndex)
+                                        if (targetIndex != fromIndex) {
+                                            editableSongIds = editableSongIds.toMutableList().apply {
+                                                add(targetIndex, removeAt(fromIndex))
+                                            }.toList()
+                                        }
+                                    }
+                                }
+                            },
                             showDivider = index != playlistSongs.lastIndex,
                         )
                     }
@@ -9103,19 +9254,29 @@ private fun PlaylistDetailScreen(
         DetailListTopBar(
             title = playlist.name,
             subtitle = "${playlistSongs.size} songs",
-            onBack = onBack,
+            onBack = {
+                if (showAddSongsPicker) {
+                    showAddSongsPicker = false
+                } else if (editMode) {
+                    editMode = false
+                    editableSongIds = playlist.songIds
+                } else {
+                    onBack()
+                }
+            },
+            actions = topBarActions,
             modifier = Modifier.align(Alignment.TopCenter),
         )
     }
 
-    if (showAddSongsDialog && !playlist.isSystem) {
-        AddSongsToPlaylistDialog(
+    if (showAddSongsPicker && !playlist.isSystem) {
+        AddSongsToPlaylistOverlay(
             availableSongs = librarySongs,
-            existingSongIds = playlist.songIds.toSet(),
-            onDismiss = { showAddSongsDialog = false },
+            existingSongIds = editableSongIds.toSet(),
+            onDismiss = { showAddSongsPicker = false },
             onAddSongs = { selectedSongIds ->
-                onAddSongs(selectedSongIds)
-                showAddSongsDialog = false
+                editableSongIds = (editableSongIds + selectedSongIds).distinct()
+                showAddSongsPicker = false
             },
         )
     }
@@ -9127,11 +9288,15 @@ private fun PlaylistSongRow(
     isFavorite: Boolean,
     isCurrentSong: Boolean = false,
     isPlaybackActive: Boolean = false,
+    editMode: Boolean = false,
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
+    onMoveBy: (Int) -> Unit = {},
     showOverflowMenu: Boolean = false,
     showDivider: Boolean,
 ) {
+    val density = LocalDensity.current
+    val reorderStepPx = remember(density) { with(density) { 28.dp.toPx() } }
     Column {
         Row(
             modifier = Modifier
@@ -9141,6 +9306,45 @@ private fun PlaylistSongRow(
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            ElovaireAnimatedVisibility(
+                visible = editMode,
+                enter = fadeIn(animationSpec = ElovaireMotion.fadeMedium()) +
+                    slideInHorizontally(
+                        initialOffsetX = { -it / 2 },
+                        animationSpec = ElovaireMotion.offsetSoft(),
+                    ),
+                exit = fadeOut(animationSpec = ElovaireMotion.fadeFast()) +
+                    slideOutHorizontally(
+                        targetOffsetX = { -it / 3 },
+                        animationSpec = ElovaireMotion.offsetSoft(durationMillis = 180),
+                    ),
+                label = "playlist_song_reorder_handle",
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(22.dp)
+                        .pointerInput(song.id, editMode) {
+                            detectVerticalDragGestures(
+                                onVerticalDrag = { change, dragAmount ->
+                                    change.consume()
+                                    if (dragAmount <= -reorderStepPx) {
+                                        onMoveBy(-1)
+                                    } else if (dragAmount >= reorderStepPx) {
+                                        onMoveBy(1)
+                                    }
+                                },
+                            )
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_lucide_chevrons_up_down),
+                        contentDescription = "Reorder song",
+                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
             Box(
                 modifier = Modifier.size(44.dp),
                 contentAlignment = Alignment.Center,
@@ -9195,29 +9399,318 @@ private fun PlaylistSongRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = formatDuration(song.durationMs),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
-                    maxLines = 1,
-                    textAlign = TextAlign.End,
-                    modifier = Modifier.weight(1f),
-                )
-                InlineFavoriteSongButton(
-                    isFavorite = isFavorite,
-                    tint = MaterialTheme.colorScheme.onSurface,
-                    onClick = onToggleFavorite,
-                )
-                if (showOverflowMenu) {
-                    SongOverflowMenuButton(
-                        song = song,
-                        tint = MaterialTheme.colorScheme.onSurface,
-                    )
+                ElovaireAnimatedVisibility(
+                    visible = !editMode,
+                    enter = fadeIn(animationSpec = ElovaireMotion.fadeMedium()),
+                    exit = fadeOut(animationSpec = ElovaireMotion.fadeFast()),
+                    label = "playlist_song_metadata_visibility",
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = formatDuration(song.durationMs),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                            maxLines = 1,
+                            textAlign = TextAlign.End,
+                            modifier = Modifier.width(40.dp),
+                        )
+                        InlineFavoriteSongButton(
+                            isFavorite = isFavorite,
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            onClick = onToggleFavorite,
+                        )
+                        if (showOverflowMenu) {
+                            SongOverflowMenuButton(
+                                song = song,
+                                tint = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                    }
                 }
             }
         }
         if (showDivider) {
             DividerLine()
+        }
+    }
+}
+
+@Composable
+private fun AddSongsToPlaylistOverlay(
+    availableSongs: List<Song>,
+    existingSongIds: Set<Long>,
+    onDismiss: () -> Unit,
+    onAddSongs: (List<Long>) -> Unit,
+) {
+    var selectedTab by rememberSaveable { mutableStateOf(PlaylistPickerTab.Songs) }
+    var selectedSongIds by rememberSaveable { mutableStateOf(setOf<Long>()) }
+    val listState = rememberElovaireLazyListState("playlist_add_songs_overlay")
+    val candidateSongs = remember(availableSongs, existingSongIds) {
+        availableSongs.filterNot { it.id in existingSongIds }
+    }
+    val albums = remember(candidateSongs) {
+        candidateSongs.groupBy { it.albumId }
+            .values
+            .mapNotNull { songs ->
+                songs.firstOrNull()?.let { first ->
+                    Album(
+                        id = first.albumId,
+                        title = first.album,
+                        artist = first.artist,
+                        artUri = first.artUri,
+                        songCount = songs.size,
+                        durationMs = songs.sumOf { it.durationMs },
+                        songs = songs,
+                    )
+                }
+            }
+            .sortedWith(compareBy<Album> { it.artist.lowercase() }.thenBy { it.title.lowercase() })
+    }
+    val artists = remember(candidateSongs) {
+        candidateSongs.groupBy { it.artist }
+            .map { (artistName, songs) ->
+                ArtistEntry(
+                    name = artistName,
+                    artUri = songs.firstOrNull()?.artUri,
+                    albumCount = songs.map { it.albumId }.distinct().size,
+                    songCount = songs.size,
+                ) to songs.sortedBy { it.title.lowercase() }
+            }
+            .sortedBy { it.first.name.lowercase() }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .zIndex(12f),
+    ) {
+        LazyColumn(
+            state = listState,
+            overscrollEffect = null,
+            modifier = Modifier
+                .fillMaxSize()
+                .ensureSingleItemRubberBand(listState),
+            contentPadding = PaddingValues(
+                start = 20.dp,
+                top = detailTopBarOccupiedHeight() + 12.dp,
+                end = 20.dp,
+                bottom = navigationBarInsetDp() + 24.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    PlaylistPickerTab.entries.forEach { tab ->
+                        EqPresetPill(
+                            label = tab.label,
+                            selected = selectedTab == tab,
+                            useSubtleIdleBackground = true,
+                            onClick = { selectedTab = tab },
+                        )
+                    }
+                }
+            }
+            when (selectedTab) {
+                PlaylistPickerTab.Albums -> {
+                    items(albums, key = { it.id }) { album ->
+                        val allSelected = album.songs.all { it.id in selectedSongIds }
+                        CompactAlbumRow(
+                            album = album,
+                            selectionMode = true,
+                            selected = allSelected,
+                            onOpen = {
+                                selectedSongIds = if (allSelected) {
+                                    selectedSongIds - album.songs.map { it.id }.toSet()
+                                } else {
+                                    selectedSongIds + album.songs.map { it.id }
+                                }
+                            },
+                        )
+                    }
+                }
+
+                PlaylistPickerTab.Artists -> {
+                    items(artists, key = { it.first.name }) { (artist, songs) ->
+                        val allSelected = songs.all { it.id in selectedSongIds }
+                        SelectableCollectionRow(
+                            title = artist.name,
+                            subtitle = "${formatCountLabel(artist.songCount, "song")} • ${formatCountLabel(artist.albumCount, "album")}",
+                            artUri = artist.artUri,
+                            selected = allSelected,
+                            onClick = {
+                                selectedSongIds = if (allSelected) {
+                                    selectedSongIds - songs.map { it.id }.toSet()
+                                } else {
+                                    selectedSongIds + songs.map { it.id }
+                                }
+                            },
+                        )
+                    }
+                }
+
+                PlaylistPickerTab.Songs -> {
+                    items(candidateSongs, key = { it.id }) { song ->
+                        val selected = song.id in selectedSongIds
+                        SelectableSongRow(
+                            song = song,
+                            selected = selected,
+                            onClick = {
+                                selectedSongIds = if (selected) {
+                                    selectedSongIds - song.id
+                                } else {
+                                    selectedSongIds + song.id
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+        }
+
+        DetailListTopBar(
+            title = "Add songs",
+            subtitle = when (selectedSongIds.size) {
+                0 -> null
+                else -> formatCountLabel(selectedSongIds.size, "song")
+            },
+            onBack = onDismiss,
+            actions = listOf(
+                TopBarActionSpec(
+                    iconResId = R.drawable.ic_lucide_check,
+                    contentDescription = "Confirm added songs",
+                    onClick = {
+                        if (selectedSongIds.isNotEmpty()) {
+                            onAddSongs(selectedSongIds.toList())
+                        } else {
+                            onDismiss()
+                        }
+                    },
+                ),
+            ),
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
+    }
+}
+
+@Composable
+private fun SelectableCollectionRow(
+    title: String,
+    subtitle: String,
+    artUri: Uri?,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(ElovaireRadii.tile),
+        color = readableCardSurfaceColor(),
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(modifier = Modifier.size(62.dp)) {
+                ArtworkImage(
+                    uri = artUri,
+                    title = title,
+                    modifier = Modifier.matchParentSize(),
+                    cornerRadius = ElovaireRadii.artworkSmall,
+                )
+                SelectionIndicatorIcon(
+                    selected = selected,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp),
+                )
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = readableSecondaryTextColor(),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SelectableSongRow(
+    song: Song,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(ElovaireRadii.tile),
+        color = readableCardSurfaceColor(),
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(modifier = Modifier.size(44.dp)) {
+                ArtworkImage(
+                    uri = song.artUri,
+                    title = song.title,
+                    modifier = Modifier.matchParentSize(),
+                    cornerRadius = ElovaireRadii.artworkSmall,
+                )
+                SelectionIndicatorIcon(
+                    selected = selected,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(2.dp),
+                )
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                ExplicitTitleText(
+                    title = song.title,
+                    isExplicit = song.isExplicit,
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    text = song.artist,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = readableSecondaryTextColor(),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Text(
+                text = formatDuration(song.durationMs),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+            )
         }
     }
 }
@@ -9275,6 +9768,7 @@ private fun DetailListTopBar(
     title: String,
     subtitle: String?,
     onBack: () -> Unit,
+    actions: List<TopBarActionSpec> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
     val darkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
@@ -9285,6 +9779,7 @@ private fun DetailListTopBar(
                 title = title,
                 subtitle = subtitle,
                 onBack = onBack,
+                actions = actions,
             ),
         )
         return
@@ -16094,6 +16589,22 @@ private fun formatDuration(durationMs: Long): String {
 private fun formatPlaybackPosition(positionMs: Long): String {
     if (positionMs <= 0L) return "00:00"
     return formatTimestamp(positionMs)
+}
+
+private fun formatPlaylistDuration(durationMs: Long): String {
+    if (durationMs <= 0L) return "0 min."
+    val totalMinutes = durationMs / 60_000L
+    val hours = totalMinutes / 60L
+    val minutes = totalMinutes % 60L
+    return if (hours > 0L) {
+        if (minutes > 0L) {
+            "${hours}h ${minutes}min."
+        } else {
+            "${hours}h"
+        }
+    } else {
+        "${minutes.coerceAtLeast(1L)} min."
+    }
 }
 
 private fun formatTimestamp(durationMs: Long): String {

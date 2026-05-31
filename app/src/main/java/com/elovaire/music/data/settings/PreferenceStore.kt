@@ -174,6 +174,17 @@ class PreferenceStore(context: Context) {
         persistPlaylists(updated)
     }
 
+    fun updatePlaylistSongIds(
+        playlistId: Long,
+        songIds: List<Long>,
+    ) {
+        val normalizedIds = songIds.filter { it > 0L }
+        val updated = _userPlaylists.value.map { playlist ->
+            if (playlist.id != playlistId) playlist else playlist.copy(songIds = normalizedIds)
+        }
+        persistPlaylists(updated)
+    }
+
     fun deletePlaylists(playlistIds: Set<Long>) {
         if (playlistIds.isEmpty()) return
         val updated = _userPlaylists.value.filterNot { it.id in playlistIds }
