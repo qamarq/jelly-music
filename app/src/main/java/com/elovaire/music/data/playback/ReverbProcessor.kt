@@ -5,7 +5,7 @@ import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.pow
 
-private const val MAX_REVERB_DURATION_MS = 300
+private const val MAX_REVERB_DURATION_MS = 500
 private const val REVERB_STEP_MS = 50
 
 internal data class ReverbConfig(

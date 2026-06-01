@@ -300,27 +300,17 @@ object ElovaireMotion {
 
     fun topLevelEnter(
         forward: Boolean = true,
-        initialOffsetX: (fullWidth: Int) -> Int = { if (forward) it / 20 else -(it / 20) },
     ): EnterTransition = fadeIn(
         animationSpec = fadeMedium(),
-        initialAlpha = 0.76f,
-    ) +
-        slideInHorizontally(
-            animationSpec = offsetSoft(durationMillis = Standard),
-            initialOffsetX = initialOffsetX,
-        )
+        initialAlpha = 0.82f,
+    )
 
     fun topLevelExit(
         forward: Boolean = true,
-        targetOffsetX: (fullWidth: Int) -> Int = { if (forward) -(it / 24) else it / 24 },
     ): ExitTransition = fadeOut(
         animationSpec = fadeFast(),
-        targetAlpha = 0.92f,
-    ) +
-        slideOutHorizontally(
-            animationSpec = offsetSoft(durationMillis = Fast),
-            targetOffsetX = targetOffsetX,
-        )
+        targetAlpha = 0.9f,
+    )
 
     fun scaleDurationMillis(
         durationMillis: Long,

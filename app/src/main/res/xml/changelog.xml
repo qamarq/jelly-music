@@ -8,7 +8,6 @@
     -->
     <release version="1.9.4">
         <item>New feature in EQ - adjustable reverb effect</item>
-        <item>New view in Library-Albums in form of vertically scrollable cover flow</item>
         <item>New playlists layout</item>
         <item>Improved interactions for playlist creation and editing</item>
         <item>UI tweaks for settings and equalizer</item>

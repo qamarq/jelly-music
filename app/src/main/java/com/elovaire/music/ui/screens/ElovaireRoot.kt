@@ -632,7 +632,6 @@ private class SharedTopBarController {
 private enum class AlbumLayoutMode {
     Compact,
     Grid,
-    CoverFlow,
 }
 
 private enum class SongSortMode(
@@ -1543,13 +1542,33 @@ fun ElovaireRoot(
     val activeBottomRoute = routeOwnerOverrides[currentConcreteRoute]
         ?: topLevelOwnerRoute(currentRoute, browsingOriginRoute)
         ?: selectedBottomRoute
+    val topLevelRestoreRouteFor = remember(
+        lastHomeTabRoute,
+        lastLibraryTabRoute,
+        lastPlaylistsTabRoute,
+        lastSearchTabRoute,
+    ) {
+        { route: String ->
+            when (route) {
+                HOME_ROUTE -> lastHomeTabRoute
+                ALBUMS_ROUTE -> lastLibraryTabRoute
+                PLAYLISTS_ROUTE -> lastPlaylistsTabRoute
+                SEARCH_ROUTE -> lastSearchTabRoute
+                else -> route
+            }
+        }
+    }
+    val resetTopLevelTabState: (String) -> Unit = { route ->
+        when (route) {
+            HOME_ROUTE -> homeScrollRequestVersion += 1L
+            ALBUMS_ROUTE -> libraryScrollRequestVersion += 1L
+            PLAYLISTS_ROUTE -> playlistsScrollRequestVersion += 1L
+            SEARCH_ROUTE -> searchScrollRequestVersion += 1L
+        }
+    }
     val keyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
-    val isAlbumCoverFlowRouteActive =
-        currentConcreteRoute == "$LIBRARY_COLLECTION_ROUTE/${LibraryCollectionKind.Albums.name}" &&
-            albumCollectionLayoutMode == AlbumLayoutMode.CoverFlow
     val hideCompactNowPlaying = (keyboardVisible && currentRoute == PLAYLISTS_ROUTE) ||
-        (currentRoute == SEARCH_ROUTE && isSearchQueryActive) ||
-        isAlbumCoverFlowRouteActive
+        (currentRoute == SEARCH_ROUTE && isSearchQueryActive)
     val reserveCompactNowPlayingSpace = playbackState.currentSong != null && !hideCompactNowPlaying
     val canHostCompactNowPlaying = playbackState.currentSong != null
     val showGlobalNowPlaying = canHostCompactNowPlaying && !hideCompactNowPlaying && !isPlayerOverlayVisible
@@ -2149,6 +2168,10 @@ fun ElovaireRoot(
                             onUpdateSongOrder = { songIds ->
                                 container.preferenceStore.updatePlaylistSongIds(playlistId, songIds)
                             },
+                            onRenamePlaylist = container.preferenceStore::renamePlaylist,
+                            onDeletePlaylist = { targetPlaylistId ->
+                                container.preferenceStore.deletePlaylists(setOf(targetPlaylistId))
+                            },
                             onToggleFavorite = container.preferenceStore::toggleFavoriteSong,
                         )
                     }
@@ -2343,6 +2366,10 @@ fun ElovaireRoot(
                             onSpaciousnessModeChanged = container.preferenceStore::updateSpaciousnessMode,
                             onReverbDurationChanged = container.preferenceStore::updateReverbDurationMs,
                             onReverbProfileChanged = container.preferenceStore::updateReverbProfile,
+                            onResetReverb = {
+                                container.preferenceStore.updateReverbDurationMs(0)
+                                container.preferenceStore.updateReverbProfile(ReverbProfile.Dry)
+                            },
                             onApplyPreset = container.preferenceStore::setEqSettings,
                             onReset = container.preferenceStore::resetEqSettings,
                         )
@@ -2563,35 +2590,27 @@ fun ElovaireRoot(
                         destinations = topLevelDestinations,
                         onNavigate = { route ->
                             val currentTopLevelRoute = activeBottomRoute
-                            if (route == currentTopLevelRoute && currentRoute != route) {
-                                selectedBottomRoute = route
-                                val poppedToTabRoot = navController.popBackStack(route, inclusive = false)
-                                if (!poppedToTabRoot) {
-                                    navController.navigate(route) {
-                                        launchSingleTop = true
-                                        restoreState = true
-                                        popUpTo(navController.graph.findStartDestination().id) {
-                                            saveState = true
+                            val targetRestoreRoute = topLevelRestoreRouteFor(route)
+                            browsingOriginRoute = route
+                            selectedBottomRoute = route
+                            routeOwnerOverrides[targetRestoreRoute] = route
+                            if (route == currentTopLevelRoute) {
+                                if (currentRoute != route) {
+                                    val poppedToTabRoot = navController.popBackStack(route, inclusive = false)
+                                    if (!poppedToTabRoot) {
+                                        navController.navigate(route) {
+                                            launchSingleTop = true
+                                            restoreState = true
+                                            popUpTo(navController.graph.findStartDestination().id) {
+                                                saveState = true
+                                            }
                                         }
                                     }
+                                } else {
+                                    resetTopLevelTabState(route)
                                 }
-                            } else if (route == currentTopLevelRoute) {
-                                when (route) {
-                                    HOME_ROUTE -> homeScrollRequestVersion += 1L
-                                    ALBUMS_ROUTE -> libraryScrollRequestVersion += 1L
-                                    PLAYLISTS_ROUTE -> playlistsScrollRequestVersion += 1L
-                                    SEARCH_ROUTE -> searchScrollRequestVersion += 1L
-                                }
-                            } else if (route != currentTopLevelRoute) {
-                                selectedBottomRoute = route
-                                val restoreRoute = when (route) {
-                                    HOME_ROUTE -> lastHomeTabRoute
-                                    ALBUMS_ROUTE -> lastLibraryTabRoute
-                                    PLAYLISTS_ROUTE -> lastPlaylistsTabRoute
-                                    SEARCH_ROUTE -> lastSearchTabRoute
-                                    else -> route
-                                }
-                                navController.navigate(restoreRoute) {
+                            } else {
+                                navController.navigate(targetRestoreRoute) {
                                     launchSingleTop = true
                                     restoreState = true
                                     popUpTo(navController.graph.findStartDestination().id) {
@@ -4294,7 +4313,6 @@ private fun AlbumCollectionContent(
     var showPlaylistPicker by rememberSaveable { mutableStateOf(false) }
     val listState = rememberElovaireLazyListState(title, "album_collection_list")
     val gridState = rememberElovaireLazyGridState(title, "album_collection_grid")
-    val coverFlowState = rememberElovaireLazyListState(title, "album_collection_coverflow")
     val selectionModeActive = selectedAlbumIds.isNotEmpty()
     val sortedAlbums = remember(albums, sortMode) {
         when (sortMode) {
@@ -4455,35 +4473,6 @@ private fun AlbumCollectionContent(
                 )
             }
 
-            AlbumLayoutMode.CoverFlow -> {
-                AlbumCoverFlowContent(
-                    albums = sortedAlbums,
-                    topPadding = topPadding + selectionTopInset + 8.dp,
-                    bottomPadding = bottomPadding,
-                    selectionMode = selectionModeActive,
-                    selectedAlbumIds = selectedAlbumIds,
-                    sortMode = sortMode,
-                    showSortOptions = showSortOptions,
-                    state = coverFlowState,
-                    onToggleSortOptions = { showSortOptions = !showSortOptions },
-                    onSortModeChanged = {
-                        onSortModeChanged(it)
-                        showSortOptions = false
-                    },
-                    onLayoutModeChanged = onLayoutModeChanged,
-                    onAlbumOpen = { album, origin ->
-                        if (selectionModeActive) {
-                            selectedAlbumIds = selectedAlbumIds.toggleSelection(album.id)
-                        } else {
-                            onAlbumSelected(album, origin)
-                        }
-                    },
-                    onAlbumLongPress = { album ->
-                        showSortOptions = false
-                        selectedAlbumIds = selectedAlbumIds + album.id
-                    },
-                )
-            }
         }
         AnimatedVisibility(
             visible = selectionModeActive,
@@ -4551,225 +4540,6 @@ private fun AlbumCollectionContent(
 }
 
 @Composable
-private fun AlbumCoverFlowContent(
-    albums: List<Album>,
-    topPadding: Dp,
-    bottomPadding: Dp,
-    selectionMode: Boolean,
-    selectedAlbumIds: Set<Long>,
-    sortMode: AlbumSortMode,
-    showSortOptions: Boolean,
-    state: LazyListState,
-    onToggleSortOptions: () -> Unit,
-    onSortModeChanged: (AlbumSortMode) -> Unit,
-    onLayoutModeChanged: (AlbumLayoutMode) -> Unit,
-    onAlbumOpen: (Album, ExpandOrigin) -> Unit,
-    onAlbumLongPress: (Album) -> Unit,
-) {
-    val snapFlingBehavior = rememberSnapFlingBehavior(lazyListState = state)
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val footerHeight = 80.dp
-        val footerBottomInset = (bottomPadding - ElovaireSpacing.scrollTailPadding).let { inset ->
-            if (inset > 0.dp) inset else 0.dp
-        }
-        val controlsTopInset = topPadding
-        val controlsHeight = 34.dp
-        val viewportTopInset = controlsTopInset + controlsHeight + 18.dp
-        val viewportBottomInset = footerBottomInset + footerHeight + 16.dp
-        val viewportHeight = (maxHeight - viewportTopInset - viewportBottomInset).let { available ->
-            if (available > 0.dp) available else 0.dp
-        }
-        val slotHeight = 122.dp
-        val cardSize = listOf(maxWidth * 0.6f, 280.dp, maxWidth - 88.dp).minBy { it.value }
-        val centerPadding = if (viewportHeight > slotHeight) {
-            (viewportHeight / 2f) - (slotHeight / 2f)
-        } else {
-            0.dp
-        }
-        val density = LocalDensity.current
-        val slotHeightPx = with(density) { slotHeight.toPx() }.coerceAtLeast(1f)
-        val centeredAlbumIndex by remember(state, albums) {
-            derivedStateOf {
-                if (albums.isEmpty()) {
-                    return@derivedStateOf 0
-                }
-                val layoutInfo = state.layoutInfo
-                val viewportCenter = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2
-                layoutInfo.visibleItemsInfo
-                    .filter { it.index in albums.indices }
-                    .minByOrNull { itemInfo ->
-                        kotlin.math.abs((itemInfo.offset + (itemInfo.size / 2)) - viewportCenter)
-                    }
-                    ?.index
-                    ?.coerceIn(0, albums.lastIndex)
-                    ?: 0
-            }
-        }
-        val focusedAlbum = albums.getOrNull(centeredAlbumIndex)
-
-        Box(modifier = Modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 20.dp, top = controlsTopInset, end = 20.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                AlbumSortControl(
-                    selected = sortMode,
-                    expanded = showSortOptions,
-                    onToggleExpanded = onToggleSortOptions,
-                    onSelect = onSortModeChanged,
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-                LibraryModeToggle(
-                    layoutMode = AlbumLayoutMode.CoverFlow,
-                    onLayoutModeChanged = onLayoutModeChanged,
-                )
-            }
-
-            LazyColumn(
-                state = state,
-                flingBehavior = snapFlingBehavior,
-                overscrollEffect = null,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(top = viewportTopInset)
-                    .padding(bottom = viewportBottomInset)
-                    .ensureSingleItemRubberBand(state),
-                contentPadding = PaddingValues(top = centerPadding, bottom = centerPadding),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                itemsIndexed(albums, key = { _, album -> album.id }) { index, album ->
-                    val layoutInfo = state.layoutInfo
-                    val itemInfo = layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
-                    val viewportCenter = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2f
-                    val distanceFraction = if (itemInfo != null) {
-                        (((itemInfo.offset + (itemInfo.size / 2f)) - viewportCenter) / slotHeightPx).coerceIn(-2.2f, 2.2f)
-                    } else {
-                        2.2f
-                    }
-                    val prominence = (1f - kotlin.math.abs(distanceFraction).coerceIn(0f, 1f))
-                    AlbumCoverFlowCard(
-                        album = album,
-                        cardSize = cardSize,
-                        slotHeight = slotHeight,
-                        depthFraction = distanceFraction,
-                        prominence = prominence,
-                        selectionMode = selectionMode,
-                        selected = album.id in selectedAlbumIds,
-                        enabled = index == centeredAlbumIndex,
-                        onOpen = { origin -> onAlbumOpen(album, origin) },
-                        onLongPress = { onAlbumLongPress(album) },
-                    )
-                }
-            }
-
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(footerHeight)
-                    .padding(bottom = footerBottomInset),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                Text(
-                    text = focusedAlbum?.title.orEmpty(),
-                    modifier = Modifier.fillMaxWidth(0.8f),
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = focusedAlbum?.artist.orEmpty(),
-                    modifier = Modifier.fillMaxWidth(0.8f),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = readableSecondaryTextColor(),
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun AlbumCoverFlowCard(
-    album: Album,
-    cardSize: Dp,
-    slotHeight: Dp,
-    depthFraction: Float,
-    prominence: Float,
-    selectionMode: Boolean,
-    selected: Boolean,
-    enabled: Boolean,
-    onOpen: (ExpandOrigin) -> Unit,
-    onLongPress: () -> Unit,
-) {
-    val screenSizePx = screenContainerSizePx()
-    val screenWidthPx = screenSizePx.width.toFloat()
-    val screenHeightPx = screenSizePx.height.toFloat()
-    var bounds by remember(album.id) { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
-    val scale = 0.72f + (prominence * 0.28f)
-    val alpha = 0.34f + (prominence * 0.66f)
-    val rotationY = depthFraction * -32f
-    val translationX = depthFraction * 34f
-    val translationY = kotlin.math.abs(depthFraction) * 8f
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(slotHeight),
-        contentAlignment = Alignment.Center,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(cardSize)
-                .zIndex(1f - kotlin.math.abs(depthFraction).coerceIn(0f, 1f))
-                .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                    this.alpha = alpha
-                    this.rotationY = rotationY
-                    this.translationX = translationX.dp.toPx()
-                    this.translationY = translationY.dp.toPx()
-                    cameraDistance = 18f * density
-                }
-                .onGloballyPositioned { bounds = it.boundsInWindow() }
-                .combinedClickable(
-                    enabled = enabled,
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = { onOpen(bounds.toExpandOrigin(screenWidthPx, screenHeightPx)) },
-                    onLongClick = onLongPress,
-                ),
-        ) {
-            ArtworkImage(
-                uri = album.artUri,
-                title = album.title,
-                modifier = Modifier.matchParentSize(),
-                cornerRadius = ElovaireRadii.artwork,
-                requestedSizePx = 640,
-                showArtworkGlow = enabled,
-            )
-            if (selectionMode) {
-                SelectionIndicatorIcon(
-                    selected = selected,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(10.dp),
-                )
-            }
-        }
-    }
-}
-
-@Composable
 private fun TopBarSelectionMenu(
     topBarHeight: Dp,
     onAddToPlaylist: () -> Unit,
@@ -4815,6 +4585,64 @@ private fun TopBarSelectionMenu(
                 tint = DestructiveRed,
                 modifier = Modifier.weight(1f),
                 onClick = onDelete,
+            )
+        }
+    }
+}
+
+private data class TopBarMenuAction(
+    @DrawableRes val iconResId: Int,
+    val label: String,
+    val tint: Color,
+    val onClick: () -> Unit,
+)
+
+@Composable
+private fun TopBarDualActionMenu(
+    topBarHeight: Dp,
+    leadingAction: TopBarMenuAction,
+    trailingAction: TopBarMenuAction,
+    modifier: Modifier = Modifier,
+) {
+    val darkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(topBarHeight + 50.dp),
+    ) {
+        FrostedTopBarBackground(
+            darkTheme = darkTheme,
+            modifier = Modifier.matchParentSize(),
+        )
+        Row(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(50.dp)
+                .padding(horizontal = 14.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            AlbumCollectionActionButton(
+                iconResId = leadingAction.iconResId,
+                label = leadingAction.label,
+                tint = leadingAction.tint,
+                modifier = Modifier.weight(1f),
+                onClick = leadingAction.onClick,
+            )
+            Box(
+                modifier = Modifier
+                    .padding(horizontal = 8.dp)
+                    .width(1.dp)
+                    .height(20.dp)
+                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)),
+            )
+            AlbumCollectionActionButton(
+                iconResId = trailingAction.iconResId,
+                label = trailingAction.label,
+                tint = trailingAction.tint,
+                modifier = Modifier.weight(1f),
+                onClick = trailingAction.onClick,
             )
         }
     }
@@ -4966,10 +4794,17 @@ private fun PlaylistsScreen(
 ) {
     var playlistBeingRenamed by remember { mutableStateOf<Playlist?>(null) }
     var selectedPlaylistIds by rememberSaveable { mutableStateOf(setOf<Long>()) }
-    var deleteConfirmationVisible by rememberSaveable { mutableStateOf(false) }
     val songsById = remember(libraryState.songs) { libraryState.songs.associateBy { it.id } }
     val gridState = rememberElovaireLazyGridState("playlists_screen")
     val editMode = selectedPlaylistIds.isNotEmpty()
+    val selectionTopInset by animateDpAsState(
+        targetValue = if (editMode) 50.dp else 0.dp,
+        animationSpec = ElovaireMotion.sizeSoft(),
+        label = "playlist_selection_top_inset",
+    )
+    BackHandler(enabled = editMode) {
+        selectedPlaylistIds = emptySet()
+    }
     LaunchedEffect(scrollToTopRequestVersion) {
         if (scrollToTopRequestVersion > 0L) {
             gridState.animateScrollToItem(0)
@@ -4979,7 +4814,7 @@ private fun PlaylistsScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(top = topPadding, bottom = bottomPadding),
+            .padding(top = topPadding + selectionTopInset, bottom = bottomPadding),
     ) {
         if (playlists.isEmpty()) {
             EmptyPlaylistState(
@@ -5014,9 +4849,6 @@ private fun PlaylistsScreen(
                         onClick = { origin ->
                             if (editMode && !playlist.isSystem) {
                                 selectedPlaylistIds = selectedPlaylistIds.togglePlaylistSelection(playlist.id)
-                                if (selectedPlaylistIds.isEmpty()) {
-                                    deleteConfirmationVisible = false
-                                }
                             } else {
                                 onOpenPlaylist(playlist, origin)
                             }
@@ -5024,7 +4856,6 @@ private fun PlaylistsScreen(
                         onLongPress = {
                             if (!playlist.isSystem) {
                                 selectedPlaylistIds = selectedPlaylistIds.togglePlaylistSelection(playlist.id)
-                                deleteConfirmationVisible = false
                             }
                         },
                     )
@@ -5035,76 +4866,38 @@ private fun PlaylistsScreen(
         AnimatedVisibility(
             visible = editMode,
             modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 14.dp),
-            enter = fadeIn(animationSpec = tween(180)) + slideInVertically(
-                animationSpec = tween(220, easing = FastOutSlowInEasing),
-                initialOffsetY = { it / 2 },
-            ),
-            exit = fadeOut(animationSpec = tween(160)) + slideOutVertically(
-                animationSpec = tween(180, easing = FastOutSlowInEasing),
-                targetOffsetY = { it / 2 },
-            ),
+                .fillMaxWidth()
+                .align(Alignment.TopCenter)
+                .zIndex(3f),
+            enter = fadeIn(animationSpec = tween(160)) + expandVertically(animationSpec = tween(220)),
+            exit = fadeOut(animationSpec = tween(120)) + androidx.compose.animation.shrinkVertically(animationSpec = tween(180)),
         ) {
-            val renameEnabled = selectedPlaylistIds.size == 1
-            val deleteLabel = if (deleteConfirmationVisible) "Delete" else "Delete"
-            DynamicBackdropSurface(
-                shape = RoundedCornerShape(ElovaireRadii.pill),
-                overlayAlpha = 0.7f,
-                borderColor = blurSurfaceBorderColor(),
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (deleteConfirmationVisible) {
-                        PlaylistActionPill(
-                            label = "Delete",
-                            enabled = true,
-                            backgroundColor = DestructiveRed.copy(alpha = 0.2f),
-                            contentColor = DestructiveRed,
-                            onClick = {
-                                onDeletePlaylists(selectedPlaylistIds)
-                                selectedPlaylistIds = emptySet()
-                                deleteConfirmationVisible = false
-                            },
-                        )
-                        PlaylistActionPill(
-                            label = "Cancel",
-                            enabled = true,
-                            backgroundColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
-                            contentColor = MaterialTheme.colorScheme.onSurface,
-                            onClick = { deleteConfirmationVisible = false },
-                        )
+            TopBarDualActionMenu(
+                topBarHeight = topPadding,
+                leadingAction = TopBarMenuAction(
+                    iconResId = R.drawable.ic_lucide_square_pen,
+                    label = "Rename",
+                    tint = if (selectedPlaylistIds.size == 1) {
+                        MaterialTheme.colorScheme.onSurface
                     } else {
-                        PlaylistActionPill(
-                            label = "Rename",
-                            enabled = renameEnabled,
-                            backgroundColor = if (renameEnabled) {
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
-                            } else {
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
-                            },
-                            contentColor = if (renameEnabled) {
-                                MaterialTheme.colorScheme.onSurface
-                            } else {
-                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
-                            },
-                            onClick = {
-                                playlistBeingRenamed = playlists.firstOrNull { it.id == selectedPlaylistIds.firstOrNull() }
-                            },
-                        )
-                        PlaylistActionPill(
-                            label = deleteLabel,
-                            enabled = true,
-                            backgroundColor = DestructiveRed.copy(alpha = 0.2f),
-                            contentColor = DestructiveRed,
-                            onClick = { deleteConfirmationVisible = true },
-                        )
-                    }
-                }
-            }
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.32f)
+                    },
+                    onClick = {
+                        if (selectedPlaylistIds.size == 1) {
+                            playlistBeingRenamed = playlists.firstOrNull { it.id == selectedPlaylistIds.firstOrNull() }
+                        }
+                    },
+                ),
+                trailingAction = TopBarMenuAction(
+                    iconResId = R.drawable.ic_lucide_trash_2,
+                    label = "Delete",
+                    tint = DestructiveRed,
+                    onClick = {
+                        onDeletePlaylists(selectedPlaylistIds)
+                        selectedPlaylistIds = emptySet()
+                    },
+                ),
+            )
         }
 
         playlistBeingRenamed?.let { playlist ->
@@ -5117,7 +4910,6 @@ private fun PlaylistsScreen(
                     onRenamePlaylist(playlist.id, name)
                     playlistBeingRenamed = null
                     selectedPlaylistIds = emptySet()
-                    deleteConfirmationVisible = false
                 },
             )
         }
@@ -7229,7 +7021,7 @@ private fun LibraryModeToggle(
     layoutMode: AlbumLayoutMode,
     onLayoutModeChanged: (AlbumLayoutMode) -> Unit,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         ToggleIconChip(
             iconResId = R.drawable.ic_lucide_list,
             selected = layoutMode == AlbumLayoutMode.Compact,
@@ -7241,12 +7033,6 @@ private fun LibraryModeToggle(
             selected = layoutMode == AlbumLayoutMode.Grid,
             contentDescription = "Grid",
             onClick = { onLayoutModeChanged(AlbumLayoutMode.Grid) },
-        )
-        ToggleIconChip(
-            iconResId = R.drawable.ic_lucide_gallery_vertical_end,
-            selected = layoutMode == AlbumLayoutMode.CoverFlow,
-            contentDescription = "Vertical cover flow",
-            onClick = { onLayoutModeChanged(AlbumLayoutMode.CoverFlow) },
         )
     }
 }
@@ -9045,6 +8831,8 @@ private fun PlaylistDetailScreen(
     onSongSelected: (Song, List<Song>) -> Unit,
     onAddSongs: (List<Long>) -> Unit,
     onUpdateSongOrder: (List<Long>) -> Unit,
+    onRenamePlaylist: (Long, String) -> Unit,
+    onDeletePlaylist: (Long) -> Unit,
     onToggleFavorite: (Long) -> Unit,
 ) {
     if (playlist == null) {
@@ -9058,6 +8846,8 @@ private fun PlaylistDetailScreen(
     var editMode by rememberSaveable(playlist.id) { mutableStateOf(false) }
     var showAddSongsPicker by rememberSaveable(playlist.id) { mutableStateOf(false) }
     var editableSongIds by rememberSaveable(playlist.id) { mutableStateOf(playlist.songIds) }
+    var showEditModeMenu by rememberSaveable(playlist.id) { mutableStateOf(false) }
+    var showRenameDialog by rememberSaveable(playlist.id) { mutableStateOf(false) }
     LaunchedEffect(playlist.id, playlist.songIds, editMode) {
         if (!editMode) {
             editableSongIds = playlist.songIds
@@ -9069,6 +8859,11 @@ private fun PlaylistDetailScreen(
     }
     val playlistDurationMs = remember(playlistSongs) { playlistSongs.sumOf { it.durationMs } }
     val detailTopPadding = detailTopBarOccupiedHeight()
+    val editMenuTopInset by animateDpAsState(
+        targetValue = if (editMode && showEditModeMenu) 50.dp else 0.dp,
+        animationSpec = ElovaireMotion.sizeSoft(),
+        label = "playlist_edit_menu_top_inset",
+    )
     val topBarActions = remember(editMode, playlist.isSystem) {
         buildList {
             if (editMode && !playlist.isSystem) {
@@ -9089,14 +8884,25 @@ private fun PlaylistDetailScreen(
                             if (editMode) {
                                 onUpdateSongOrder(editableSongIds)
                                 editMode = false
+                                showEditModeMenu = false
                             } else {
                                 editableSongIds = playlist.songIds
                                 editMode = true
+                                showEditModeMenu = true
                             }
                         },
                     ),
                 )
             }
+        }
+    }
+    BackHandler(enabled = showAddSongsPicker || editMode) {
+        if (showAddSongsPicker) {
+            showAddSongsPicker = false
+        } else if (editMode) {
+            onUpdateSongOrder(editableSongIds)
+            editMode = false
+            showEditModeMenu = false
         }
     }
     Box(
@@ -9114,7 +8920,7 @@ private fun PlaylistDetailScreen(
                 .ensureSingleItemRubberBand(listState),
             contentPadding = PaddingValues(
                 start = 20.dp,
-                top = detailTopPadding + ElovaireSpacing.albumHeaderTopGap,
+                top = detailTopPadding + ElovaireSpacing.albumHeaderTopGap + editMenuTopInset,
                 end = 20.dp,
                 bottom = bottomPadding,
             ),
@@ -9244,6 +9050,7 @@ private fun PlaylistDetailScreen(
                                     }
                                 }
                             },
+                            showOverflowMenu = !editMode,
                             showDivider = index != playlistSongs.lastIndex,
                         )
                     }
@@ -9258,8 +9065,9 @@ private fun PlaylistDetailScreen(
                 if (showAddSongsPicker) {
                     showAddSongsPicker = false
                 } else if (editMode) {
+                    onUpdateSongOrder(editableSongIds)
                     editMode = false
-                    editableSongIds = playlist.songIds
+                    showEditModeMenu = false
                 } else {
                     onBack()
                 }
@@ -9267,6 +9075,36 @@ private fun PlaylistDetailScreen(
             actions = topBarActions,
             modifier = Modifier.align(Alignment.TopCenter),
         )
+        AnimatedVisibility(
+            visible = editMode && showEditModeMenu && !playlist.isSystem,
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopCenter)
+                .zIndex(3f),
+            enter = fadeIn(animationSpec = tween(160)) + expandVertically(animationSpec = tween(220)),
+            exit = fadeOut(animationSpec = tween(120)) + androidx.compose.animation.shrinkVertically(animationSpec = tween(180)),
+        ) {
+            TopBarDualActionMenu(
+                topBarHeight = detailTopPadding,
+                leadingAction = TopBarMenuAction(
+                    iconResId = R.drawable.ic_lucide_square_pen,
+                    label = "Rename",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    onClick = { showRenameDialog = true },
+                ),
+                trailingAction = TopBarMenuAction(
+                    iconResId = R.drawable.ic_lucide_trash_2,
+                    label = "Delete",
+                    tint = DestructiveRed,
+                    onClick = {
+                        onDeletePlaylist(playlist.id)
+                        showEditModeMenu = false
+                        editMode = false
+                        onBack()
+                    },
+                ),
+            )
+        }
     }
 
     if (showAddSongsPicker && !playlist.isSystem) {
@@ -9277,6 +9115,18 @@ private fun PlaylistDetailScreen(
             onAddSongs = { selectedSongIds ->
                 editableSongIds = (editableSongIds + selectedSongIds).distinct()
                 showAddSongsPicker = false
+            },
+        )
+    }
+    if (showRenameDialog && !playlist.isSystem) {
+        PlaylistNameDialog(
+            title = "Rename playlist",
+            confirmLabel = "Save",
+            initialName = playlist.name,
+            onDismiss = { showRenameDialog = false },
+            onConfirm = { name ->
+                onRenamePlaylist(playlist.id, name)
+                showRenameDialog = false
             },
         )
     }
@@ -9297,6 +9147,7 @@ private fun PlaylistSongRow(
 ) {
     val density = LocalDensity.current
     val reorderStepPx = remember(density) { with(density) { 28.dp.toPx() } }
+    var reorderDragAccumulator by remember(song.id, editMode) { mutableFloatStateOf(0f) }
     Column {
         Row(
             modifier = Modifier
@@ -9325,13 +9176,26 @@ private fun PlaylistSongRow(
                         .size(22.dp)
                         .pointerInput(song.id, editMode) {
                             detectVerticalDragGestures(
+                                onDragStart = {
+                                    reorderDragAccumulator = 0f
+                                },
                                 onVerticalDrag = { change, dragAmount ->
                                     change.consume()
-                                    if (dragAmount <= -reorderStepPx) {
+                                    reorderDragAccumulator += dragAmount
+                                    while (reorderDragAccumulator <= -reorderStepPx) {
                                         onMoveBy(-1)
-                                    } else if (dragAmount >= reorderStepPx) {
-                                        onMoveBy(1)
+                                        reorderDragAccumulator += reorderStepPx
                                     }
+                                    while (reorderDragAccumulator >= reorderStepPx) {
+                                        onMoveBy(1)
+                                        reorderDragAccumulator -= reorderStepPx
+                                    }
+                                },
+                                onDragEnd = {
+                                    reorderDragAccumulator = 0f
+                                },
+                                onDragCancel = {
+                                    reorderDragAccumulator = 0f
                                 },
                             )
                         },
@@ -13250,6 +13114,7 @@ private fun EqualizerScreen(
     onSpaciousnessModeChanged: (SpaciousnessMode) -> Unit,
     onReverbDurationChanged: (Int) -> Unit,
     onReverbProfileChanged: (ReverbProfile) -> Unit,
+    onResetReverb: () -> Unit,
     onApplyPreset: (EqSettings) -> Unit,
     onReset: () -> Unit,
 ) {
@@ -13401,6 +13266,12 @@ private fun EqualizerScreen(
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
+                                EqPresetPill(
+                                    label = "Reset",
+                                    selected = settings.reverbDurationMs <= 0,
+                                    useSubtleIdleBackground = true,
+                                    onClick = onResetReverb,
+                                )
                                 ReverbProfile.entries.forEach { profile ->
                                     EqPresetPill(
                                         label = profile.displayLabel(),
@@ -13413,6 +13284,7 @@ private fun EqualizerScreen(
                             ReverbStepSlider(
                                 valueMs = settings.reverbDurationMs,
                                 onValueChange = onReverbDurationChanged,
+                                modifier = Modifier.fillMaxWidth(),
                             )
                         }
                     }
@@ -14656,9 +14528,9 @@ private fun ReverbStepSlider(
     onValueChange: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val steps = remember { (0..300 step 50).toList() }
+    val steps = remember { (0..500 step 50).toList() }
     val currentOnValueChange by rememberUpdatedState(onValueChange)
-    val selectedValue = ((valueMs.coerceIn(0, 300) / 50) * 50)
+    val selectedValue = steps.minByOrNull { kotlin.math.abs(it - valueMs.coerceIn(0, 500)) } ?: 0
     val selectedIndex = steps.indexOf(selectedValue).coerceAtLeast(0)
     val maxIndex = (steps.size - 1).coerceAtLeast(1)
     val knobSize = 20.dp
@@ -14678,21 +14550,21 @@ private fun ReverbStepSlider(
 
     BoxWithConstraints(
         modifier = modifier
-            .fillMaxWidth()
             .height(36.dp)
             .horizontalGestureSafe(),
     ) {
         val density = LocalDensity.current
         val maxWidthPx = with(density) { maxWidth.toPx() }
-        val stepFraction = selectedIndex.toFloat() / maxIndex.toFloat()
         val knobSizePx = with(density) { knobSize.toPx() }
-        val selectedCenterPx = maxWidthPx * stepFraction
+        val trackStartPx = knobSizePx / 2f
+        val trackWidthPx = (maxWidthPx - knobSizePx).coerceAtLeast(1f)
+        val selectedCenterPx = trackStartPx + (trackWidthPx * (selectedIndex.toFloat() / maxIndex.toFloat()))
         val stepCenters = remember(maxWidthPx, maxIndex) {
             steps.indices.map { index ->
                 if (maxIndex == 0) {
                     maxWidthPx / 2f
                 } else {
-                    maxWidthPx * (index.toFloat() / maxIndex.toFloat())
+                    trackStartPx + (trackWidthPx * (index.toFloat() / maxIndex.toFloat()))
                 }
             }
         }
@@ -14716,7 +14588,7 @@ private fun ReverbStepSlider(
             label = "reverb_step_knob_offset",
         )
         val updateFromPosition: (Float) -> Unit = { xPosition ->
-            val clampedX = xPosition.coerceIn(0f, maxWidthPx)
+            val clampedX = xPosition.coerceIn(trackStartPx, trackStartPx + trackWidthPx)
             dragCenterPx = clampedX
             val targetIndex = stepCenters
                 .withIndex()
@@ -14760,8 +14632,9 @@ private fun ReverbStepSlider(
         ) {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.Center)
+                    .align(Alignment.CenterStart)
+                    .offset(x = with(density) { trackStartPx.toDp() })
+                    .width(with(density) { trackWidthPx.toDp() })
                     .height(2.dp)
                     .clip(RoundedCornerShape(ElovaireRadii.pill))
                     .background(lineColor),
@@ -14771,15 +14644,15 @@ private fun ReverbStepSlider(
                 val selectedDotRadius = 3.5.dp.toPx()
                 val defaultDotRadius = 2.5.dp.toPx()
                 val centerY = size.height / 2f
-                steps.forEachIndexed { index, _ ->
-                    val fraction = if (maxIndex == 0) 0f else index.toFloat() / maxIndex.toFloat()
-                    drawCircle(
-                        color = dotColor,
-                        radius = if (index == selectedIndex) selectedDotRadius else defaultDotRadius,
-                        center = Offset(size.width * fraction, centerY),
-                    )
+                    steps.forEachIndexed { index, _ ->
+                        val fraction = if (maxIndex == 0) 0f else index.toFloat() / maxIndex.toFloat()
+                        drawCircle(
+                            color = dotColor,
+                            radius = if (index == selectedIndex) selectedDotRadius else defaultDotRadius,
+                            center = Offset(trackStartPx + (trackWidthPx * fraction), centerY),
+                        )
+                    }
                 }
-            }
 
             Box(
                 modifier = Modifier

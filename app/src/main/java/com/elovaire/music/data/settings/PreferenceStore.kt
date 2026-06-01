@@ -424,7 +424,7 @@ class PreferenceStore(context: Context) {
     }
 
     private fun normalizeReverbDurationMs(valueMs: Int): Int {
-        return (valueMs.coerceIn(0, MAX_REVERB_DURATION_MS) / REVERB_STEP_MS) * REVERB_STEP_MS
+        return ((valueMs.coerceIn(0, MAX_REVERB_DURATION_MS) + (REVERB_STEP_MS / 2)) / REVERB_STEP_MS) * REVERB_STEP_MS
     }
 
     private fun loadTextSizePreset(): TextSizePreset {
@@ -678,7 +678,7 @@ class PreferenceStore(context: Context) {
         const val DEFAULT_ALBUM_COLLECTION_SORT_MODE = "Artist"
         const val DEFAULT_SONG_COLLECTION_SORT_MODE = "Title"
         const val REVERB_STEP_MS = 50
-        const val MAX_REVERB_DURATION_MS = 300
+        const val MAX_REVERB_DURATION_MS = 500
         const val RECORD_SEPARATOR = "\u001E"
         const val FIELD_SEPARATOR = "\u001F"
     }
