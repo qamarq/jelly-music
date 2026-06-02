@@ -1067,9 +1067,8 @@ private fun Song.inferPlaybackMimeType(): String? {
     val extension = fileName.substringAfterLast('.', "").lowercase()
     val normalizedFormat = audioFormat.uppercase()
     return when {
+        normalizedFormat == "ALAC" || extension == "alac" -> "audio/alac"
         extension in setOf("aif", "aiff", "aifc") || normalizedFormat == "AIFF" -> "audio/aiff"
-        extension == "alac" -> "audio/alac"
-        normalizedFormat == "ALAC" -> "audio/mp4"
         extension in setOf("m4a", "mp4") -> "audio/mp4"
         extension == "aac" || normalizedFormat == "AAC" -> "audio/aac"
         extension == "flac" || normalizedFormat == "FLAC" -> "audio/flac"

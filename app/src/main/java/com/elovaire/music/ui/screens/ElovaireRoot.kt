@@ -73,6 +73,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.overscroll
 import androidx.compose.foundation.rememberOverscrollEffect
@@ -94,6 +95,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.navigationBars
@@ -326,6 +328,26 @@ private val EQ_GRAPH_EDGE_PADDING = 18.dp
 private val aboutLogoImageCache = java.util.concurrent.ConcurrentHashMap<String, androidx.compose.ui.graphics.ImageBitmap>()
 private val lazyListPositionCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Int, Int>>()
 private val lazyGridPositionCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Int, Int>>()
+private val scrollPositionCache = java.util.concurrent.ConcurrentHashMap<String, Int>()
+private val topLevelScrollCachePrefixes = mapOf(
+    HOME_ROUTE to listOf("home_screen"),
+    ALBUMS_ROUTE to listOf(
+        "library_hub",
+        "song_collection_list",
+        "artist_collection",
+        "genre_collection",
+        "album_collection_list",
+        "album_collection_grid",
+        "artist_detail",
+        "album_detail",
+    ),
+    PLAYLISTS_ROUTE to listOf(
+        "playlists_screen",
+        "playlist_detail",
+        "playlist_add_songs_overlay",
+    ),
+    SEARCH_ROUTE to listOf("search_screen"),
+)
 
 private data class TopLevelDestination(
     val route: String,
@@ -1033,6 +1055,20 @@ private fun Set<Long>.toggleSelection(id: Long): Set<Long> {
     return if (id in this) this - id else this + id
 }
 
+private fun clearTopLevelScrollPositionMemory(route: String) {
+    val prefixes = topLevelScrollCachePrefixes[route].orEmpty()
+    if (prefixes.isEmpty()) return
+    lazyListPositionCache.keys.removeIf { cacheKey ->
+        prefixes.any { prefix -> cacheKey.contains(prefix) }
+    }
+    lazyGridPositionCache.keys.removeIf { cacheKey ->
+        prefixes.any { prefix -> cacheKey.contains(prefix) }
+    }
+    scrollPositionCache.keys.removeIf { cacheKey ->
+        prefixes.any { prefix -> cacheKey.contains(prefix) }
+    }
+}
+
 @Composable
 private fun rememberElovaireLazyGridState(vararg inputs: Any?): LazyGridState {
     val cacheKey = remember(*inputs) {
@@ -1049,6 +1085,19 @@ private fun rememberElovaireLazyGridState(vararg inputs: Any?): LazyGridState {
     }
     LaunchedEffect(state.firstVisibleItemIndex, state.firstVisibleItemScrollOffset, cacheKey) {
         lazyGridPositionCache[cacheKey] = state.firstVisibleItemIndex to state.firstVisibleItemScrollOffset
+    }
+    return state
+}
+
+@Composable
+private fun rememberElovaireScrollState(vararg inputs: Any?): androidx.compose.foundation.ScrollState {
+    val cacheKey = remember(*inputs) {
+        inputs.joinToString(separator = "|") { it?.toString().orEmpty() }
+    }
+    val cachedPosition = remember(cacheKey) { scrollPositionCache[cacheKey] ?: 0 }
+    val state = rememberScrollState(cachedPosition)
+    LaunchedEffect(state.value, cacheKey) {
+        scrollPositionCache[cacheKey] = state.value
     }
     return state
 }
@@ -1563,11 +1612,24 @@ fun ElovaireRoot(
         }
     }
     val resetTopLevelTabState: (String) -> Unit = { route ->
+        clearTopLevelScrollPositionMemory(route)
         when (route) {
-            HOME_ROUTE -> homeScrollRequestVersion += 1L
-            ALBUMS_ROUTE -> libraryScrollRequestVersion += 1L
-            PLAYLISTS_ROUTE -> playlistsScrollRequestVersion += 1L
-            SEARCH_ROUTE -> searchScrollRequestVersion += 1L
+            HOME_ROUTE -> {
+                lastHomeTabRoute = HOME_ROUTE
+                homeScrollRequestVersion += 1L
+            }
+            ALBUMS_ROUTE -> {
+                lastLibraryTabRoute = ALBUMS_ROUTE
+                libraryScrollRequestVersion += 1L
+            }
+            PLAYLISTS_ROUTE -> {
+                lastPlaylistsTabRoute = PLAYLISTS_ROUTE
+                playlistsScrollRequestVersion += 1L
+            }
+            SEARCH_ROUTE -> {
+                lastSearchTabRoute = SEARCH_ROUTE
+                searchScrollRequestVersion += 1L
+            }
         }
     }
     val keyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
@@ -2646,6 +2708,7 @@ fun ElovaireRoot(
                         playbackState = playbackState,
                         enrichedSongsById = songsById,
                         isFavorite = playbackState.currentSong?.id in favoriteSongIdSet,
+                        playlists = playlists.filterNot { it.isSystem },
                         lyricsService = lyricsService,
                         onBack = { isPlayerOverlayVisible = false },
                         onOpenCurrentAlbum = openCurrentPlayingAlbum,
@@ -2655,6 +2718,12 @@ fun ElovaireRoot(
                         onCycleRepeatMode = container.playbackManager::cycleRepeatMode,
                         onToggleShuffle = container.playbackManager::toggleShuffle,
                         onToggleFavorite = { songId -> container.preferenceStore.toggleFavoriteSong(songId) },
+                        onAddCurrentSongToPlaylist = { playlistId, song ->
+                            container.preferenceStore.addSongsToPlaylist(playlistId, listOf(song.id))
+                        },
+                        onCreatePlaylistWithCurrentSong = { name, song ->
+                            createPlaylistAndAddSongs(name, listOf(song.id))
+                        },
                         onQueueItemSelected = container.playbackManager::playQueueIndex,
                         eqSettings = eqSettings,
                         onSpaciousnessChanged = container.preferenceStore::updateSpaciousness,
@@ -5355,7 +5424,7 @@ private fun ArtistCollectionScreen(
     onBack: () -> Unit,
     onArtistSelected: (String) -> Unit,
 ) {
-    val listState = rememberElovaireLazyListState("artist_collection")
+    val scrollState = rememberElovaireScrollState("artist_collection")
     val artists = remember(songs) {
         songs
             .groupBy { it.artist.ifBlank { "Unknown Artist" } }
@@ -5371,38 +5440,34 @@ private fun ArtistCollectionScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        LazyColumn(
-            state = listState,
-            overscrollEffect = null,
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .ensureSingleItemRubberBand(listState),
-            contentPadding = PaddingValues(
-                start = 20.dp,
-                top = detailTopBarOccupiedHeight() + ElovaireSpacing.detailListTopGap,
-                end = 20.dp,
-                bottom = bottomPadding,
-            ),
+                .verticalScroll(scrollState)
+                .padding(
+                    start = 20.dp,
+                    top = detailTopBarOccupiedHeight() + ElovaireSpacing.detailListTopGap,
+                    end = 20.dp,
+                    bottom = bottomPadding,
+                ),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            item {
-                ModuleCard {
-                    Column {
-                        artists.forEachIndexed { index, artist ->
-                            ArtistRow(
-                                artist = artist,
-                                onClick = { onArtistSelected(artist.name) },
-                            )
-                            if (index != artists.lastIndex) {
-                                DividerLine()
-                            }
+            ModuleCard {
+                Column {
+                    artists.forEachIndexed { index, artist ->
+                        ArtistRow(
+                            artist = artist,
+                            onClick = { onArtistSelected(artist.name) },
+                        )
+                        if (index != artists.lastIndex) {
+                            DividerLine()
                         }
                     }
                 }
             }
         }
         FastScrollbar(
-            state = listState,
+            state = scrollState,
             topInset = detailTopBarOccupiedHeight() + ElovaireSpacing.detailCompactTopGap,
             bottomInset = bottomPadding + 16.dp,
         )
@@ -5423,7 +5488,7 @@ private fun GenreCollectionScreen(
     onBack: () -> Unit,
     onGenreSelected: (String) -> Unit,
 ) {
-    val listState = rememberElovaireLazyListState("genre_collection")
+    val scrollState = rememberElovaireScrollState("genre_collection")
     val genres = remember(songs) {
         songs
             .groupBy { it.genre.ifBlank { "Unknown Genre" } }
@@ -5437,38 +5502,34 @@ private fun GenreCollectionScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        LazyColumn(
-            state = listState,
-            overscrollEffect = null,
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .ensureSingleItemRubberBand(listState),
-            contentPadding = PaddingValues(
-                start = 20.dp,
-                top = detailTopBarOccupiedHeight() + ElovaireSpacing.detailSectionTopGap,
-                end = 20.dp,
-                bottom = bottomPadding,
-            ),
+                .verticalScroll(scrollState)
+                .padding(
+                    start = 20.dp,
+                    top = detailTopBarOccupiedHeight() + ElovaireSpacing.detailSectionTopGap,
+                    end = 20.dp,
+                    bottom = bottomPadding,
+                ),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            item {
-                ModuleCard {
-                    Column {
-                        genres.forEachIndexed { index, genre ->
-                            GenreRow(
-                                genre = genre,
-                                onClick = { onGenreSelected(genre.name) },
-                            )
-                            if (index != genres.lastIndex) {
-                                DividerLine()
-                            }
+            ModuleCard {
+                Column {
+                    genres.forEachIndexed { index, genre ->
+                        GenreRow(
+                            genre = genre,
+                            onClick = { onGenreSelected(genre.name) },
+                        )
+                        if (index != genres.lastIndex) {
+                            DividerLine()
                         }
                     }
                 }
             }
         }
         FastScrollbar(
-            state = listState,
+            state = scrollState,
             topInset = detailTopBarOccupiedHeight() + ElovaireSpacing.detailCompactTopGap,
             bottomInset = bottomPadding + 16.dp,
         )
@@ -5692,7 +5753,7 @@ private fun EmptyPlaylistState(
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Surface(
             onClick = onCreate,
@@ -5705,7 +5766,7 @@ private fun EmptyPlaylistState(
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    painter = painterResource(id = R.drawable.ic_lucide_square_plus),
+                    painter = painterResource(id = R.drawable.ic_lucide_plus),
                     contentDescription = "Create playlist",
                     tint = MaterialTheme.colorScheme.onPrimary,
                 )
@@ -6094,7 +6155,8 @@ private fun PlaylistSelectionDialog(
     playlists: List<Playlist>,
     onDismiss: () -> Unit,
     onPlaylistSelected: (Long) -> Unit,
-    onCreatePlaylist: (String) -> Unit,
+    onCreatePlaylist: ((String) -> Unit)?,
+    onCreatePlaylistClick: (() -> Unit)? = null,
 ) {
     var showNewPlaylistDialog by rememberSaveable(title, subtitle) { mutableStateOf(false) }
     val listState = rememberElovaireLazyListState(title, subtitle, "playlist_picker")
@@ -6207,15 +6269,36 @@ private fun PlaylistSelectionDialog(
                     }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        TextButton(onClick = { showNewPlaylistDialog = true }) {
-                            Text("New playlist")
-                        }
-                        Spacer(modifier = Modifier.width(4.dp))
-                        TextButton(onClick = onDismiss) {
-                            Text("Cancel")
+                        Text(
+                            text = "Cancel",
+                            modifier = Modifier
+                                .clickable(onClick = onDismiss)
+                                .padding(vertical = 10.dp),
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        )
+                        if (onCreatePlaylist != null || onCreatePlaylistClick != null) {
+                            Surface(
+                                onClick = {
+                                    if (onCreatePlaylistClick != null) {
+                                        onCreatePlaylistClick()
+                                    } else {
+                                        showNewPlaylistDialog = true
+                                    }
+                                },
+                                shape = RoundedCornerShape(ElovaireRadii.pill),
+                                color = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary,
+                            ) {
+                                Text(
+                                    text = "New playlist",
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                                )
+                            }
                         }
                     }
                 }
@@ -6223,7 +6306,7 @@ private fun PlaylistSelectionDialog(
         }
     }
 
-    if (showNewPlaylistDialog) {
+    if (showNewPlaylistDialog && onCreatePlaylist != null) {
         PlaylistNameDialog(
             onDismiss = { showNewPlaylistDialog = false },
             onConfirm = { name ->
@@ -9876,6 +9959,7 @@ private fun NowPlayingScreen(
     playbackState: PlaybackUiState,
     enrichedSongsById: Map<Long, Song>,
     isFavorite: Boolean,
+    playlists: List<Playlist>,
     lyricsService: LyricsService,
     onBack: () -> Unit,
     onOpenCurrentAlbum: (Long) -> Unit,
@@ -9885,6 +9969,8 @@ private fun NowPlayingScreen(
     onCycleRepeatMode: () -> Unit,
     onToggleShuffle: () -> Unit,
     onToggleFavorite: (Long) -> Unit,
+    onAddCurrentSongToPlaylist: (Long, Song) -> Unit,
+    onCreatePlaylistWithCurrentSong: (String, Song) -> Long,
     onQueueItemSelected: (Int) -> Unit,
     eqSettings: EqSettings,
     onSpaciousnessChanged: (Float) -> Unit,
@@ -9992,6 +10078,8 @@ private fun NowPlayingScreen(
     }
     var showLyricsSheet by remember(currentSong?.id) { mutableStateOf(false) }
     var showQueueSheet by remember(currentSong?.id) { mutableStateOf(false) }
+    var showAddToPlaylistDialog by remember(currentSong?.id) { mutableStateOf(false) }
+    var showCreatePlaylistDialog by remember(currentSong?.id) { mutableStateOf(false) }
     var queueStatusText by remember(currentSong?.id) { mutableStateOf<String?>(null) }
     LaunchedEffect(currentSong?.id, playbackState.currentIndex, playbackState.queue.size) {
         val queue = playbackState.queue
@@ -10762,30 +10850,48 @@ private fun NowPlayingScreen(
                     ) {
                         PlayerSecondaryActionButton(
                             iconResId = R.drawable.ic_lucide_align_left,
-                            label = "Lyrics",
+                            label = "",
+                            iconSize = 20.dp,
                             tint = contentColor,
                             showBackground = false,
                             onClick = {
                                 showQueueSheet = false
+                                showAddToPlaylistDialog = false
                                 showLyricsSheet = true
                             },
                         )
-                        Spacer(modifier = Modifier.width(10.dp))
+                        Spacer(modifier = Modifier.width(20.dp))
                         PlayerSecondaryActionButton(
                             iconResId = repeatModeIconRes(playbackState.repeatMode),
-                            label = repeatModeLabel(playbackState.repeatMode),
+                            label = "",
+                            iconSize = 20.dp,
                             tint = contentColor,
                             showBackground = playbackState.repeatMode != PlaybackRepeatMode.Off,
                             onClick = onCycleRepeatMode,
                         )
-                        Spacer(modifier = Modifier.width(10.dp))
+                        Spacer(modifier = Modifier.width(20.dp))
+                        PlayerSecondaryActionButton(
+                            iconResId = R.drawable.ic_lucide_plus,
+                            label = "",
+                            iconSize = 20.dp,
+                            tint = contentColor,
+                            showBackground = showAddToPlaylistDialog,
+                            onClick = {
+                                showLyricsSheet = false
+                                showQueueSheet = false
+                                showAddToPlaylistDialog = true
+                            },
+                        )
+                        Spacer(modifier = Modifier.width(20.dp))
                         PlayerSecondaryActionButton(
                             iconResId = R.drawable.ic_lucide_list_music,
-                            label = "Queue",
+                            label = "",
+                            iconSize = 20.dp,
                             tint = contentColor,
                             showBackground = showQueueSheet,
                             onClick = {
                                 showLyricsSheet = false
+                                showAddToPlaylistDialog = false
                                 showQueueSheet = !showQueueSheet
                             },
                         )
@@ -10935,6 +11041,32 @@ private fun NowPlayingScreen(
                 secondaryContentColor = secondaryContentColor,
                 onSeekTo = playbackManager::seekTo,
                 onHideLyrics = { showLyricsSheet = false },
+            )
+        }
+        if (showAddToPlaylistDialog) {
+            AddToPlaylistPickerDialog(
+                playlists = playlists,
+                onDismiss = { showAddToPlaylistDialog = false },
+                onPlaylistSelected = { playlistId ->
+                    currentSong?.let { onAddCurrentSongToPlaylist(playlistId, it) }
+                    showAddToPlaylistDialog = false
+                },
+                onCreateNewPlaylist = {
+                    showAddToPlaylistDialog = false
+                    showCreatePlaylistDialog = true
+                },
+            )
+        }
+        if (showCreatePlaylistDialog) {
+            PlaylistNameDialog(
+                title = "New playlist",
+                confirmLabel = "Create",
+                initialName = "",
+                onDismiss = { showCreatePlaylistDialog = false },
+                onConfirm = { name ->
+                    currentSong?.let { onCreatePlaylistWithCurrentSong(name, it) }
+                    showCreatePlaylistDialog = false
+                },
             )
         }
     }
@@ -12086,73 +12218,16 @@ private fun AddToPlaylistPickerDialog(
     playlists: List<Playlist>,
     onDismiss: () -> Unit,
     onPlaylistSelected: (Long) -> Unit,
+    onCreateNewPlaylist: (() -> Unit)? = null,
 ) {
-    val listState = rememberElovaireLazyListState("settings_screen")
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Add to playlist") },
-        text = {
-            if (playlists.isEmpty()) {
-                Text(
-                    text = "Create a playlist first to start saving songs",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = readableSecondaryTextColor(),
-                )
-            } else {
-                LazyColumn(
-                    state = listState,
-                    overscrollEffect = null,
-                    modifier = Modifier
-                        .height(280.dp)
-                        .ensureSingleItemRubberBand(listState),
-                ) {
-                    items(playlists, key = { it.id }) { playlist ->
-                        Surface(
-                            onClick = { onPlaylistSelected(playlist.id) },
-                            shape = RoundedCornerShape(ElovaireRadii.tile),
-                            color = readableCardSurfaceColor(),
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Icon(
-                                    painter = painterResource(id = R.drawable.ic_lucide_list_music),
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.86f),
-                                    modifier = Modifier.size(17.dp),
-                                )
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = playlist.name,
-                                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                    Text(
-                                        text = formatCountLabel(playlist.songIds.size, "song"),
-                                        style = MaterialTheme.typography.labelLarge,
-                                        color = readableSecondaryTextColor(),
-                                    )
-                                }
-                            }
-                        }
-                        if (playlist != playlists.last()) {
-                            Spacer(modifier = Modifier.height(10.dp))
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Close")
-            }
-        },
+    PlaylistSelectionDialog(
+        title = "Add to playlist",
+        subtitle = "Choose a playlist",
+        playlists = playlists,
+        onDismiss = onDismiss,
+        onPlaylistSelected = onPlaylistSelected,
+        onCreatePlaylist = null,
+        onCreatePlaylistClick = onCreateNewPlaylist,
     )
 }
 
@@ -12561,6 +12636,7 @@ private fun LyricsOverlay(
 private fun PlayerSecondaryActionButton(
     iconResId: Int,
     label: String,
+    iconSize: Dp = 18.dp,
     tint: Color,
     showBackground: Boolean,
     onClick: () -> Unit,
@@ -12612,7 +12688,7 @@ private fun PlayerSecondaryActionButton(
                 painter = painterResource(id = iconResId),
                 contentDescription = label,
                 tint = tint.copy(alpha = 0.92f),
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier.size(iconSize),
             )
             if (label.isNotBlank()) {
                 Text(
@@ -12857,6 +12933,37 @@ private fun BoxScope.FastScrollbar(
             state.requestScrollToItem(targetIndex)
         },
     )
+}
+
+@Composable
+private fun BoxScope.FastScrollbar(
+    state: androidx.compose.foundation.ScrollState,
+    topInset: Dp,
+    bottomInset: Dp,
+    modifier: Modifier = Modifier,
+) {
+    BoxWithConstraints(
+        modifier = modifier
+            .matchParentSize(),
+    ) {
+        val viewportHeightPx = with(LocalDensity.current) { maxHeight.toPx() }.coerceAtLeast(1f)
+        val scrollableContentHeightPx = state.maxValue.toFloat().coerceAtLeast(0f)
+        if (scrollableContentHeightPx <= 0f) return@BoxWithConstraints
+
+        val estimatedContentHeightPx = viewportHeightPx + scrollableContentHeightPx
+        FastScrollbarTrack(
+            scrollFraction = (state.value / scrollableContentHeightPx).coerceIn(0f, 1f),
+            visibleFraction = (viewportHeightPx / estimatedContentHeightPx).coerceIn(0.12f, 0.5f),
+            totalItems = 2,
+            visibleItemsCount = 1,
+            topInset = topInset,
+            bottomInset = bottomInset,
+            modifier = modifier,
+            onJumpToFraction = { fraction ->
+                state.scrollTo((scrollableContentHeightPx * fraction).roundToInt())
+            },
+        )
+    }
 }
 
 @Composable

@@ -497,7 +497,7 @@ class MediaStoreScanner(
                     discNumber = extractRetrieverDiscNumber(retriever),
                 )
                 if (fileName.hasAiffContainerExtension()) {
-                    platformMetadata.mergeWith(readAiffMetadata(songUri))
+                    readAiffMetadata(songUri).mergeWith(platformMetadata)
                 } else {
                     platformMetadata
                 }
@@ -606,6 +606,7 @@ class MediaStoreScanner(
         val metadata = runCatching { Id3Decoder().decode(id3Bytes, id3Bytes.size) }.getOrNull() ?: return RetrieverMetadata()
         var title: String? = null
         var artist: String? = null
+        var albumArtist: String? = null
         var album: String? = null
         var year: Int? = null
         var genre: String? = null
@@ -617,7 +618,8 @@ class MediaStoreScanner(
                 val value = entry.values.firstOrNull()?.trim()?.takeIf { it.isNotBlank() } ?: continue
                 when (entry.id.uppercase(Locale.ROOT)) {
                     "TIT2", "TT2" -> title = title ?: value
-                    "TPE1", "TP1", "TPE2", "TP2" -> artist = artist ?: value
+                    "TPE1", "TP1" -> artist = artist ?: value
+                    "TPE2", "TP2" -> albumArtist = albumArtist ?: value
                     "TALB", "TAL" -> album = album ?: value
                     "TDRC", "TYER", "TORY", "TDAT" -> year = year ?: parseYearFromDateTag(value)
                     "TCON", "TCO" -> genre = genre ?: value.substringBefore(';').substringBefore('/').trim().ifBlank { null }
@@ -628,7 +630,7 @@ class MediaStoreScanner(
         }
         return RetrieverMetadata(
             title = title,
-            artist = artist,
+            artist = artist ?: albumArtist,
             album = album,
             year = year,
             genre = genre,
