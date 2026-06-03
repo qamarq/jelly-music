@@ -257,6 +257,7 @@ import elovaire.music.droidbeauty.app.data.playback.PlaybackUiState
 import elovaire.music.droidbeauty.app.data.update.AppReleaseInfo
 import elovaire.music.droidbeauty.app.data.update.AppUpdateUiState
 import elovaire.music.droidbeauty.app.domain.model.Album
+import elovaire.music.droidbeauty.app.domain.model.AppLanguage
 import elovaire.music.droidbeauty.app.domain.model.EqSettings
 import elovaire.music.droidbeauty.app.domain.model.Playlist
 import elovaire.music.droidbeauty.app.domain.model.ReverbProfile
@@ -1325,6 +1326,7 @@ fun ElovaireRoot(
     val eqSettings by container.preferenceStore.eqSettings.collectAsStateWithLifecycle()
     val themeMode by container.preferenceStore.themeMode.collectAsStateWithLifecycle()
     val textSizePreset by container.preferenceStore.textSizePreset.collectAsStateWithLifecycle()
+    val appLanguage by container.preferenceStore.appLanguage.collectAsStateWithLifecycle()
     val searchHistory by container.preferenceStore.searchHistory.collectAsStateWithLifecycle()
     val playlists by container.preferenceStore.playlists.collectAsStateWithLifecycle()
     val favoriteSongIds by container.preferenceStore.favoriteSongIds.collectAsStateWithLifecycle()
@@ -2452,11 +2454,13 @@ fun ElovaireRoot(
                         SettingsScreen(
                             themeMode = themeMode,
                             textSizePreset = textSizePreset,
+                            appLanguage = appLanguage,
                             eqSettings = eqSettings,
                             bottomPadding = detailBottomPadding,
                             onBack = navController::navigateUp,
                             onThemeModeSelected = container.preferenceStore::setThemeMode,
                             onTextSizePresetSelected = container.preferenceStore::setTextSizePreset,
+                            onAppLanguageSelected = container.preferenceStore::setAppLanguage,
                             onBassChanged = container.preferenceStore::updateBass,
                             onSpaciousnessChanged = container.preferenceStore::updateSpaciousness,
                             onMonoPlaybackChanged = container.preferenceStore::updateMonoPlaybackEnabled,
@@ -14169,15 +14173,64 @@ private fun EqualizerScreen(
     }
 }
 
+private data class SettingsLanguageCopy(
+    val settings: String,
+    val appearance: String,
+    val theme: String,
+    val textSize: String,
+    val language: String,
+    val currentlyUsed: String,
+    val sound: String,
+    val bassBoost: String,
+    val spaciousness: String,
+    val equalizer: String,
+    val enableMono: String,
+    val monoSubtitle: String,
+    val otherSettings: String,
+    val scanLibrary: String,
+    val scanLibrarySubtitle: String,
+    val scan: String,
+    val checkUpdates: String,
+    val checkUpdatesSubtitle: String,
+    val check: String,
+    val changelog: String,
+    val footerSubtitle: String,
+)
+
+private fun settingsCopy(language: AppLanguage): SettingsLanguageCopy = when (language) {
+    AppLanguage.Polish -> SettingsLanguageCopy("Ustawienia", "Wygląd", "Motyw", "Rozmiar tekstu", "Język", "Obecnie używany: ${language.nativeName}", "Dźwięk", "Podbicie basu", "Przestrzenność", "Korektor", "Włącz mono", "Przełącza odtwarzanie stereo na mono", "Inne ustawienia", "Skanuj bibliotekę", "Odśwież indeksowanie w poszukiwaniu nowych multimediów", "Skanuj", "Sprawdź aktualizacje", "Sprawdź, czy jest dostępna nowa wersja", "Sprawdź", "Lista zmian", "Zaprojektowane z pasją do muzyki i świetnego designu")
+    AppLanguage.ChineseSimplified -> SettingsLanguageCopy("设置", "外观", "主题", "文字大小", "语言", "当前使用：${language.nativeName}", "声音", "低音增强", "空间感", "均衡器", "启用单声道", "将立体声播放切换为单声道", "其他设置", "扫描媒体库", "刷新索引以查找新媒体", "扫描", "检查更新", "检查是否有新版本可用", "检查", "更新日志", "为音乐和优秀设计倾注热情")
+    AppLanguage.Czech -> SettingsLanguageCopy("Nastavení", "Vzhled", "Motiv", "Velikost textu", "Jazyk", "Aktuálně používaný: ${language.nativeName}", "Zvuk", "Zesílení basů", "Prostorovost", "Ekvalizér", "Zapnout mono", "Přepne stereo přehrávání na mono", "Další nastavení", "Skenovat knihovnu", "Obnoví index pro nová média", "Skenovat", "Zkontrolovat aktualizace", "Zjistit, zda je k dispozici nová verze", "Zkontrolovat", "Změny", "Navrženo s vášní pro hudbu a skvělý design")
+    AppLanguage.Lithuanian -> SettingsLanguageCopy("Nustatymai", "Išvaizda", "Tema", "Teksto dydis", "Kalba", "Šiuo metu naudojama: ${language.nativeName}", "Garsas", "Bosų stiprinimas", "Erdviškumas", "Ekvalaizeris", "Įjungti mono", "Perjungia stereo atkūrimą į mono", "Kiti nustatymai", "Skenuoti biblioteką", "Atnaujina indeksą ieškant naujos medijos", "Skenuoti", "Tikrinti naujinimus", "Patikrina, ar yra nauja versija", "Tikrinti", "Pakeitimai", "Sukurta su aistra muzikai ir puikiam dizainui")
+    AppLanguage.Danish -> SettingsLanguageCopy("Indstillinger", "Udseende", "Tema", "Tekststørrelse", "Sprog", "Aktuelt brugt: ${language.nativeName}", "Lyd", "Basboost", "Rumlighed", "Equalizer", "Aktivér mono", "Skifter stereoafspilning til mono", "Andre indstillinger", "Scan bibliotek", "Opdater indeksering efter nye medier", "Scan", "Søg efter opdateringer", "Tjek om en ny version er tilgængelig", "Tjek", "Ændringslog", "Designet med passion for musik og godt design")
+    AppLanguage.French -> SettingsLanguageCopy("Réglages", "Apparence", "Thème", "Taille du texte", "Langue", "Actuellement utilisé : ${language.nativeName}", "Son", "Renfort des basses", "Spatialisation", "Égaliseur", "Activer mono", "Passe la lecture stéréo en mono", "Autres réglages", "Analyser la bibliothèque", "Actualise l’index pour trouver de nouveaux médias", "Analyser", "Rechercher des mises à jour", "Vérifie si une nouvelle version est disponible", "Vérifier", "Nouveautés", "Conçu avec passion pour la musique et le beau design")
+    AppLanguage.German -> SettingsLanguageCopy("Einstellungen", "Darstellung", "Design", "Textgröße", "Sprache", "Aktuell verwendet: ${language.nativeName}", "Klang", "Bassverstärkung", "Räumlichkeit", "Equalizer", "Mono aktivieren", "Schaltet Stereo-Wiedergabe auf Mono", "Weitere Einstellungen", "Bibliothek scannen", "Aktualisiert den Index für neue Medien", "Scannen", "Nach Updates suchen", "Prüft, ob eine neue Version verfügbar ist", "Prüfen", "Änderungen", "Mit Leidenschaft für Musik und gutes Design gestaltet")
+    AppLanguage.Dutch -> SettingsLanguageCopy("Instellingen", "Weergave", "Thema", "Tekstgrootte", "Taal", "Momenteel gebruikt: ${language.nativeName}", "Geluid", "Basversterking", "Ruimtelijkheid", "Equalizer", "Mono inschakelen", "Schakelt stereo afspelen om naar mono", "Andere instellingen", "Bibliotheek scannen", "Vernieuwt indexering voor nieuwe media", "Scannen", "Controleren op updates", "Controleert of er een nieuwe versie beschikbaar is", "Controleren", "Wijzigingen", "Ontworpen met passie voor muziek en sterk design")
+    AppLanguage.Norwegian -> SettingsLanguageCopy("Innstillinger", "Utseende", "Tema", "Tekststørrelse", "Språk", "Brukes nå: ${language.nativeName}", "Lyd", "Bassforsterkning", "Romfølelse", "Equalizer", "Aktiver mono", "Bytter stereoavspilling til mono", "Andre innstillinger", "Skann bibliotek", "Oppdaterer indeksen for nye medier", "Skann", "Se etter oppdateringer", "Sjekker om en ny versjon er tilgjengelig", "Sjekk", "Endringslogg", "Designet med lidenskap for musikk og flott design")
+    AppLanguage.Swedish -> SettingsLanguageCopy("Inställningar", "Utseende", "Tema", "Textstorlek", "Språk", "Används nu: ${language.nativeName}", "Ljud", "Basförstärkning", "Rymd", "Equalizer", "Aktivera mono", "Växlar stereouppspelning till mono", "Andra inställningar", "Skanna bibliotek", "Uppdaterar indexering för ny media", "Skanna", "Sök efter uppdateringar", "Kontrollerar om en ny version finns", "Sök", "Ändringslogg", "Designad med passion för musik och bra design")
+    AppLanguage.Spanish -> SettingsLanguageCopy("Ajustes", "Apariencia", "Tema", "Tamaño de texto", "Idioma", "Usado actualmente: ${language.nativeName}", "Sonido", "Refuerzo de graves", "Espacialidad", "Ecualizador", "Activar mono", "Cambia la reproducción estéreo a mono", "Otros ajustes", "Escanear biblioteca", "Actualiza la indexación para buscar nuevos medios", "Escanear", "Buscar actualizaciones", "Comprueba si hay una nueva versión disponible", "Buscar", "Cambios", "Diseñado con pasión por la música y el buen diseño")
+    AppLanguage.Portuguese -> SettingsLanguageCopy("Definições", "Aparência", "Tema", "Tamanho do texto", "Idioma", "Atualmente usado: ${language.nativeName}", "Som", "Reforço de graves", "Espacialidade", "Equalizador", "Ativar mono", "Muda a reprodução estéreo para mono", "Outras definições", "Analisar biblioteca", "Atualiza a indexação para novos ficheiros", "Analisar", "Procurar atualizações", "Verifica se há nova versão disponível", "Verificar", "Novidades", "Criado com paixão por música e bom design")
+    AppLanguage.Estonian -> SettingsLanguageCopy("Seaded", "Välimus", "Teema", "Teksti suurus", "Keel", "Praegu kasutusel: ${language.nativeName}", "Heli", "Bassi võimendus", "Ruumilisus", "Ekvalaiser", "Luba mono", "Lülitab stereo taasesituse monoks", "Muud seaded", "Skanni teeki", "Värskendab indeksit uue meedia leidmiseks", "Skanni", "Kontrolli uuendusi", "Kontrollib, kas uus versioon on saadaval", "Kontrolli", "Muudatused", "Loodud kirega muusika ja hea disaini vastu")
+    AppLanguage.Greek -> SettingsLanguageCopy("Ρυθμίσεις", "Εμφάνιση", "Θέμα", "Μέγεθος κειμένου", "Γλώσσα", "Χρησιμοποιείται τώρα: ${language.nativeName}", "Ήχος", "Ενίσχυση μπάσων", "Χωρικότητα", "Ισοσταθμιστής", "Ενεργοποίηση μονοφωνικού", "Αλλάζει την αναπαραγωγή stereo σε mono", "Άλλες ρυθμίσεις", "Σάρωση βιβλιοθήκης", "Ανανεώνει το ευρετήριο για νέα πολυμέσα", "Σάρωση", "Έλεγχος ενημερώσεων", "Ελέγχει αν υπάρχει νέα έκδοση", "Έλεγχος", "Αλλαγές", "Σχεδιασμένο με πάθος για μουσική και όμορφο design")
+    AppLanguage.Croatian -> SettingsLanguageCopy("Postavke", "Izgled", "Tema", "Veličina teksta", "Jezik", "Trenutno se koristi: ${language.nativeName}", "Zvuk", "Pojačanje basa", "Prostornost", "Ekvilizator", "Uključi mono", "Prebacuje stereo reprodukciju u mono", "Ostale postavke", "Skeniraj biblioteku", "Osvježava indeks za nove medije", "Skeniraj", "Provjeri ažuriranja", "Provjerava postoji li nova verzija", "Provjeri", "Promjene", "Dizajnirano sa strašću za glazbu i dobar dizajn")
+    AppLanguage.Russian -> SettingsLanguageCopy("Настройки", "Внешний вид", "Тема", "Размер текста", "Язык", "Сейчас используется: ${language.nativeName}", "Звук", "Усиление баса", "Пространственность", "Эквалайзер", "Включить моно", "Переключает стерео воспроизведение в моно", "Другие настройки", "Сканировать библиотеку", "Обновляет индекс для поиска новых медиа", "Сканировать", "Проверить обновления", "Проверяет, доступна ли новая версия", "Проверить", "Список изменений", "Создано с любовью к музыке и хорошему дизайну")
+    AppLanguage.Ukrainian -> SettingsLanguageCopy("Налаштування", "Вигляд", "Тема", "Розмір тексту", "Мова", "Зараз використовується: ${language.nativeName}", "Звук", "Підсилення басів", "Просторовість", "Еквалайзер", "Увімкнути моно", "Перемикає стереовідтворення на моно", "Інші налаштування", "Сканувати бібліотеку", "Оновлює індекс для нових медіа", "Сканувати", "Перевірити оновлення", "Перевіряє, чи доступна нова версія", "Перевірити", "Зміни", "Створено з любов’ю до музики та гарного дизайну")
+    AppLanguage.Latvian -> SettingsLanguageCopy("Iestatījumi", "Izskats", "Tēma", "Teksta izmērs", "Valoda", "Pašlaik lietota: ${language.nativeName}", "Skaņa", "Basa pastiprinājums", "Telpiskums", "Ekvalaizers", "Ieslēgt mono", "Pārslēdz stereo atskaņošanu uz mono", "Citi iestatījumi", "Skenēt bibliotēku", "Atjauno indeksu jauniem multivides failiem", "Skenēt", "Meklēt atjauninājumus", "Pārbauda, vai pieejama jauna versija", "Pārbaudīt", "Izmaiņas", "Radīts ar aizrautību pret mūziku un lielisku dizainu")
+    AppLanguage.Italian -> SettingsLanguageCopy("Impostazioni", "Aspetto", "Tema", "Dimensione testo", "Lingua", "Attualmente in uso: ${language.nativeName}", "Suono", "Potenziamento bassi", "Spazialità", "Equalizzatore", "Attiva mono", "Passa la riproduzione stereo a mono", "Altre impostazioni", "Scansiona libreria", "Aggiorna l’indice per nuovi media", "Scansiona", "Cerca aggiornamenti", "Controlla se è disponibile una nuova versione", "Controlla", "Novità", "Progettato con passione per la musica e il buon design")
+    AppLanguage.English -> SettingsLanguageCopy("Settings", "Appearance", "Theme", "Text size", "Language", "Currently used: ${language.nativeName}", "Sound", "Bass boost", "Spaciousness", "Equalizer", "Enable mono", "Switches stereo playback to mono", "Other settings", "Scan library", "Refresh indexing in search for new media", "Scan", "Check for updates", "Check if there's new version available", "Check", "Changelog", "Designed with passion for music and great design")
+}
+
 @Composable
 private fun SettingsScreen(
     themeMode: ThemeMode,
     textSizePreset: TextSizePreset,
+    appLanguage: AppLanguage,
     eqSettings: EqSettings,
     bottomPadding: Dp,
     onBack: () -> Unit,
     onThemeModeSelected: (ThemeMode) -> Unit,
     onTextSizePresetSelected: (TextSizePreset) -> Unit,
+    onAppLanguageSelected: (AppLanguage) -> Unit,
     onBassChanged: (Float) -> Unit,
     onSpaciousnessChanged: (Float) -> Unit,
     onMonoPlaybackChanged: (Boolean) -> Unit,
@@ -14187,6 +14240,7 @@ private fun SettingsScreen(
     onCheckForUpdates: () -> Unit,
 ) {
     val listState = rememberElovaireLazyListState("settings_screen")
+    val copy = remember(appLanguage) { settingsCopy(appLanguage) }
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -14208,7 +14262,7 @@ private fun SettingsScreen(
         ) {
             item {
                 SettingsSectionHeader(
-                    title = "Appearance",
+                    title = copy.appearance,
                     iconResId = R.drawable.ic_lucide_palette,
                 )
             }
@@ -14219,7 +14273,7 @@ private fun SettingsScreen(
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
                         SectionTitleRow(
-                            title = "Theme",
+                            title = copy.theme,
                             compact = true,
                         )
                         Box(
@@ -14236,7 +14290,7 @@ private fun SettingsScreen(
                         }
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             SectionTitleRow(
-                                title = "Text size",
+                                title = copy.textSize,
                                 compact = true,
                             )
                             Box(
@@ -14252,13 +14306,19 @@ private fun SettingsScreen(
                                 )
                             }
                         }
+                        LanguagePickerRow(
+                            selectedLanguage = appLanguage,
+                            copy = copy,
+                            onLanguageSelected = onAppLanguageSelected,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                     }
                 }
             }
 
             item {
                 SettingsSectionHeader(
-                    title = "Sound",
+                    title = copy.sound,
                     iconResId = R.drawable.ic_lucide_volume_2,
                 )
             }
@@ -14275,14 +14335,14 @@ private fun SettingsScreen(
                             horizontalArrangement = Arrangement.spacedBy(30.dp),
                         ) {
                             DigitalSoundKnob(
-                                title = "Bass boost",
+                                title = copy.bassBoost,
                                 iconResId = R.drawable.ic_lucide_speaker,
                                 value = eqSettings.bass.coerceAtLeast(0f).coerceIn(0f, 1f),
                                 modifier = Modifier.weight(1f),
                                 onValueChange = onBassChanged,
                             )
                             DigitalSoundKnob(
-                                title = "Spaciousness",
+                                title = copy.spaciousness,
                                 iconResId = R.drawable.ic_lucide_wind,
                                 value = eqSettings.spaciousness.coerceAtLeast(0f).coerceIn(0f, 1f),
                                 modifier = Modifier.weight(1f),
@@ -14321,10 +14381,10 @@ private fun SettingsScreen(
                                     Icon(
                                         painter = painterResource(id = R.drawable.ic_lucide_audio_waveform),
                                         contentDescription = null,
-                                        modifier = Modifier.size(20.dp),
+                                        modifier = Modifier.size(16.dp),
                                     )
                                     Text(
-                                        text = "Equalizer",
+                                        text = copy.equalizer,
                                         style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                                     )
                                 }
@@ -14332,8 +14392,8 @@ private fun SettingsScreen(
                         }
                         Spacer(modifier = Modifier.height(20.dp))
                         SettingToggleRow(
-                            title = "Enable mono",
-                            subtitle = "Switches stereo playback to mono",
+                            title = copy.enableMono,
+                            subtitle = copy.monoSubtitle,
                             enabled = eqSettings.monoEnabled,
                             onEnabledChanged = onMonoPlaybackChanged,
                             modifier = Modifier
@@ -14347,7 +14407,7 @@ private fun SettingsScreen(
 
             item {
                 SettingsSectionHeader(
-                    title = "Other settings",
+                    title = copy.otherSettings,
                     iconResId = R.drawable.ic_lucide_settings,
                 )
             }
@@ -14360,18 +14420,18 @@ private fun SettingsScreen(
                         verticalArrangement = Arrangement.spacedBy(24.dp),
                     ) {
                         SettingActionRow(
-                            title = "Scan library",
-                            subtitle = "Refresh indexing in search for new media",
-                            actionLabel = "Scan",
+                            title = copy.scanLibrary,
+                            subtitle = copy.scanLibrarySubtitle,
+                            actionLabel = copy.scan,
                             onAction = onScanLibrary,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 2.dp),
                         )
                         SettingActionRow(
-                            title = "Check for updates",
-                            subtitle = "Check if there's new version available",
-                            actionLabel = "Check",
+                            title = copy.checkUpdates,
+                            subtitle = copy.checkUpdatesSubtitle,
+                            actionLabel = copy.check,
                             onAction = onCheckForUpdates,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -14421,7 +14481,7 @@ private fun SettingsScreen(
                                     horizontalArrangement = Arrangement.Center,
                                 ) {
                                     Text(
-                                        text = "Changelog",
+                                        text = copy.changelog,
                                         style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
                                     )
                                     Icon(
@@ -14435,7 +14495,7 @@ private fun SettingsScreen(
                             }
                         }
                         Text(
-                            text = "Designed with passion for music and great design",
+                            text = copy.footerSubtitle,
                             style = MaterialTheme.typography.bodyLarge.copy(fontSize = elovaireScaledSp(14f)),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -14443,16 +14503,125 @@ private fun SettingsScreen(
                 }
             }
         }
-        FastScrollbar(
-            state = listState,
-            topInset = topBarOccupiedHeight() + 16.dp,
-            bottomInset = navigationBarInsetDp() + 48.dp,
-        )
         PinnedBackTopBar(
-            title = "Settings",
+            title = copy.settings,
             onBack = onBack,
             modifier = Modifier.align(Alignment.TopCenter),
         )
+    }
+}
+
+@Composable
+private fun LanguagePickerRow(
+    selectedLanguage: AppLanguage,
+    copy: SettingsLanguageCopy,
+    modifier: Modifier = Modifier,
+    onLanguageSelected: (AppLanguage) -> Unit,
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val languages = remember {
+        AppLanguage.entries.sortedBy { it.englishName }
+    }
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Text(
+                text = copy.language,
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontSize = elovaireScaledSp(16f),
+                    fontWeight = FontWeight.SemiBold,
+                ),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = copy.currentlyUsed,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Box {
+            val interactionSource = remember { MutableInteractionSource() }
+            Surface(
+                modifier = Modifier.elovairePressBounce(
+                    interactionSource = interactionSource,
+                    label = "settings_language_button_scale",
+                ),
+                shape = RoundedCornerShape(ElovaireRadii.pill),
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
+                contentColor = MaterialTheme.colorScheme.onSurface,
+            ) {
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(ElovaireRadii.pill))
+                        .clickable(
+                            interactionSource = interactionSource,
+                            indication = null,
+                            onClick = { expanded = true },
+                        )
+                        .padding(horizontal = 14.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_lucide_languages),
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Text(
+                        text = selectedLanguage.nativeName,
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                    )
+                }
+            }
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+            ) {
+                Column(
+                    modifier = Modifier
+                        .width(228.dp)
+                        .heightIn(max = 240.dp)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    languages.forEach { language ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = language.nativeName,
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontWeight = if (language == selectedLanguage) {
+                                            FontWeight.SemiBold
+                                        } else {
+                                            FontWeight.Normal
+                                        },
+                                    ),
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_lucide_languages),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.onSurface.copy(
+                                        alpha = if (language == selectedLanguage) 0.92f else 0.46f,
+                                    ),
+                                )
+                            },
+                            onClick = {
+                                expanded = false
+                                onLanguageSelected(language)
+                            },
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -15931,8 +16100,7 @@ private fun DigitalSoundKnob(
 
         Row(
             modifier = Modifier
-                .offset(y = (-28).dp)
-                .padding(bottom = 12.dp),
+                .offset(y = (-28).dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
@@ -16829,9 +16997,7 @@ private fun EqHorizontalScrollbar(
             Color.White.copy(alpha = 0.62f)
         }
         val updateScrollFromX: (Float) -> Unit = { xPosition ->
-            if (maxScrollPx <= 0f || viewportWidthPx <= 0f) {
-                Unit
-            } else {
+            if (maxScrollPx > 0f && viewportWidthPx > 0f) {
                 val fraction = ((xPosition - (thumbWidthPx / 2f)) / thumbTravelPx.coerceAtLeast(1f)).coerceIn(0f, 1f)
                 val targetScroll = (maxScrollPx * fraction).roundToInt()
                 scope.launch {

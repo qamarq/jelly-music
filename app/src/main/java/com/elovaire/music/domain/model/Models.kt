@@ -61,6 +61,32 @@ enum class TextSizePreset(
     ExtraLarge(1.16f),
 }
 
+enum class AppLanguage(
+    val englishName: String,
+    val nativeName: String,
+) {
+    English("English", "English"),
+    ChineseSimplified("Simplified Chinese", "简体中文"),
+    Croatian("Croatian", "Hrvatski"),
+    Czech("Czech", "Čeština"),
+    Danish("Danish", "Dansk"),
+    Dutch("Dutch", "Nederlands"),
+    Estonian("Estonian", "Eesti"),
+    French("French", "Français"),
+    German("German", "Deutsch"),
+    Greek("Greek", "Ελληνικά"),
+    Italian("Italian", "Italiano"),
+    Latvian("Latvian", "Latviešu"),
+    Lithuanian("Lithuanian", "Lietuvių"),
+    Norwegian("Norwegian", "Norsk"),
+    Polish("Polish", "Polski"),
+    Portuguese("Portuguese", "Português"),
+    Russian("Russian", "Русский"),
+    Spanish("Spanish", "Español"),
+    Swedish("Swedish", "Svenska"),
+    Ukrainian("Ukrainian", "Українська"),
+}
+
 enum class SearchHistoryKind {
     Album,
     Artist,

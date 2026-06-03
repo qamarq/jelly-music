@@ -3,6 +3,7 @@ package elovaire.music.droidbeauty.app.data.settings
 import android.content.Context
 import android.net.Uri
 import androidx.core.content.edit
+import elovaire.music.droidbeauty.app.domain.model.AppLanguage
 import elovaire.music.droidbeauty.app.domain.model.EqSettings
 import elovaire.music.droidbeauty.app.domain.model.Playlist
 import elovaire.music.droidbeauty.app.domain.model.ReverbProfile
@@ -23,6 +24,9 @@ class PreferenceStore(context: Context) {
 
     private val _textSizePreset = MutableStateFlow(loadTextSizePreset())
     val textSizePreset: StateFlow<TextSizePreset> = _textSizePreset.asStateFlow()
+
+    private val _appLanguage = MutableStateFlow(loadAppLanguage())
+    val appLanguage: StateFlow<AppLanguage> = _appLanguage.asStateFlow()
 
     private val _eqSettings = MutableStateFlow(loadEqSettings())
     val eqSettings: StateFlow<EqSettings> = _eqSettings.asStateFlow()
@@ -80,6 +84,13 @@ class PreferenceStore(context: Context) {
             putString(KEY_TEXT_SIZE_PRESET, textSizePreset.name)
         }
         _textSizePreset.value = textSizePreset
+    }
+
+    fun setAppLanguage(language: AppLanguage) {
+        preferences.edit {
+            putString(KEY_APP_LANGUAGE, language.name)
+        }
+        _appLanguage.value = language
     }
 
     fun addSearchHistoryEntry(entry: SearchHistoryEntry) {
@@ -440,6 +451,12 @@ class PreferenceStore(context: Context) {
             ?: TextSizePreset.Default
     }
 
+    private fun loadAppLanguage(): AppLanguage {
+        return preferences.getString(KEY_APP_LANGUAGE, AppLanguage.English.name)
+            ?.let { saved -> AppLanguage.entries.firstOrNull { it.name == saved } }
+            ?: AppLanguage.English
+    }
+
     private fun loadPlaybackVolume(): Float {
         return preferences.getFloat(KEY_PLAYBACK_VOLUME, 1f).coerceIn(0f, 1f)
     }
@@ -656,6 +673,7 @@ class PreferenceStore(context: Context) {
         const val MAX_SEARCH_HISTORY = 6
         const val KEY_THEME_MODE = "theme_mode"
         const val KEY_TEXT_SIZE_PRESET = "text_size_preset"
+        const val KEY_APP_LANGUAGE = "app_language"
         const val KEY_SEARCH_HISTORY = "search_history"
         const val KEY_PLAYLISTS = "playlists"
         const val KEY_FAVORITE_SONG_IDS = "favorite_song_ids"
