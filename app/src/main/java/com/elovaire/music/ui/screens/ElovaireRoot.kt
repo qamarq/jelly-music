@@ -586,6 +586,7 @@ private val LocalSharedTopBarController = compositionLocalOf<SharedTopBarControl
 private val LocalRenderSharedTopBarContent = compositionLocalOf { false }
 private val LocalSharedBackIconPainter = compositionLocalOf<Painter?> { null }
 private val LocalSharedTopMenuIconPainter = compositionLocalOf<Painter?> { null }
+private val LocalAppLanguage = compositionLocalOf { AppLanguage.English }
 
 private data class TopBarActionSpec(
     @DrawableRes val iconResId: Int,
@@ -1843,6 +1844,7 @@ fun ElovaireRoot(
         LocalChromeHazeState provides chromeHazeState,
         LocalSharedBackIconPainter provides sharedBackIconPainter,
         LocalSharedTopMenuIconPainter provides sharedTopMenuIconPainter,
+        LocalAppLanguage provides appLanguage,
     ) {
         Box(
             modifier = Modifier
@@ -4607,8 +4609,9 @@ private fun AlbumCollectionContent(
         }
     }
     if (showPlaylistPicker && selectionModeActive) {
+        val language = LocalAppLanguage.current
         PlaylistSelectionDialog(
-            title = "Add to playlist",
+            title = uiPhrase(language, UiPhrase.AddToPlaylist),
             subtitle = when (selectedAlbums.size) {
                 1 -> selectedAlbums.first().title
                 else -> "${selectedAlbums.size} selected albums • ${formatCountLabel(selectedAlbumSongs.size, "song")}"
@@ -4636,6 +4639,7 @@ private fun TopBarSelectionMenu(
     modifier: Modifier = Modifier,
 ) {
     val darkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val language = LocalAppLanguage.current
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -4656,7 +4660,7 @@ private fun TopBarSelectionMenu(
         ) {
             AlbumCollectionActionButton(
                 iconResId = R.drawable.ic_lucide_list_plus,
-                label = "Add to playlist",
+                label = uiPhrase(language, UiPhrase.AddToPlaylist),
                 tint = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f),
                 onClick = onAddToPlaylist,
@@ -4670,7 +4674,7 @@ private fun TopBarSelectionMenu(
             )
             AlbumCollectionActionButton(
                 iconResId = R.drawable.ic_lucide_trash_2,
-                label = "Delete",
+                label = uiPhrase(language, UiPhrase.Delete),
                 tint = DestructiveRed,
                 modifier = Modifier.weight(1f),
                 onClick = onDelete,
@@ -4976,7 +4980,7 @@ private fun PlaylistsScreen(
                 topBarHeight = topPadding,
                 leadingAction = TopBarMenuAction(
                     iconResId = R.drawable.ic_lucide_square_pen,
-                    label = "Rename",
+                    label = uiPhrase(LocalAppLanguage.current, UiPhrase.Rename),
                     tint = if (selectedPlaylistIds.size == 1) {
                         MaterialTheme.colorScheme.onSurface
                     } else {
@@ -4990,7 +4994,7 @@ private fun PlaylistsScreen(
                 ),
                 trailingAction = TopBarMenuAction(
                     iconResId = R.drawable.ic_lucide_trash_2,
-                    label = "Remove",
+                    label = uiPhrase(LocalAppLanguage.current, UiPhrase.RemoveFromList),
                     tint = DestructiveRed,
                     onClick = {
                         onDeletePlaylists(selectedPlaylistIds)
@@ -5843,7 +5847,7 @@ private fun CreatePlaylistTile(
             }
         }
         Text(
-            text = "New playlist",
+            text = uiPhrase(LocalAppLanguage.current, UiPhrase.NewPlaylist),
             style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
         )
     }
@@ -6078,8 +6082,11 @@ private fun PlaylistNameDialog(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
+    val language = LocalAppLanguage.current
     var name by rememberSaveable(initialName) { mutableStateOf(initialName) }
     val canConfirm = name.isNotBlank()
+    val displayTitle = if (title == "New playlist") uiPhrase(language, UiPhrase.NewPlaylist) else title
+    val displayConfirmLabel = if (confirmLabel == "Save" || confirmLabel == "Create") uiPhrase(language, UiPhrase.Create) else confirmLabel
     Dialog(onDismissRequest = onDismiss) {
         Box(
             modifier = Modifier
@@ -6109,7 +6116,7 @@ private fun PlaylistNameDialog(
                     verticalArrangement = Arrangement.spacedBy(18.dp),
                 ) {
                     Text(
-                        text = title,
+                        text = displayTitle,
                         style = MaterialTheme.typography.displayLarge.copy(fontSize = elovaireScaledSp(24f)),
                         color = MaterialTheme.colorScheme.onSurface,
                     )
@@ -6125,7 +6132,7 @@ private fun PlaylistNameDialog(
                     ) {
                         TextButton(onClick = onDismiss) {
                             Text(
-                                text = "Cancel",
+                                text = uiPhrase(language, UiPhrase.Cancel),
                                 color = MaterialTheme.colorScheme.onSurface,
                             )
                         }
@@ -6146,7 +6153,7 @@ private fun PlaylistNameDialog(
                             },
                         ) {
                             Text(
-                                text = confirmLabel,
+                                text = displayConfirmLabel,
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                             )
@@ -6165,6 +6172,8 @@ private fun PlaylistNameInputField(
     modifier: Modifier = Modifier,
     placeholder: String = "Playlist name",
 ) {
+    val language = LocalAppLanguage.current
+    val localizedPlaceholder = if (placeholder == "Playlist name") uiPhrase(language, UiPhrase.NewPlaylist) else placeholder
     val contentColor = MaterialTheme.colorScheme.onSurface
     val leadingIconAlpha by animateFloatAsState(
         targetValue = 0.5f,
@@ -6179,7 +6188,7 @@ private fun PlaylistNameInputField(
         shape = RoundedCornerShape(ElovaireRadii.input),
         placeholder = {
             Text(
-                text = placeholder,
+                text = localizedPlaceholder,
                 color = contentColor.copy(alpha = 0.44f),
             )
         },
@@ -6249,8 +6258,9 @@ private fun AddAlbumToPlaylistDialog(
     onPlaylistSelected: (Long, Album) -> Unit,
     onCreatePlaylist: (String) -> Long,
 ) {
+    val language = LocalAppLanguage.current
     PlaylistSelectionDialog(
-        title = "Add to playlist",
+        title = uiPhrase(language, UiPhrase.AddToPlaylist),
         subtitle = album.title,
         playlists = playlists,
         playlistSongsById = playlistSongsById,
@@ -6270,6 +6280,7 @@ private fun PlaylistSelectionDialog(
     onPlaylistSelected: (Long) -> Unit,
     onCreatePlaylist: ((String) -> Long)?,
 ) {
+    val language = LocalAppLanguage.current
     val listState = rememberElovaireLazyListState(title, subtitle, "playlist_picker")
     val createdPlaylists = remember(title, subtitle) { mutableStateListOf<Playlist>() }
     var draftPlaylistName by rememberSaveable(title, subtitle) { mutableStateOf("") }
@@ -6343,7 +6354,7 @@ private fun PlaylistSelectionDialog(
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Text(
-                                    text = "Create a playlist to start saving selections",
+                                    text = uiPhrase(language, UiPhrase.NewPlaylist),
                                     style = MaterialTheme.typography.bodyLarge,
                                     color = readableSecondaryTextColor(),
                                     textAlign = TextAlign.Center,
@@ -6433,7 +6444,7 @@ private fun PlaylistSelectionDialog(
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "New playlist",
+                                    text = uiPhrase(language, UiPhrase.NewPlaylist),
                                     style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                                 )
                             }
@@ -6446,7 +6457,7 @@ private fun PlaylistSelectionDialog(
                     ) {
                         TextButton(onClick = onDismiss) {
                             Text(
-                                text = "Cancel",
+                                text = uiPhrase(language, UiPhrase.Cancel),
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                             )
                         }
@@ -6469,7 +6480,7 @@ private fun PlaylistSelectionDialog(
                             },
                         ) {
                             Text(
-                                text = "Add",
+                                text = uiPhrase(language, UiPhrase.AddToPlaylist),
                                 modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
                                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                             )
@@ -6590,7 +6601,7 @@ private fun InlinePlaylistCreatorRow(
             ) {
                 PlaylistArtworkPreview(
                     songs = emptyList(),
-                    title = "New playlist",
+                    title = uiPhrase(LocalAppLanguage.current, UiPhrase.NewPlaylist),
                     modifier = Modifier.size(62.dp),
                 )
                 PlaylistNameInputField(
@@ -9006,8 +9017,9 @@ private fun AlbumScreen(
     }
 
     if (showPlaylistPicker && selectionModeActive) {
+        val language = LocalAppLanguage.current
         PlaylistSelectionDialog(
-            title = "Add to playlist",
+            title = uiPhrase(language, UiPhrase.AddToPlaylist),
             subtitle = "${formatCountLabel(selectedSongs.size, "song")} selected",
             playlists = playlists.filterNot { it.isSystem },
             playlistSongsById = playlistSongsById,
@@ -9593,13 +9605,13 @@ private fun PlaylistDetailScreen(
                 topBarHeight = detailTopPadding,
                 leadingAction = TopBarMenuAction(
                     iconResId = R.drawable.ic_lucide_square_pen,
-                    label = "Rename",
+                    label = uiPhrase(LocalAppLanguage.current, UiPhrase.Rename),
                     tint = MaterialTheme.colorScheme.onSurface,
                     onClick = { showRenameDialog = true },
                 ),
                 trailingAction = TopBarMenuAction(
                     iconResId = R.drawable.ic_lucide_trash_2,
-                    label = "Remove",
+                    label = uiPhrase(LocalAppLanguage.current, UiPhrase.RemoveFromList),
                     tint = DestructiveRed,
                     enabled = songIdsMarkedForRemoval.isNotEmpty(),
                     onClick = {
@@ -10655,12 +10667,12 @@ private fun AddSongsToPlaylistDialog(
                 onClick = { onAddSongs(selectedSongIds.value.toList()) },
                 enabled = selectedSongIds.value.isNotEmpty(),
             ) {
-                Text("Add")
+                Text(uiPhrase(LocalAppLanguage.current, UiPhrase.AddToPlaylist))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text(uiPhrase(LocalAppLanguage.current, UiPhrase.Cancel))
             }
         },
     )
@@ -12644,6 +12656,7 @@ private fun SongOverflowMenuButton(
     tint: Color,
 ) {
     val actions = LocalSongMenuActions.current
+    val language = LocalAppLanguage.current
     var expanded by remember(song.id) { mutableStateOf(false) }
     var shouldRenderMenu by remember(song.id) { mutableStateOf(false) }
     var showPlaylistDialog by remember(song.id) { mutableStateOf(false) }
@@ -12723,7 +12736,7 @@ private fun SongOverflowMenuButton(
                     ) {
                         SongContextMenuItem(
                             iconResId = R.drawable.ic_lucide_list_music,
-                            text = "Add to playlist",
+                            text = uiPhrase(language, UiPhrase.AddToPlaylist),
                             tint = MaterialTheme.colorScheme.onSurface,
                             onClick = {
                                 expanded = false
@@ -12733,7 +12746,7 @@ private fun SongOverflowMenuButton(
                         DividerLine()
                         SongContextMenuItem(
                             iconResId = R.drawable.ic_lucide_plus,
-                            text = "Add to queue",
+                            text = uiPhrase(language, UiPhrase.AddToQueue),
                             tint = MaterialTheme.colorScheme.onSurface,
                             onClick = {
                                 expanded = false
@@ -12742,7 +12755,7 @@ private fun SongOverflowMenuButton(
                         )
                         SongContextMenuItem(
                             iconResId = R.drawable.ic_lucide_trash_2,
-                            text = "Delete from library",
+                            text = uiPhrase(language, UiPhrase.DeleteFromLibrary),
                             tint = DestructiveRed,
                             containerColor = DestructiveRed.copy(alpha = 0.2f),
                             bottomPadding = 10.dp,
@@ -12797,6 +12810,8 @@ private fun TopBarContextMenuOverlay(
     onOpenChangelog: () -> Unit,
     onOpenAbout: () -> Unit,
 ) {
+    val language = LocalAppLanguage.current
+    val settingsCopy = remember(language) { settingsCopy(language) }
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -12841,7 +12856,7 @@ private fun TopBarContextMenuOverlay(
                 ) {
                     SongContextMenuItem(
                         iconResId = R.drawable.ic_lucide_settings,
-                        text = "Settings",
+                        text = settingsCopy.settings,
                         tint = MaterialTheme.colorScheme.onSurface,
                         topPadding = 8.dp,
                         onClick = onOpenSettings,
@@ -12849,21 +12864,21 @@ private fun TopBarContextMenuOverlay(
                     DividerLine()
                     SongContextMenuItem(
                         iconResId = R.drawable.ic_lucide_audio_waveform,
-                        text = "Equalizer",
+                        text = settingsCopy.equalizer,
                         tint = MaterialTheme.colorScheme.onSurface,
                         onClick = onOpenEqualizer,
                     )
                     DividerLine()
                     SongContextMenuItem(
                         iconResId = R.drawable.ic_lucide_list,
-                        text = "Changelog",
+                        text = settingsCopy.changelog,
                         tint = MaterialTheme.colorScheme.onSurface,
                         onClick = onOpenChangelog,
                     )
                     DividerLine()
                     SongContextMenuItem(
                         iconResId = R.drawable.ic_lucide_info,
-                        text = "About",
+                        text = uiPhrase(language, UiPhrase.About),
                         tint = MaterialTheme.colorScheme.onSurface,
                         topPadding = 6.dp,
                         bottomPadding = 8.dp,
@@ -12921,9 +12936,10 @@ private fun AddToPlaylistPickerDialog(
     onPlaylistSelected: (Long) -> Unit,
     onCreatePlaylist: ((String) -> Long)? = null,
 ) {
+    val language = LocalAppLanguage.current
     PlaylistSelectionDialog(
-        title = "Add to playlist",
-        subtitle = "Choose a playlist",
+        title = uiPhrase(language, UiPhrase.AddToPlaylist),
+        subtitle = uiPhrase(language, UiPhrase.NewPlaylist),
         playlists = playlists,
         playlistSongsById = playlistSongsById,
         onDismiss = onDismiss,
@@ -13970,6 +13986,8 @@ private fun EqualizerScreen(
 ) {
     val listState = rememberElovaireLazyListState("equalizer_screen")
     val graphScrollState = rememberScrollState()
+    val language = LocalAppLanguage.current
+    val copy = remember(language) { settingsCopy(language) }
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -14051,7 +14069,7 @@ private fun EqualizerScreen(
                         verticalArrangement = Arrangement.spacedBy(20.dp),
                     ) {
                         SettingsCategoryText(
-                            title = "Tone shaping",
+                            title = uiPhrase(language, UiPhrase.ToneShaping),
                             iconResId = R.drawable.ic_lucide_audio_waveform,
                         )
                         Row(
@@ -14059,7 +14077,7 @@ private fun EqualizerScreen(
                             horizontalArrangement = Arrangement.spacedBy(20.dp),
                         ) {
                             EqToneKnob(
-                                title = "Bass",
+                                title = uiPhrase(language, UiPhrase.Bass),
                                 value = settings.bass.coerceIn(0f, 1f),
                                 valueRange = 0f..1f,
                                 accentColor = Color(0xFF2FE08D),
@@ -14067,7 +14085,7 @@ private fun EqualizerScreen(
                                 onValueChange = onBassChanged,
                             )
                             EqToneKnob(
-                                title = "Midrange",
+                                title = uiPhrase(language, UiPhrase.Midrange),
                                 value = settings.midrange.coerceIn(-1f, 1f),
                                 valueRange = -1f..1f,
                                 accentColor = Color(0xFF39C2FF),
@@ -14075,7 +14093,7 @@ private fun EqualizerScreen(
                                 onValueChange = onMidrangeChanged,
                             )
                             EqToneKnob(
-                                title = "Treble",
+                                title = uiPhrase(language, UiPhrase.Treble),
                                 value = settings.treble.coerceIn(-1f, 1f),
                                 valueRange = -1f..1f,
                                 accentColor = Color(0xFFFFB056),
@@ -14090,7 +14108,7 @@ private fun EqualizerScreen(
                 ModuleCard {
                     Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
                         SettingsCategoryText(
-                            title = "Spaciousness",
+                            title = copy.spaciousness,
                             iconResId = R.drawable.ic_lucide_wind,
                         )
                         SpaciousnessModeMenu(
@@ -14099,7 +14117,7 @@ private fun EqualizerScreen(
                             onModeSelected = onSpaciousnessModeChanged,
                         )
                         EqMacroSliderRow(
-                            title = "Effect strength",
+                            title = uiPhrase(language, UiPhrase.EffectStrength),
                             value = settings.spaciousness.coerceIn(0f, 1f),
                             valueText = "${(settings.spaciousness.coerceIn(0f, 1f) * 100f).roundToInt()}%",
                             onValueChange = onSpaciousnessChanged,
@@ -14115,13 +14133,13 @@ private fun EqualizerScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text(
-                                    text = "Reverb",
+                                    text = uiPhrase(language, UiPhrase.Reverb),
                                     style = MaterialTheme.typography.titleLarge.copy(
                                         fontSize = elovaireScaledSp(16f),
                                     ),
                                 )
                                 Text(
-                                    text = if (settings.reverbDurationMs <= 0) "Off" else "${settings.reverbDurationMs} ms",
+                                    text = if (settings.reverbDurationMs <= 0) uiPhrase(language, UiPhrase.Off) else "${settings.reverbDurationMs} ms",
                                     style = MaterialTheme.typography.titleLarge.copy(fontSize = elovaireScaledSp(18f)),
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.84f),
                                 )
@@ -14135,7 +14153,7 @@ private fun EqualizerScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 EqPresetPill(
-                                    label = "Reset",
+                                    label = uiPhrase(language, UiPhrase.Reset),
                                     selected = false,
                                     emphasized = true,
                                     useSubtleIdleBackground = true,
@@ -14143,7 +14161,10 @@ private fun EqualizerScreen(
                                 )
                                 ReverbProfile.entries.forEach { profile ->
                                     EqPresetPill(
-                                        label = profile.displayLabel(),
+                                        label = when (profile) {
+                                            ReverbProfile.Dry -> uiPhrase(language, UiPhrase.Dry)
+                                            ReverbProfile.Wet -> uiPhrase(language, UiPhrase.Wet)
+                                        },
                                         selected = settings.reverbDurationMs > 0 && settings.reverbProfile == profile,
                                         useSubtleIdleBackground = true,
                                         onClick = { onReverbProfileChanged(profile) },
@@ -14166,7 +14187,7 @@ private fun EqualizerScreen(
             bottomInset = navigationBarInsetDp() + 48.dp,
         )
         PinnedBackTopBar(
-            title = "Equalizer",
+            title = copy.equalizer,
             onBack = onBack,
             modifier = Modifier.align(Alignment.TopCenter),
         )
@@ -14217,8 +14238,93 @@ private fun settingsCopy(language: AppLanguage): SettingsLanguageCopy = when (la
     AppLanguage.Ukrainian -> SettingsLanguageCopy("Налаштування", "Вигляд", "Тема", "Розмір тексту", "Мова", "Зараз використовується: ${language.nativeName}", "Звук", "Підсилення басів", "Просторовість", "Еквалайзер", "Увімкнути моно", "Перемикає стереовідтворення на моно", "Інші налаштування", "Сканувати бібліотеку", "Оновлює індекс для нових медіа", "Сканувати", "Перевірити оновлення", "Перевіряє, чи доступна нова версія", "Перевірити", "Зміни", "Створено з любов’ю до музики та гарного дизайну")
     AppLanguage.Latvian -> SettingsLanguageCopy("Iestatījumi", "Izskats", "Tēma", "Teksta izmērs", "Valoda", "Pašlaik lietota: ${language.nativeName}", "Skaņa", "Basa pastiprinājums", "Telpiskums", "Ekvalaizers", "Ieslēgt mono", "Pārslēdz stereo atskaņošanu uz mono", "Citi iestatījumi", "Skenēt bibliotēku", "Atjauno indeksu jauniem multivides failiem", "Skenēt", "Meklēt atjauninājumus", "Pārbauda, vai pieejama jauna versija", "Pārbaudīt", "Izmaiņas", "Radīts ar aizrautību pret mūziku un lielisku dizainu")
     AppLanguage.Italian -> SettingsLanguageCopy("Impostazioni", "Aspetto", "Tema", "Dimensione testo", "Lingua", "Attualmente in uso: ${language.nativeName}", "Suono", "Potenziamento bassi", "Spazialità", "Equalizzatore", "Attiva mono", "Passa la riproduzione stereo a mono", "Altre impostazioni", "Scansiona libreria", "Aggiorna l’indice per nuovi media", "Scansiona", "Cerca aggiornamenti", "Controlla se è disponibile una nuova versione", "Controlla", "Novità", "Progettato con passione per la musica e il buon design")
+    AppLanguage.Albanian -> SettingsLanguageCopy("Cilësimet", "Pamja", "Tema", "Madhësia e tekstit", "Gjuha", "Aktualisht në përdorim: ${language.nativeName}", "Tingulli", "Përforcim basi", "Hapësirë", "Ekualizuesi", "Aktivizo mono", "E kalon riprodhimin stereo në mono", "Cilësime të tjera", "Skano bibliotekën", "Rifreskon indeksimin për media të reja", "Skano", "Kontrollo për përditësime", "Kontrollon nëse ka version të ri", "Kontrollo", "Ndryshimet", "Dizajnuar me pasion për muzikën dhe dizajnin e mirë")
+    AppLanguage.Hindi -> SettingsLanguageCopy("सेटिंग्स", "दिखावट", "थीम", "टेक्स्ट आकार", "भाषा", "वर्तमान में उपयोग: ${language.nativeName}", "ध्वनि", "बास बूस्ट", "स्पेशियसनेस", "इक्वलाइज़र", "मोनो चालू करें", "स्टीरियो प्लेबैक को मोनो में बदलता है", "अन्य सेटिंग्स", "लाइब्रेरी स्कैन करें", "नई मीडिया के लिए इंडेक्स ताज़ा करें", "स्कैन", "अपडेट जांचें", "नया संस्करण उपलब्ध है या नहीं जांचें", "जांचें", "बदलाव", "संगीत और अच्छे डिज़ाइन के प्रति जुनून से बनाया गया")
+    AppLanguage.Hungarian -> SettingsLanguageCopy("Beállítások", "Megjelenés", "Téma", "Szövegméret", "Nyelv", "Jelenleg használt: ${language.nativeName}", "Hang", "Basszuskiemelés", "Térhatás", "Hangszínszabályzó", "Monó engedélyezése", "A sztereó lejátszást monóra váltja", "Egyéb beállítások", "Könyvtár beolvasása", "Frissíti az indexelést új médiához", "Beolvasás", "Frissítések keresése", "Ellenőrzi, hogy elérhető-e új verzió", "Ellenőrzés", "Változások", "Szenvedéllyel tervezve zenéhez és jó designhoz")
+    AppLanguage.Latin -> SettingsLanguageCopy("Optiones", "Aspectus", "Thema", "Magnitudo textus", "Lingua", "Nunc adhibetur: ${language.nativeName}", "Sonus", "Bassus auctus", "Spatium", "Aequator", "Mono activa", "Playback stereo in mono vertit", "Aliae optiones", "Bibliothecam scrutare", "Indicem pro novis mediis renovat", "Scrutare", "Renovationes inspice", "Inspicit an nova versio praesto sit", "Inspice", "Mutationes", "Studio musicae et bono consilio creatum")
+    AppLanguage.Macedonian -> SettingsLanguageCopy("Поставки", "Изглед", "Тема", "Големина на текст", "Јазик", "Моментално се користи: ${language.nativeName}", "Звук", "Засилување на бас", "Просторност", "Еквилајзер", "Вклучи моно", "Ја префрла стерео репродукцијата во моно", "Други поставки", "Скенирај библиотека", "Го освежува индексирањето за нови медиуми", "Скенирај", "Провери ажурирања", "Проверува дали има нова верзија", "Провери", "Промени", "Создадено со страст за музика и добар дизајн")
+    AppLanguage.Serbian -> SettingsLanguageCopy("Подешавања", "Изглед", "Тема", "Величина текста", "Језик", "Тренутно се користи: ${language.nativeName}", "Звук", "Појачање баса", "Просторност", "Еквилајзер", "Укључи моно", "Пребацује стерео репродукцију у моно", "Остала подешавања", "Скенирај библиотеку", "Освежава индексирање за нове медије", "Скенирај", "Провери ажурирања", "Проверава да ли је доступна нова верзија", "Провери", "Промене", "Дизајнирано са страшћу за музику и добар дизајн")
+    AppLanguage.Thai -> SettingsLanguageCopy("การตั้งค่า", "รูปลักษณ์", "ธีม", "ขนาดข้อความ", "ภาษา", "ใช้อยู่: ${language.nativeName}", "เสียง", "เพิ่มเสียงเบส", "มิติเสียง", "อีควอไลเซอร์", "เปิดโมโน", "เปลี่ยนการเล่นสเตอริโอเป็นโมโน", "การตั้งค่าอื่น", "สแกนคลังเพลง", "รีเฟรชดัชนีเพื่อค้นหาสื่อใหม่", "สแกน", "ตรวจสอบอัปเดต", "ตรวจสอบว่ามีเวอร์ชันใหม่หรือไม่", "ตรวจสอบ", "บันทึกการเปลี่ยนแปลง", "ออกแบบด้วยความหลงใหลในดนตรีและดีไซน์ที่ดี")
     AppLanguage.English -> SettingsLanguageCopy("Settings", "Appearance", "Theme", "Text size", "Language", "Currently used: ${language.nativeName}", "Sound", "Bass boost", "Spaciousness", "Equalizer", "Enable mono", "Switches stereo playback to mono", "Other settings", "Scan library", "Refresh indexing in search for new media", "Scan", "Check for updates", "Check if there's new version available", "Check", "Changelog", "Designed with passion for music and great design")
 }
+
+private enum class UiPhrase {
+    About,
+    AddToPlaylist,
+    AddToQueue,
+    DeleteFromLibrary,
+    Delete,
+    Rename,
+    RemoveFromList,
+    NewPlaylist,
+    Cancel,
+    Create,
+    Reset,
+    Dry,
+    Wet,
+    Off,
+    Reverb,
+    ToneShaping,
+    Bass,
+    Midrange,
+    Treble,
+    EffectStrength,
+}
+
+private fun uiPhrase(language: AppLanguage, phrase: UiPhrase): String {
+    return uiPhraseTranslations[language]?.get(phrase) ?: uiPhraseTranslations.getValue(AppLanguage.English).getValue(phrase)
+}
+
+private val uiPhraseTranslations = mapOf(
+    AppLanguage.English to mapOf(
+        UiPhrase.About to "About",
+        UiPhrase.AddToPlaylist to "Add to playlist",
+        UiPhrase.AddToQueue to "Add to queue",
+        UiPhrase.DeleteFromLibrary to "Delete from library",
+        UiPhrase.Delete to "Delete",
+        UiPhrase.Rename to "Rename",
+        UiPhrase.RemoveFromList to "Remove from list",
+        UiPhrase.NewPlaylist to "New playlist",
+        UiPhrase.Cancel to "Cancel",
+        UiPhrase.Create to "Create",
+        UiPhrase.Reset to "Reset",
+        UiPhrase.Dry to "Dry",
+        UiPhrase.Wet to "Wet",
+        UiPhrase.Off to "Off",
+        UiPhrase.Reverb to "Reverb",
+        UiPhrase.ToneShaping to "Tone shaping",
+        UiPhrase.Bass to "Bass",
+        UiPhrase.Midrange to "Midrange",
+        UiPhrase.Treble to "Treble",
+        UiPhrase.EffectStrength to "Effect strength",
+    ),
+    AppLanguage.Polish to mapOf(UiPhrase.About to "O aplikacji", UiPhrase.AddToPlaylist to "Dodaj do playlisty", UiPhrase.AddToQueue to "Dodaj do kolejki", UiPhrase.DeleteFromLibrary to "Usuń z biblioteki", UiPhrase.Delete to "Usuń", UiPhrase.Rename to "Zmień nazwę", UiPhrase.RemoveFromList to "Usuń z listy", UiPhrase.NewPlaylist to "Nowa playlista", UiPhrase.Cancel to "Anuluj", UiPhrase.Create to "Utwórz", UiPhrase.Reset to "Resetuj", UiPhrase.Dry to "Suchy", UiPhrase.Wet to "Mokry", UiPhrase.Off to "Wyłączone", UiPhrase.Reverb to "Pogłos", UiPhrase.ToneShaping to "Kształtowanie tonu", UiPhrase.Bass to "Bas", UiPhrase.Midrange to "Środek", UiPhrase.Treble to "Góra", UiPhrase.EffectStrength to "Siła efektu"),
+    AppLanguage.Albanian to mapOf(UiPhrase.About to "Rreth", UiPhrase.AddToPlaylist to "Shto në listë", UiPhrase.AddToQueue to "Shto në radhë", UiPhrase.DeleteFromLibrary to "Fshi nga biblioteka", UiPhrase.Delete to "Fshi", UiPhrase.Rename to "Riemërto", UiPhrase.RemoveFromList to "Hiq nga lista", UiPhrase.NewPlaylist to "Listë e re", UiPhrase.Cancel to "Anulo", UiPhrase.Create to "Krijo", UiPhrase.Reset to "Rivendos", UiPhrase.Dry to "I thatë", UiPhrase.Wet to "I lagësht", UiPhrase.Off to "Fikur", UiPhrase.Reverb to "Reverb", UiPhrase.ToneShaping to "Formësim toni", UiPhrase.Bass to "Bas", UiPhrase.Midrange to "Mesatare", UiPhrase.Treble to "Të larta", UiPhrase.EffectStrength to "Fuqia e efektit"),
+    AppLanguage.ChineseSimplified to mapOf(UiPhrase.About to "关于", UiPhrase.AddToPlaylist to "添加到播放列表", UiPhrase.AddToQueue to "添加到队列", UiPhrase.DeleteFromLibrary to "从媒体库删除", UiPhrase.Delete to "删除", UiPhrase.Rename to "重命名", UiPhrase.RemoveFromList to "从列表移除", UiPhrase.NewPlaylist to "新建播放列表", UiPhrase.Cancel to "取消", UiPhrase.Create to "创建", UiPhrase.Reset to "重置", UiPhrase.Dry to "干声", UiPhrase.Wet to "湿声", UiPhrase.Off to "关闭", UiPhrase.Reverb to "混响", UiPhrase.ToneShaping to "音色塑形", UiPhrase.Bass to "低音", UiPhrase.Midrange to "中频", UiPhrase.Treble to "高音", UiPhrase.EffectStrength to "效果强度"),
+    AppLanguage.Croatian to mapOf(UiPhrase.About to "O aplikaciji", UiPhrase.AddToPlaylist to "Dodaj na popis", UiPhrase.AddToQueue to "Dodaj u red", UiPhrase.DeleteFromLibrary to "Izbriši iz biblioteke", UiPhrase.Delete to "Izbriši", UiPhrase.Rename to "Preimenuj", UiPhrase.RemoveFromList to "Ukloni s popisa", UiPhrase.NewPlaylist to "Novi popis", UiPhrase.Cancel to "Odustani", UiPhrase.Create to "Stvori", UiPhrase.Reset to "Resetiraj", UiPhrase.Dry to "Suho", UiPhrase.Wet to "Mokro", UiPhrase.Off to "Isključeno", UiPhrase.Reverb to "Odjek", UiPhrase.ToneShaping to "Oblikovanje tona", UiPhrase.Bass to "Bas", UiPhrase.Midrange to "Srednji", UiPhrase.Treble to "Visoki", UiPhrase.EffectStrength to "Jačina efekta"),
+    AppLanguage.Czech to mapOf(UiPhrase.About to "O aplikaci", UiPhrase.AddToPlaylist to "Přidat do playlistu", UiPhrase.AddToQueue to "Přidat do fronty", UiPhrase.DeleteFromLibrary to "Smazat z knihovny", UiPhrase.Delete to "Smazat", UiPhrase.Rename to "Přejmenovat", UiPhrase.RemoveFromList to "Odebrat ze seznamu", UiPhrase.NewPlaylist to "Nový playlist", UiPhrase.Cancel to "Zrušit", UiPhrase.Create to "Vytvořit", UiPhrase.Reset to "Resetovat", UiPhrase.Dry to "Suchý", UiPhrase.Wet to "Mokrý", UiPhrase.Off to "Vypnuto", UiPhrase.Reverb to "Dozvuk", UiPhrase.ToneShaping to "Tvarování tónu", UiPhrase.Bass to "Basy", UiPhrase.Midrange to "Středy", UiPhrase.Treble to "Výšky", UiPhrase.EffectStrength to "Síla efektu"),
+    AppLanguage.Danish to mapOf(UiPhrase.About to "Om", UiPhrase.AddToPlaylist to "Føj til playliste", UiPhrase.AddToQueue to "Føj til kø", UiPhrase.DeleteFromLibrary to "Slet fra bibliotek", UiPhrase.Delete to "Slet", UiPhrase.Rename to "Omdøb", UiPhrase.RemoveFromList to "Fjern fra liste", UiPhrase.NewPlaylist to "Ny playliste", UiPhrase.Cancel to "Annuller", UiPhrase.Create to "Opret", UiPhrase.Reset to "Nulstil", UiPhrase.Dry to "Tør", UiPhrase.Wet to "Våd", UiPhrase.Off to "Fra", UiPhrase.Reverb to "Rumklang", UiPhrase.ToneShaping to "Toneformning", UiPhrase.Bass to "Bas", UiPhrase.Midrange to "Mellemtone", UiPhrase.Treble to "Diskant", UiPhrase.EffectStrength to "Effektstyrke"),
+    AppLanguage.Dutch to mapOf(UiPhrase.About to "Over", UiPhrase.AddToPlaylist to "Toevoegen aan afspeellijst", UiPhrase.AddToQueue to "Toevoegen aan wachtrij", UiPhrase.DeleteFromLibrary to "Verwijderen uit bibliotheek", UiPhrase.Delete to "Verwijderen", UiPhrase.Rename to "Naam wijzigen", UiPhrase.RemoveFromList to "Uit lijst verwijderen", UiPhrase.NewPlaylist to "Nieuwe afspeellijst", UiPhrase.Cancel to "Annuleren", UiPhrase.Create to "Maken", UiPhrase.Reset to "Resetten", UiPhrase.Dry to "Droog", UiPhrase.Wet to "Nat", UiPhrase.Off to "Uit", UiPhrase.Reverb to "Galm", UiPhrase.ToneShaping to "Toonvorming", UiPhrase.Bass to "Bas", UiPhrase.Midrange to "Midden", UiPhrase.Treble to "Hoge tonen", UiPhrase.EffectStrength to "Effectsterkte"),
+    AppLanguage.Estonian to mapOf(UiPhrase.About to "Teave", UiPhrase.AddToPlaylist to "Lisa esitusloendisse", UiPhrase.AddToQueue to "Lisa järjekorda", UiPhrase.DeleteFromLibrary to "Kustuta teegist", UiPhrase.Delete to "Kustuta", UiPhrase.Rename to "Nimeta ümber", UiPhrase.RemoveFromList to "Eemalda loendist", UiPhrase.NewPlaylist to "Uus esitusloend", UiPhrase.Cancel to "Tühista", UiPhrase.Create to "Loo", UiPhrase.Reset to "Lähtesta", UiPhrase.Dry to "Kuiv", UiPhrase.Wet to "Märg", UiPhrase.Off to "Väljas", UiPhrase.Reverb to "Kaja", UiPhrase.ToneShaping to "Tooni kujundus", UiPhrase.Bass to "Bass", UiPhrase.Midrange to "Keskvahemik", UiPhrase.Treble to "Kõrged", UiPhrase.EffectStrength to "Efekti tugevus"),
+    AppLanguage.French to mapOf(UiPhrase.About to "À propos", UiPhrase.AddToPlaylist to "Ajouter à une playlist", UiPhrase.AddToQueue to "Ajouter à la file", UiPhrase.DeleteFromLibrary to "Supprimer de la bibliothèque", UiPhrase.Delete to "Supprimer", UiPhrase.Rename to "Renommer", UiPhrase.RemoveFromList to "Retirer de la liste", UiPhrase.NewPlaylist to "Nouvelle playlist", UiPhrase.Cancel to "Annuler", UiPhrase.Create to "Créer", UiPhrase.Reset to "Réinitialiser", UiPhrase.Dry to "Sec", UiPhrase.Wet to "Humide", UiPhrase.Off to "Désactivé", UiPhrase.Reverb to "Réverbération", UiPhrase.ToneShaping to "Modelage du son", UiPhrase.Bass to "Basses", UiPhrase.Midrange to "Médiums", UiPhrase.Treble to "Aigus", UiPhrase.EffectStrength to "Intensité de l’effet"),
+    AppLanguage.German to mapOf(UiPhrase.About to "Über", UiPhrase.AddToPlaylist to "Zur Playlist hinzufügen", UiPhrase.AddToQueue to "Zur Warteschlange hinzufügen", UiPhrase.DeleteFromLibrary to "Aus Bibliothek löschen", UiPhrase.Delete to "Löschen", UiPhrase.Rename to "Umbenennen", UiPhrase.RemoveFromList to "Aus Liste entfernen", UiPhrase.NewPlaylist to "Neue Playlist", UiPhrase.Cancel to "Abbrechen", UiPhrase.Create to "Erstellen", UiPhrase.Reset to "Zurücksetzen", UiPhrase.Dry to "Trocken", UiPhrase.Wet to "Nass", UiPhrase.Off to "Aus", UiPhrase.Reverb to "Hall", UiPhrase.ToneShaping to "Klangformung", UiPhrase.Bass to "Bass", UiPhrase.Midrange to "Mitten", UiPhrase.Treble to "Höhen", UiPhrase.EffectStrength to "Effektstärke"),
+    AppLanguage.Greek to mapOf(UiPhrase.About to "Σχετικά", UiPhrase.AddToPlaylist to "Προσθήκη σε playlist", UiPhrase.AddToQueue to "Προσθήκη στην ουρά", UiPhrase.DeleteFromLibrary to "Διαγραφή από βιβλιοθήκη", UiPhrase.Delete to "Διαγραφή", UiPhrase.Rename to "Μετονομασία", UiPhrase.RemoveFromList to "Αφαίρεση από λίστα", UiPhrase.NewPlaylist to "Νέο playlist", UiPhrase.Cancel to "Άκυρο", UiPhrase.Create to "Δημιουργία", UiPhrase.Reset to "Επαναφορά", UiPhrase.Dry to "Dry", UiPhrase.Wet to "Wet", UiPhrase.Off to "Ανενεργό", UiPhrase.Reverb to "Αντήχηση", UiPhrase.ToneShaping to "Διαμόρφωση τόνου", UiPhrase.Bass to "Μπάσα", UiPhrase.Midrange to "Μεσαία", UiPhrase.Treble to "Πρίμα", UiPhrase.EffectStrength to "Ένταση εφέ"),
+    AppLanguage.Hindi to mapOf(UiPhrase.About to "परिचय", UiPhrase.AddToPlaylist to "प्लेलिस्ट में जोड़ें", UiPhrase.AddToQueue to "कतार में जोड़ें", UiPhrase.DeleteFromLibrary to "लाइब्रेरी से हटाएं", UiPhrase.Delete to "हटाएं", UiPhrase.Rename to "नाम बदलें", UiPhrase.RemoveFromList to "सूची से हटाएं", UiPhrase.NewPlaylist to "नई प्लेलिस्ट", UiPhrase.Cancel to "रद्द करें", UiPhrase.Create to "बनाएं", UiPhrase.Reset to "रीसेट", UiPhrase.Dry to "ड्राई", UiPhrase.Wet to "वेट", UiPhrase.Off to "बंद", UiPhrase.Reverb to "रीवर्ब", UiPhrase.ToneShaping to "टोन शेपिंग", UiPhrase.Bass to "बास", UiPhrase.Midrange to "मिडरेंज", UiPhrase.Treble to "ट्रेबल", UiPhrase.EffectStrength to "प्रभाव शक्ति"),
+    AppLanguage.Hungarian to mapOf(UiPhrase.About to "Névjegy", UiPhrase.AddToPlaylist to "Hozzáadás lejátszási listához", UiPhrase.AddToQueue to "Hozzáadás a sorhoz", UiPhrase.DeleteFromLibrary to "Törlés a könyvtárból", UiPhrase.Delete to "Törlés", UiPhrase.Rename to "Átnevezés", UiPhrase.RemoveFromList to "Eltávolítás a listából", UiPhrase.NewPlaylist to "Új lejátszási lista", UiPhrase.Cancel to "Mégse", UiPhrase.Create to "Létrehozás", UiPhrase.Reset to "Visszaállítás", UiPhrase.Dry to "Száraz", UiPhrase.Wet to "Nedves", UiPhrase.Off to "Ki", UiPhrase.Reverb to "Visszhang", UiPhrase.ToneShaping to "Hangformálás", UiPhrase.Bass to "Basszus", UiPhrase.Midrange to "Közép", UiPhrase.Treble to "Magas", UiPhrase.EffectStrength to "Effekt erőssége"),
+    AppLanguage.Italian to mapOf(UiPhrase.About to "Informazioni", UiPhrase.AddToPlaylist to "Aggiungi alla playlist", UiPhrase.AddToQueue to "Aggiungi alla coda", UiPhrase.DeleteFromLibrary to "Elimina dalla libreria", UiPhrase.Delete to "Elimina", UiPhrase.Rename to "Rinomina", UiPhrase.RemoveFromList to "Rimuovi dalla lista", UiPhrase.NewPlaylist to "Nuova playlist", UiPhrase.Cancel to "Annulla", UiPhrase.Create to "Crea", UiPhrase.Reset to "Ripristina", UiPhrase.Dry to "Dry", UiPhrase.Wet to "Wet", UiPhrase.Off to "Disattivato", UiPhrase.Reverb to "Riverbero", UiPhrase.ToneShaping to "Modellazione tono", UiPhrase.Bass to "Bassi", UiPhrase.Midrange to "Medi", UiPhrase.Treble to "Alti", UiPhrase.EffectStrength to "Intensità effetto"),
+    AppLanguage.Latin to mapOf(UiPhrase.About to "De app", UiPhrase.AddToPlaylist to "Ad indicem adde", UiPhrase.AddToQueue to "Ad ordinem adde", UiPhrase.DeleteFromLibrary to "E bibliotheca dele", UiPhrase.Delete to "Dele", UiPhrase.Rename to "Renomina", UiPhrase.RemoveFromList to "E indice remove", UiPhrase.NewPlaylist to "Novus index", UiPhrase.Cancel to "Rescinde", UiPhrase.Create to "Crea", UiPhrase.Reset to "Restitue", UiPhrase.Dry to "Siccus", UiPhrase.Wet to "Humidus", UiPhrase.Off to "Exstinctum", UiPhrase.Reverb to "Reverberatio", UiPhrase.ToneShaping to "Formatio toni", UiPhrase.Bass to "Bassus", UiPhrase.Midrange to "Media", UiPhrase.Treble to "Acuti", UiPhrase.EffectStrength to "Vis effectus"),
+    AppLanguage.Latvian to mapOf(UiPhrase.About to "Par", UiPhrase.AddToPlaylist to "Pievienot atskaņošanas sarakstam", UiPhrase.AddToQueue to "Pievienot rindai", UiPhrase.DeleteFromLibrary to "Dzēst no bibliotēkas", UiPhrase.Delete to "Dzēst", UiPhrase.Rename to "Pārdēvēt", UiPhrase.RemoveFromList to "Noņemt no saraksta", UiPhrase.NewPlaylist to "Jauns saraksts", UiPhrase.Cancel to "Atcelt", UiPhrase.Create to "Izveidot", UiPhrase.Reset to "Atiestatīt", UiPhrase.Dry to "Sauss", UiPhrase.Wet to "Mitrs", UiPhrase.Off to "Izslēgts", UiPhrase.Reverb to "Atbalss", UiPhrase.ToneShaping to "Toņa veidošana", UiPhrase.Bass to "Bass", UiPhrase.Midrange to "Vidējās", UiPhrase.Treble to "Augšas", UiPhrase.EffectStrength to "Efekta stiprums"),
+    AppLanguage.Lithuanian to mapOf(UiPhrase.About to "Apie", UiPhrase.AddToPlaylist to "Pridėti į grojaraštį", UiPhrase.AddToQueue to "Pridėti į eilę", UiPhrase.DeleteFromLibrary to "Ištrinti iš bibliotekos", UiPhrase.Delete to "Ištrinti", UiPhrase.Rename to "Pervadinti", UiPhrase.RemoveFromList to "Pašalinti iš sąrašo", UiPhrase.NewPlaylist to "Naujas grojaraštis", UiPhrase.Cancel to "Atšaukti", UiPhrase.Create to "Sukurti", UiPhrase.Reset to "Atstatyti", UiPhrase.Dry to "Sausas", UiPhrase.Wet to "Šlapias", UiPhrase.Off to "Išjungta", UiPhrase.Reverb to "Aidas", UiPhrase.ToneShaping to "Tono formavimas", UiPhrase.Bass to "Bosai", UiPhrase.Midrange to "Viduriai", UiPhrase.Treble to "Aukšti", UiPhrase.EffectStrength to "Efekto stiprumas"),
+    AppLanguage.Macedonian to mapOf(UiPhrase.About to "За апликацијата", UiPhrase.AddToPlaylist to "Додај во плејлиста", UiPhrase.AddToQueue to "Додај во редица", UiPhrase.DeleteFromLibrary to "Избриши од библиотека", UiPhrase.Delete to "Избриши", UiPhrase.Rename to "Преименувај", UiPhrase.RemoveFromList to "Отстрани од листа", UiPhrase.NewPlaylist to "Нова плејлиста", UiPhrase.Cancel to "Откажи", UiPhrase.Create to "Креирај", UiPhrase.Reset to "Ресетирај", UiPhrase.Dry to "Суво", UiPhrase.Wet to "Влажно", UiPhrase.Off to "Исклучено", UiPhrase.Reverb to "Реверб", UiPhrase.ToneShaping to "Обликување тон", UiPhrase.Bass to "Бас", UiPhrase.Midrange to "Средни", UiPhrase.Treble to "Високи", UiPhrase.EffectStrength to "Сила на ефект"),
+    AppLanguage.Norwegian to mapOf(UiPhrase.About to "Om", UiPhrase.AddToPlaylist to "Legg til i spilleliste", UiPhrase.AddToQueue to "Legg til i kø", UiPhrase.DeleteFromLibrary to "Slett fra bibliotek", UiPhrase.Delete to "Slett", UiPhrase.Rename to "Gi nytt navn", UiPhrase.RemoveFromList to "Fjern fra liste", UiPhrase.NewPlaylist to "Ny spilleliste", UiPhrase.Cancel to "Avbryt", UiPhrase.Create to "Opprett", UiPhrase.Reset to "Tilbakestill", UiPhrase.Dry to "Tørr", UiPhrase.Wet to "Våt", UiPhrase.Off to "Av", UiPhrase.Reverb to "Romklang", UiPhrase.ToneShaping to "Toneforming", UiPhrase.Bass to "Bass", UiPhrase.Midrange to "Mellomtone", UiPhrase.Treble to "Diskant", UiPhrase.EffectStrength to "Effektstyrke"),
+    AppLanguage.Portuguese to mapOf(UiPhrase.About to "Sobre", UiPhrase.AddToPlaylist to "Adicionar à playlist", UiPhrase.AddToQueue to "Adicionar à fila", UiPhrase.DeleteFromLibrary to "Eliminar da biblioteca", UiPhrase.Delete to "Eliminar", UiPhrase.Rename to "Renomear", UiPhrase.RemoveFromList to "Remover da lista", UiPhrase.NewPlaylist to "Nova playlist", UiPhrase.Cancel to "Cancelar", UiPhrase.Create to "Criar", UiPhrase.Reset to "Repor", UiPhrase.Dry to "Seco", UiPhrase.Wet to "Molhado", UiPhrase.Off to "Desligado", UiPhrase.Reverb to "Reverberação", UiPhrase.ToneShaping to "Modelação de tom", UiPhrase.Bass to "Graves", UiPhrase.Midrange to "Médios", UiPhrase.Treble to "Agudos", UiPhrase.EffectStrength to "Força do efeito"),
+    AppLanguage.Russian to mapOf(UiPhrase.About to "О приложении", UiPhrase.AddToPlaylist to "Добавить в плейлист", UiPhrase.AddToQueue to "Добавить в очередь", UiPhrase.DeleteFromLibrary to "Удалить из библиотеки", UiPhrase.Delete to "Удалить", UiPhrase.Rename to "Переименовать", UiPhrase.RemoveFromList to "Убрать из списка", UiPhrase.NewPlaylist to "Новый плейлист", UiPhrase.Cancel to "Отмена", UiPhrase.Create to "Создать", UiPhrase.Reset to "Сбросить", UiPhrase.Dry to "Сухой", UiPhrase.Wet to "Мокрый", UiPhrase.Off to "Выкл.", UiPhrase.Reverb to "Реверберация", UiPhrase.ToneShaping to "Формирование тона", UiPhrase.Bass to "Бас", UiPhrase.Midrange to "Середина", UiPhrase.Treble to "Верх", UiPhrase.EffectStrength to "Сила эффекта"),
+    AppLanguage.Serbian to mapOf(UiPhrase.About to "О апликацији", UiPhrase.AddToPlaylist to "Додај у плејлисту", UiPhrase.AddToQueue to "Додај у ред", UiPhrase.DeleteFromLibrary to "Обриши из библиотеке", UiPhrase.Delete to "Обриши", UiPhrase.Rename to "Преименуј", UiPhrase.RemoveFromList to "Уклони са листе", UiPhrase.NewPlaylist to "Нова плејлиста", UiPhrase.Cancel to "Откажи", UiPhrase.Create to "Креирај", UiPhrase.Reset to "Ресетуј", UiPhrase.Dry to "Суво", UiPhrase.Wet to "Мокро", UiPhrase.Off to "Искључено", UiPhrase.Reverb to "Реверб", UiPhrase.ToneShaping to "Обликовање тона", UiPhrase.Bass to "Бас", UiPhrase.Midrange to "Средњи", UiPhrase.Treble to "Високи", UiPhrase.EffectStrength to "Јачина ефекта"),
+    AppLanguage.Spanish to mapOf(UiPhrase.About to "Acerca de", UiPhrase.AddToPlaylist to "Añadir a playlist", UiPhrase.AddToQueue to "Añadir a la cola", UiPhrase.DeleteFromLibrary to "Eliminar de la biblioteca", UiPhrase.Delete to "Eliminar", UiPhrase.Rename to "Renombrar", UiPhrase.RemoveFromList to "Quitar de la lista", UiPhrase.NewPlaylist to "Nueva playlist", UiPhrase.Cancel to "Cancelar", UiPhrase.Create to "Crear", UiPhrase.Reset to "Restablecer", UiPhrase.Dry to "Seco", UiPhrase.Wet to "Húmedo", UiPhrase.Off to "Desactivado", UiPhrase.Reverb to "Reverberación", UiPhrase.ToneShaping to "Modelado de tono", UiPhrase.Bass to "Graves", UiPhrase.Midrange to "Medios", UiPhrase.Treble to "Agudos", UiPhrase.EffectStrength to "Intensidad del efecto"),
+    AppLanguage.Swedish to mapOf(UiPhrase.About to "Om", UiPhrase.AddToPlaylist to "Lägg till i spellista", UiPhrase.AddToQueue to "Lägg till i kö", UiPhrase.DeleteFromLibrary to "Ta bort från bibliotek", UiPhrase.Delete to "Ta bort", UiPhrase.Rename to "Byt namn", UiPhrase.RemoveFromList to "Ta bort från lista", UiPhrase.NewPlaylist to "Ny spellista", UiPhrase.Cancel to "Avbryt", UiPhrase.Create to "Skapa", UiPhrase.Reset to "Återställ", UiPhrase.Dry to "Torr", UiPhrase.Wet to "Våt", UiPhrase.Off to "Av", UiPhrase.Reverb to "Efterklang", UiPhrase.ToneShaping to "Tonformning", UiPhrase.Bass to "Bas", UiPhrase.Midrange to "Mellanregister", UiPhrase.Treble to "Diskant", UiPhrase.EffectStrength to "Effektstyrka"),
+    AppLanguage.Thai to mapOf(UiPhrase.About to "เกี่ยวกับ", UiPhrase.AddToPlaylist to "เพิ่มไปยังเพลย์ลิสต์", UiPhrase.AddToQueue to "เพิ่มไปยังคิว", UiPhrase.DeleteFromLibrary to "ลบจากคลัง", UiPhrase.Delete to "ลบ", UiPhrase.Rename to "เปลี่ยนชื่อ", UiPhrase.RemoveFromList to "ลบออกจากรายการ", UiPhrase.NewPlaylist to "เพลย์ลิสต์ใหม่", UiPhrase.Cancel to "ยกเลิก", UiPhrase.Create to "สร้าง", UiPhrase.Reset to "รีเซ็ต", UiPhrase.Dry to "แห้ง", UiPhrase.Wet to "เปียก", UiPhrase.Off to "ปิด", UiPhrase.Reverb to "รีเวิร์บ", UiPhrase.ToneShaping to "ปรับโทนเสียง", UiPhrase.Bass to "เบส", UiPhrase.Midrange to "เสียงกลาง", UiPhrase.Treble to "เสียงแหลม", UiPhrase.EffectStrength to "ความแรงของเอฟเฟกต์"),
+    AppLanguage.Ukrainian to mapOf(UiPhrase.About to "Про застосунок", UiPhrase.AddToPlaylist to "Додати до плейлиста", UiPhrase.AddToQueue to "Додати до черги", UiPhrase.DeleteFromLibrary to "Видалити з бібліотеки", UiPhrase.Delete to "Видалити", UiPhrase.Rename to "Перейменувати", UiPhrase.RemoveFromList to "Прибрати зі списку", UiPhrase.NewPlaylist to "Новий плейлист", UiPhrase.Cancel to "Скасувати", UiPhrase.Create to "Створити", UiPhrase.Reset to "Скинути", UiPhrase.Dry to "Сухий", UiPhrase.Wet to "Мокрий", UiPhrase.Off to "Вимкнено", UiPhrase.Reverb to "Реверберація", UiPhrase.ToneShaping to "Формування тону", UiPhrase.Bass to "Бас", UiPhrase.Midrange to "Середина", UiPhrase.Treble to "Верхи", UiPhrase.EffectStrength to "Сила ефекту"),
+)
 
 @Composable
 private fun SettingsScreen(
@@ -14703,7 +14809,7 @@ private fun ChangelogScreen(
             }
         }
         PinnedBackTopBar(
-            title = "Changelog",
+            title = settingsCopy(LocalAppLanguage.current).changelog,
             onBack = onBack,
             modifier = Modifier.align(Alignment.TopCenter),
         )
@@ -14924,6 +15030,7 @@ private fun AboutScreen(
     bottomPadding: Dp,
 ) {
     val context = LocalContext.current
+    val language = LocalAppLanguage.current
     val aboutModel = remember(context) { context.loadAboutScreenModel() }
     val listState = rememberElovaireLazyListState("about_screen")
     Box(
@@ -14954,7 +15061,7 @@ private fun AboutScreen(
             }
         }
         PinnedBackTopBar(
-            title = "About",
+            title = uiPhrase(language, UiPhrase.About),
             onBack = onBack,
             modifier = Modifier.align(Alignment.TopCenter),
         )
@@ -16508,6 +16615,7 @@ private fun EqPresetMenu(
     onApplyPreset: (EqSettings) -> Unit,
     onReset: () -> Unit,
 ) {
+    val language = LocalAppLanguage.current
     val presets = remember {
         listOf(
             eqPreset("Electronic", 0.40f, 0.58f, 0.42f, 0.26f, 0.10f, 0.08f, 0.16f, 0.24f),
@@ -16537,7 +16645,7 @@ private fun EqPresetMenu(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         EqPresetPill(
-            label = "Reset",
+            label = uiPhrase(language, UiPhrase.Reset),
             selected = activePresetName == null && currentSettings != EqSettings(),
             emphasized = true,
             onClick = onReset,
@@ -16564,6 +16672,7 @@ private fun SpaciousnessModeMenu(
     spaciousnessAmount: Float,
     onModeSelected: (SpaciousnessMode) -> Unit,
 ) {
+    val language = LocalAppLanguage.current
     val modes = remember {
         listOf(
             SpaciousnessMode.StereoWidth,
@@ -16584,7 +16693,7 @@ private fun SpaciousnessModeMenu(
     ) {
         modes.forEach { mode ->
             EqPresetPill(
-                label = mode.displayLabel(),
+                label = mode.displayLabel(language),
                 selected = spaciousnessAmount > 0.001f && mode == currentMode,
                 useSubtleIdleBackground = true,
                 onClick = {
@@ -16601,9 +16710,9 @@ private fun SpaciousnessModeMenu(
     }
 }
 
-private fun SpaciousnessMode.displayLabel(): String {
+private fun SpaciousnessMode.displayLabel(language: AppLanguage = AppLanguage.English): String {
     return when (this) {
-        SpaciousnessMode.Off -> "Off"
+        SpaciousnessMode.Off -> uiPhrase(language, UiPhrase.Off)
         SpaciousnessMode.StereoWidth -> "Stereo Width"
         SpaciousnessMode.CrossfeedDepth -> "Crossfeed"
         SpaciousnessMode.EarlyReflectionRoom -> "Room"
