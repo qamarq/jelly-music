@@ -25,8 +25,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -59,6 +61,7 @@ class MainActivity : ComponentActivity() {
             val motionDurationScale = rememberSystemAnimationScale()
             val themeOverlayAlpha = remember { Animatable(0f) }
             var showSplash by remember { mutableStateOf(shouldShowColdStartSplash) }
+            val splashContentAlpha = remember { Animatable(if (shouldShowColdStartSplash) 0f else 1f) }
 
             LaunchedEffect(themeMode.value, systemDark) {
                 if (previousThemeMode != themeMode.value) {
@@ -74,6 +77,12 @@ class MainActivity : ComponentActivity() {
 
             LaunchedEffect(showSplash) {
                 if (showSplash) {
+                    splashContentAlpha.snapTo(0f)
+                    withFrameNanos { }
+                    splashContentAlpha.animateTo(
+                        targetValue = 1f,
+                        animationSpec = ElovaireMotion.fadeMedium(),
+                    )
                     delay(ElovaireMotion.scaleDurationMillis(1_500L, motionDurationScale))
                     showSplash = false
                 }
@@ -112,6 +121,7 @@ class MainActivity : ComponentActivity() {
                             contentAlignment = Alignment.Center,
                         ) {
                             Column(
+                                modifier = Modifier.graphicsLayer { alpha = splashContentAlpha.value },
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center,
                             ) {

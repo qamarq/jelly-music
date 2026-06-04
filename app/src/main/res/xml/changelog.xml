@@ -7,6 +7,7 @@
       3. Add newer releases above older ones.
     -->
     <release version="1.9.5">
+        <item>Further upgrades to playlist editing mode</item>
         <item>Added language switcher in settings</item>
         <item>Added 26 languages for the entire UI: Albanian, Croatian, Czech, Danish, Dutch, Estonian, French, German, Greek, Hindi, Hungarian, Italian, Latin, Latvian, Lithuanian, Macedonian, Norwegian, Polish, Portuguese, Russian, Serbian, Simplified Chinese, Spanish, Swedish, Thai, Ukrainian</item>
         <item>Bug fixes</item>

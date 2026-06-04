@@ -3,13 +3,13 @@ package elovaire.music.droidbeauty.app.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // Core app background for dark mode screens.
-val Night = Color(0xFF09090A)
+val Night = Color(0xFF000000)
 
 // Shared card/module background in dark mode.
-val Carbon = Color(0xFF141414)
+val Carbon = Color(0xFF101010)
 
 // Secondary dark surface for chips, controls, and layered UI.
-val Graphite = Color(0xFF1C1C1F)
+val Graphite = Color(0xFF181818)
 
 // Main background for light mode screens.
 val Cloud = Color(0xFFFFFFFF)

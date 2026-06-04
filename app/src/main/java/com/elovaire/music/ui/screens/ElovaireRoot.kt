@@ -6331,11 +6331,22 @@ private fun PlaylistSelectionDialog(
                         .animateContentSize(animationSpec = ElovaireMotion.sizeSoft()),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.displayLarge.copy(fontSize = elovaireScaledSp(24f)),
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_lucide_list_plus),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium),
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
@@ -10024,11 +10035,32 @@ private fun AddSongsToPlaylistOverlay(
             else -> onDismiss()
         }
     }
+    val currentHandleBack = rememberUpdatedState(handleBack)
+    val stableHandleBack = remember {
+        { currentHandleBack.value.invoke() }
+    }
     BackHandler(enabled = selectedAlbumId != null || selectedArtistName != null) {
-        handleBack()
+        stableHandleBack()
     }
     val overlayTopPadding = detailTopBarOccupiedHeight()
     val overlayBottomPadding = 124.dp + buttonNavigationScrollBoost()
+    val selectedSongIdsState = rememberUpdatedState(selectedSongIds)
+    val topBarActions = remember(onAddSongs, onDismiss) {
+        listOf(
+            TopBarActionSpec(
+                iconResId = R.drawable.ic_lucide_check,
+                contentDescription = "Confirm added songs",
+                onClick = {
+                    val currentSelectedSongIds = selectedSongIdsState.value
+                    if (currentSelectedSongIds.isNotEmpty()) {
+                        onAddSongs(currentSelectedSongIds)
+                    } else {
+                        onDismiss()
+                    }
+                },
+            ),
+        )
+    }
 
     Box(
         modifier = Modifier
@@ -10051,13 +10083,17 @@ private fun AddSongsToPlaylistOverlay(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item {
-                Box(
+                BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(50.dp),
                 ) {
+                    val fullWidth = maxWidth + 40.dp
                     Row(
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .width(fullWidth)
+                            .offset(x = (-20).dp)
+                            .fillMaxHeight(),
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -10093,7 +10129,7 @@ private fun AddSongsToPlaylistOverlay(
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
+                            .width(fullWidth)
                             .height(1.dp)
                             .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
                     )
@@ -10170,6 +10206,7 @@ private fun AddSongsToPlaylistOverlay(
                             song = song,
                             selected = selected,
                             selectionIndicatorOnRight = true,
+                            showDivider = song != filteredAlbumSongs.lastOrNull(),
                             onClick = {
                                 selectedSongIds = if (selected) {
                                     selectedSongIds.filterNot { it == song.id }
@@ -10187,6 +10224,7 @@ private fun AddSongsToPlaylistOverlay(
                             song = song,
                             selected = selected,
                             selectionIndicatorOnRight = true,
+                            showDivider = song != filteredArtistSongs.lastOrNull(),
                             onClick = {
                                 selectedSongIds = if (selected) {
                                     selectedSongIds.filterNot { it == song.id }
@@ -10199,9 +10237,20 @@ private fun AddSongsToPlaylistOverlay(
                 }
                 selectedTab == PlaylistPickerTab.Albums -> {
                     items(filteredAlbums, key = { it.id }) { album ->
-                        CompactAlbumRow(
+                        SelectableAlbumPickerRow(
                             album = album,
+                            selected = album.songs.all { it.id in selectedSongIdSet } && album.songs.isNotEmpty(),
+                            showDivider = album != filteredAlbums.lastOrNull(),
                             onOpen = { selectedAlbumId = album.id },
+                            onToggleSelection = {
+                                val albumSongIds = album.songs.map(Song::id)
+                                val allSelected = albumSongIds.all { it in selectedSongIdSet }
+                                selectedSongIds = if (allSelected) {
+                                    selectedSongIds.filterNot { it in albumSongIds }
+                                } else {
+                                    (selectedSongIds + albumSongIds).distinct()
+                                }
+                            },
                         )
                     }
                 }
@@ -10229,6 +10278,7 @@ private fun AddSongsToPlaylistOverlay(
                             song = song,
                             selected = selected,
                             selectionIndicatorOnRight = true,
+                            showDivider = song != filteredSongs.lastOrNull(),
                             onClick = {
                                 selectedSongIds = if (selected) {
                                     selectedSongIds.filterNot { it == song.id }
@@ -10256,20 +10306,8 @@ private fun AddSongsToPlaylistOverlay(
                 }
                 else -> formatCountLabel(selectedSongIds.size, "song")
             },
-            onBack = handleBack,
-            actions = listOf(
-                TopBarActionSpec(
-                    iconResId = R.drawable.ic_lucide_check,
-                    contentDescription = "Confirm added songs",
-                    onClick = {
-                        if (selectedSongIds.isNotEmpty()) {
-                            onAddSongs(selectedSongIds)
-                        } else {
-                            onDismiss()
-                        }
-                    },
-                ),
-            ),
+            onBack = stableHandleBack,
+            actions = topBarActions,
             modifier = Modifier.align(Alignment.TopCenter),
         )
         FastScrollbar(
@@ -10339,6 +10377,7 @@ private fun SelectableSongRow(
     song: Song,
     selected: Boolean,
     selectionIndicatorOnRight: Boolean = false,
+    showDivider: Boolean = true,
     onClick: () -> Unit,
 ) {
     Column(
@@ -10416,7 +10455,94 @@ private fun SelectableSongRow(
                 }
             }
         }
-        DividerLine()
+        if (showDivider) {
+            DividerLine()
+        }
+    }
+}
+
+@Composable
+private fun SelectableAlbumPickerRow(
+    album: Album,
+    selected: Boolean,
+    showDivider: Boolean = true,
+    onOpen: () -> Unit,
+    onToggleSelection: () -> Unit,
+) {
+    Column {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onOpen,
+                )
+                .padding(vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ArtworkImage(
+                uri = album.artUri,
+                title = album.title,
+                modifier = Modifier.size(62.dp),
+                cornerRadius = ElovaireRadii.artworkSmall,
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                Text(
+                    text = album.title,
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = album.artist,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = readableSecondaryTextColor(),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = buildAnnotatedString {
+                        withStyle(
+                            SpanStyle(
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 1f),
+                            ),
+                        ) {
+                            append(formatCountLabel(album.songCount, "track"))
+                        }
+                        append("  •  ")
+                        withStyle(
+                            SpanStyle(
+                                color = readableSecondaryTextColor().copy(alpha = 0.7f),
+                            ),
+                        ) {
+                            append(formatDuration(album.durationMs))
+                        }
+                    },
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onToggleSelection,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                SelectionIndicatorIcon(selected = selected)
+            }
+        }
+        if (showDivider) {
+            DividerLine()
+        }
     }
 }
 

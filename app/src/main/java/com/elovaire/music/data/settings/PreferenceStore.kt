@@ -2,6 +2,7 @@ package elovaire.music.droidbeauty.app.data.settings
 
 import android.content.Context
 import android.net.Uri
+import android.os.Build
 import androidx.core.content.edit
 import elovaire.music.droidbeauty.app.domain.model.AppLanguage
 import elovaire.music.droidbeauty.app.domain.model.EqSettings
@@ -17,7 +18,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 class PreferenceStore(context: Context) {
-    private val preferences = context.getSharedPreferences("elovaire_preferences", Context.MODE_PRIVATE)
+    private val appContext = context.applicationContext
+    private val preferences = appContext.getSharedPreferences("elovaire_preferences", Context.MODE_PRIVATE)
 
     private val _themeMode = MutableStateFlow(loadThemeMode())
     val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
@@ -452,9 +454,48 @@ class PreferenceStore(context: Context) {
     }
 
     private fun loadAppLanguage(): AppLanguage {
-        return preferences.getString(KEY_APP_LANGUAGE, AppLanguage.English.name)
+        val savedLanguage = preferences.getString(KEY_APP_LANGUAGE, null)
             ?.let { saved -> AppLanguage.entries.firstOrNull { it.name == saved } }
-            ?: AppLanguage.English
+        return savedLanguage ?: resolveDeviceLanguage()
+    }
+
+    private fun resolveDeviceLanguage(): AppLanguage {
+        val locale = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            appContext.resources.configuration.locales[0]
+        } else {
+            @Suppress("DEPRECATION")
+            appContext.resources.configuration.locale
+        } ?: return AppLanguage.English
+        return when (locale.language.lowercase()) {
+            "sq" -> AppLanguage.Albanian
+            "hr" -> AppLanguage.Croatian
+            "cs" -> AppLanguage.Czech
+            "da" -> AppLanguage.Danish
+            "nl" -> AppLanguage.Dutch
+            "et" -> AppLanguage.Estonian
+            "fr" -> AppLanguage.French
+            "de" -> AppLanguage.German
+            "el" -> AppLanguage.Greek
+            "hi" -> AppLanguage.Hindi
+            "hu" -> AppLanguage.Hungarian
+            "it" -> AppLanguage.Italian
+            "la" -> AppLanguage.Latin
+            "lv" -> AppLanguage.Latvian
+            "lt" -> AppLanguage.Lithuanian
+            "mk" -> AppLanguage.Macedonian
+            "no", "nb", "nn" -> AppLanguage.Norwegian
+            "pl" -> AppLanguage.Polish
+            "pt" -> AppLanguage.Portuguese
+            "ru" -> AppLanguage.Russian
+            "sr" -> AppLanguage.Serbian
+            "zh" -> AppLanguage.ChineseSimplified
+            "es" -> AppLanguage.Spanish
+            "sv" -> AppLanguage.Swedish
+            "th" -> AppLanguage.Thai
+            "uk" -> AppLanguage.Ukrainian
+            "en" -> AppLanguage.English
+            else -> AppLanguage.English
+        }
     }
 
     private fun loadPlaybackVolume(): Float {
