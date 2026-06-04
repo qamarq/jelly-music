@@ -396,6 +396,16 @@ class PreferenceStore(context: Context) {
         _dismissedUpdateVersion.value = versionName?.trim()?.takeIf { it.isNotBlank() }
     }
 
+    fun lastAutomaticUpdateCheckAtMs(): Long {
+        return preferences.getLong(KEY_LAST_AUTOMATIC_UPDATE_CHECK_AT_MS, 0L).coerceAtLeast(0L)
+    }
+
+    fun setLastAutomaticUpdateCheckAtMs(timestampMs: Long) {
+        preferences.edit {
+            putLong(KEY_LAST_AUTOMATIC_UPDATE_CHECK_AT_MS, timestampMs.coerceAtLeast(0L))
+        }
+    }
+
     private fun persistEqSettings(settings: EqSettings) {
         val normalizedSettings = settings.copy(
             reverbDurationMs = normalizeReverbDurationMs(settings.reverbDurationMs),
@@ -731,6 +741,7 @@ class PreferenceStore(context: Context) {
         const val KEY_LIBRARY_FOLDER_URI = "library_folder_uri"
         const val KEY_LIBRARY_FOLDER_PATH = "library_folder_path"
         const val KEY_DISMISSED_UPDATE_VERSION = "dismissed_update_version"
+        const val KEY_LAST_AUTOMATIC_UPDATE_CHECK_AT_MS = "last_automatic_update_check_at_ms"
         const val KEY_BANDS = "eq_bands"
         const val KEY_BASS = "eq_bass"
         const val KEY_MIDRANGE = "eq_midrange"

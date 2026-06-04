@@ -42,6 +42,7 @@ class LibraryRepository(
     private var refreshDebounceJob: Job? = null
     private var pendingRefresh = false
     private var pendingIndexRefresh = false
+    private val pendingTargetedIndexRefreshPaths = linkedSetOf<String>()
     private var pendingMetadataEnrichment = false
     private var didBootstrapLibrary = false
     val state: StateFlow<LibraryUiState> = _state.asStateFlow()
@@ -66,7 +67,6 @@ class LibraryRepository(
             true,
             mediaObserver,
         )
-        ensureMusicDirectoryObserver()
     }
 
     fun onPermissionChanged(granted: Boolean) {
@@ -77,8 +77,12 @@ class LibraryRepository(
             ensureMusicDirectoryObserver()
             bootstrapLibrary()
         } else {
+            scanJob?.cancel()
+            scanJob = null
             pendingRefresh = false
             pendingIndexRefresh = false
+            pendingTargetedIndexRefreshPaths.clear()
+            pendingMetadataEnrichment = false
             refreshDebounceJob?.cancel()
             didBootstrapLibrary = false
             musicDirectoryObserver?.stopWatching()
@@ -153,13 +157,20 @@ class LibraryRepository(
         }
         scanJob = scope.launch {
             val shouldRefreshIndex = forceMediaIndex || pendingIndexRefresh
+            val targetedRefreshPaths = if (shouldRefreshIndex) {
+                emptyList()
+            } else {
+                pendingTargetedIndexRefreshPaths.toList()
+            }
             val shouldEnrichMetadata = enrichMetadata || pendingMetadataEnrichment
             pendingIndexRefresh = false
+            pendingTargetedIndexRefreshPaths.clear()
             pendingMetadataEnrichment = false
             runCatching {
                 withContext(Dispatchers.IO) {
                     scanner.scan(
                         refreshMediaIndex = shouldRefreshIndex,
+                        refreshMediaPaths = targetedRefreshPaths,
                         enrichMetadata = shouldEnrichMetadata,
                         onProgress = if (showLoadingIndicator) { current, total ->
                             val progress = if (total <= 0) 1f else (current.toFloat() / total.toFloat()).coerceIn(0f, 1f)
@@ -226,6 +237,7 @@ class LibraryRepository(
     fun setPreferredLibraryFolderPath(path: String?) {
         scanner.setPreferredLibraryFolderPath(path)
         if (_state.value.permissionGranted) {
+            ensureMusicDirectoryObserver()
             refresh(
                 forceMediaIndex = true,
                 enrichMetadata = false,
@@ -236,9 +248,16 @@ class LibraryRepository(
 
     private fun scheduleMediaRefresh(
         forceMediaIndex: Boolean = false,
+        changedFilePath: String? = null,
     ) {
         if (!_state.value.permissionGranted) return
         pendingIndexRefresh = pendingIndexRefresh || forceMediaIndex
+        if (!forceMediaIndex) {
+            changedFilePath
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?.let(pendingTargetedIndexRefreshPaths::add)
+        }
         refreshDebounceJob?.cancel()
         refreshDebounceJob = scope.launch {
             delay(AUTO_REFRESH_DEBOUNCE_MS)
@@ -266,8 +285,12 @@ class LibraryRepository(
             if (event and DIRECTORY_STRUCTURE_CHANGE_MASK != 0) {
                 ensureMusicDirectoryObserver()
             }
+            val requiresFullMediaIndexRefresh = event and FULL_INDEX_REFRESH_EVENT_MASK != 0
             if (changedFile == null || changedFile.isDirectory || changedFile.extension.lowercase() in SUPPORTED_AUDIO_EXTENSIONS) {
-                scheduleMediaRefresh(forceMediaIndex = true)
+                scheduleMediaRefresh(
+                    forceMediaIndex = requiresFullMediaIndexRefresh,
+                    changedFilePath = if (requiresFullMediaIndexRefresh) null else changedFile?.absolutePath,
+                )
             }
         }
     }
@@ -353,6 +376,11 @@ class LibraryRepository(
             FileObserver.CREATE or
                 FileObserver.MOVED_TO or
                 FileObserver.DELETE or
+                FileObserver.MOVED_FROM or
+                FileObserver.DELETE_SELF or
+                FileObserver.MOVE_SELF
+        const val FULL_INDEX_REFRESH_EVENT_MASK =
+            FileObserver.DELETE or
                 FileObserver.MOVED_FROM or
                 FileObserver.DELETE_SELF or
                 FileObserver.MOVE_SELF

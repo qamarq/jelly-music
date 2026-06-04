@@ -56,6 +56,12 @@ class AppUpdateManager(
 
     fun checkForUpdates(force: Boolean = false) {
         if (_uiState.value.isChecking || _uiState.value.isDownloading || _uiState.value.isInstalling) return
+        if (!force) {
+            val nowMs = System.currentTimeMillis()
+            val elapsedMs = nowMs - preferenceStore.lastAutomaticUpdateCheckAtMs()
+            if (elapsedMs in 0 until AUTOMATIC_CHECK_INTERVAL_MS) return
+            preferenceStore.setLastAutomaticUpdateCheckAtMs(nowMs)
+        }
         scope.launch {
             _uiState.update { it.copy(isChecking = true, errorMessage = null) }
             val installedVersion = normalizeVersionLabel(BuildConfig.VERSION_NAME)
@@ -344,6 +350,7 @@ class AppUpdateManager(
     private companion object {
         const val LATEST_RELEASE_URL = "https://api.github.com/repos/droidbeauty/elovaire-music/releases/latest"
         const val RELEASES_URL = "https://api.github.com/repos/droidbeauty/elovaire-music/releases"
+        const val AUTOMATIC_CHECK_INTERVAL_MS = 12 * 60 * 60 * 1_000L
         const val NETWORK_TIMEOUT_MS = 12_000
         const val APK_MIME_TYPE = "application/vnd.android.package-archive"
         val VERSION_REGEX = Regex("""\d+(?:\.\d+)+""")

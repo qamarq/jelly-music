@@ -97,7 +97,6 @@ class PlaybackManager(
         usbManager = usbManager,
     )
     private val bitPerfectUsbManager = BitPerfectUsbManager(
-        context = appContext,
         audioManager = audioManager,
         playbackAudioAttributes = platformPlaybackAudioAttributes,
     )
@@ -500,7 +499,6 @@ class PlaybackManager(
         pauseFadeJob?.cancel()
         progressUpdateJob?.cancel()
         usbDacHardwareVolumeManager.release()
-        bitPerfectUsbManager.release()
         abandonAudioFocus()
         appContext.contentResolver.unregisterContentObserver(systemVolumeObserver)
         audioManager?.unregisterAudioDeviceCallback(audioDeviceCallback)

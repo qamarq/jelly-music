@@ -78,7 +78,7 @@ internal class LibrarySnapshotStore(
     fun save(snapshot: LibrarySnapshot) {
         runCatching {
             val signature = signatureFromSongs(snapshot.songs)
-            val root = JSONObject().apply {
+            val serializedSnapshot = JSONObject().apply {
                 put("version", SNAPSHOT_VERSION)
                 put("songCount", signature.songCount)
                 put("newestDateAddedSeconds", signature.newestDateAddedSeconds)
@@ -112,14 +112,16 @@ internal class LibrarySnapshotStore(
                         }
                     },
                 )
-            }
-            snapshotFile.writeText(root.toString())
-        }
-    }
+            }.toString()
+            val currentSnapshot = snapshotFile.takeIf { it.exists() }?.readText()
+            if (currentSnapshot == serializedSnapshot) return
 
-    fun clear() {
-        if (snapshotFile.exists()) {
-            snapshotFile.delete()
+            val tempFile = snapshotFile.resolveSibling("${snapshotFile.name}.tmp")
+            tempFile.writeText(serializedSnapshot)
+            if (!tempFile.renameTo(snapshotFile)) {
+                snapshotFile.writeText(serializedSnapshot)
+                tempFile.delete()
+            }
         }
     }
 

@@ -58,11 +58,14 @@ class MediaStoreScanner(
 
     fun scan(
         refreshMediaIndex: Boolean = false,
+        refreshMediaPaths: List<String> = emptyList(),
         enrichMetadata: Boolean = true,
         onProgress: ((current: Int, total: Int) -> Unit)? = null,
     ): LibrarySnapshot {
         if (refreshMediaIndex) {
             refreshMediaIndex()
+        } else if (refreshMediaPaths.isNotEmpty()) {
+            refreshMediaIndex(refreshMediaPaths)
         }
 
         var totalSongs = 0
@@ -236,30 +239,6 @@ class MediaStoreScanner(
         )
     }
 
-    private fun querySongCount(): Int {
-        var count = 0
-        val allowedRoots = buildAllowedLibraryRoots()
-        context.contentResolver.query(
-            audioCollectionUri(),
-            arrayOf(
-                MediaStore.Audio.Media._ID,
-                MediaStore.Audio.Media.DATA,
-            ),
-            buildSelection(),
-            null,
-            null,
-        )?.use { cursor ->
-            val dataIndex = cursor.getColumnIndex(MediaStore.Audio.Media.DATA)
-            while (cursor.moveToNext()) {
-                val filePath = dataIndex.takeIf { it >= 0 }?.let(cursor::getString)
-                if (shouldIncludeFilePath(filePath, allowedRoots)) {
-                    count += 1
-                }
-            }
-        }
-        return count
-    }
-
     fun musicDirectory(): File {
         @Suppress("DEPRECATION")
         return Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
@@ -289,6 +268,29 @@ class MediaStoreScanner(
             latch.countDown()
         }
         latch.await(MEDIA_SCAN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+    }
+
+    fun refreshMediaIndex(paths: List<String>) {
+        val audioPaths = paths
+            .map(::File)
+            .filter { file ->
+                file.exists() &&
+                    file.isFile &&
+                    file.extension.lowercase() in SUPPORTED_AUDIO_EXTENSIONS
+            }
+            .map(File::getAbsolutePath)
+            .distinct()
+        if (audioPaths.isEmpty()) return
+
+        val latch = CountDownLatch(audioPaths.size)
+        MediaScannerConnection.scanFile(
+            context,
+            audioPaths.toTypedArray(),
+            null,
+        ) { _, _ ->
+            latch.countDown()
+        }
+        latch.await(TARGETED_MEDIA_SCAN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
     }
 
     private fun buildProjection(): Array<String> {
@@ -702,6 +704,7 @@ class MediaStoreScanner(
     private companion object {
         val ALBUM_ART_URI: Uri = Uri.parse("content://media/external/audio/albumart")
         const val MEDIA_SCAN_TIMEOUT_SECONDS = 8L
+        const val TARGETED_MEDIA_SCAN_TIMEOUT_SECONDS = 5L
         val YEAR_REGEX = Regex("""\b(19|20)\d{2}\b""")
         val EXPLICIT_MARKERS = listOf(
             "(explicit)",

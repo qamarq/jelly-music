@@ -1428,11 +1428,6 @@ fun ElovaireRoot(
         }
     }
 
-    LaunchedEffect(container) {
-        delay(900)
-        container.appUpdateManager.checkForUpdates()
-    }
-
     LaunchedEffect(hasPermission, hasNotificationPermission) {
         container.libraryRepository.onPermissionChanged(hasPermission)
         if (!hasPermission && !hasRequestedAudioPermission) {

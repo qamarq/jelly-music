@@ -394,6 +394,7 @@ internal object MonoDownmixProcessor {
 internal class EqualizerAudioProcessor(
     private val config: EqualizerDspConfig = EqualizerDspConfig(),
 ) : BaseAudioProcessor() {
+    private val safeConfig = config.sanitized()
     @Volatile
     private var currentSettings: EqSettings = EqSettings()
 
@@ -440,6 +441,10 @@ internal class EqualizerAudioProcessor(
     private var limiterEvents = 0L
     private var limiterGain = 1f
     private var limiterGainReductionDb = 0f
+    private var currentInputGainLinear = 1f
+    private var bassEnvelopeAttackAlpha = 0f
+    private var bassEnvelopeReleaseAlpha = 0f
+    private var limiterReleaseAlpha = 0f
     private var bassEnergyEnvelope = FloatArray(0)
     private var scratchDryFrame = FloatArray(2)
     private var scratchWetFrame = FloatArray(2)
@@ -466,7 +471,7 @@ internal class EqualizerAudioProcessor(
     }
 
     fun setManualPreampDb(value: Float) {
-        manualPreampDb = value.coerceIn(config.minPreampDb, config.maxPreampDb)
+        manualPreampDb = value.coerceIn(safeConfig.minPreampDb, safeConfig.maxPreampDb)
         targetsDirty = true
     }
 
@@ -501,7 +506,7 @@ internal class EqualizerAudioProcessor(
         while (processedFrames < totalFrames) {
             stepTowardsTargets()
             val blockFrames = min(
-                config.sanitized().updateStrideFrames,
+                safeConfig.updateStrideFrames,
                 totalFrames - processedFrames,
             )
             repeat(blockFrames) {
@@ -563,9 +568,12 @@ internal class EqualizerAudioProcessor(
         activeBandFrequenciesHz = EqualizerDspModel.activeBandFrequencies(sampleRateHz)
         smoothingAlpha = EqualizerDspModel.smoothingAlpha(
             sampleRateHz = sampleRateHz,
-            smoothingTimeMs = config.sanitized().smoothingTimeMs,
-            strideFrames = config.sanitized().updateStrideFrames,
+            smoothingTimeMs = safeConfig.smoothingTimeMs,
+            strideFrames = safeConfig.updateStrideFrames,
         )
+        bassEnvelopeAttackAlpha = envelopeAlpha(sampleRateHz, 0.028)
+        bassEnvelopeReleaseAlpha = envelopeAlpha(sampleRateHz, 0.16)
+        limiterReleaseAlpha = envelopeAlpha(sampleRateHz, 0.11)
         bandFilters = Array(channelCount) {
             Array(EqualizerDspModel.BAND_COUNT) { BiquadFilterState() }
         }
@@ -629,7 +637,6 @@ internal class EqualizerAudioProcessor(
     private fun updateTargets() {
         if (!targetsDirty) return
         val settingsSnapshot = currentSettings
-        val safeConfig = config.sanitized()
         val flat = EqualizerDspModel.isFlat(settingsSnapshot)
         targetWetMix = if (flat && !settingsSnapshot.monoEnabled) 0f else 1f
         settingsSnapshot.bands.forEachIndexed { index, normalized ->
@@ -714,12 +721,13 @@ internal class EqualizerAudioProcessor(
         val targetDynamicReductionDb = HighQualityBassProcessorModel.dynamicReductionDb(
             lowBandEnvelope = averageBassEnvelope,
             amountNormalized = currentBassAmount,
-            config = config.sanitized().bassConfig,
+            config = safeConfig.bassConfig,
         )
         currentBassDynamicReductionDb = smooth(currentBassDynamicReductionDb, targetDynamicReductionDb, smoothingAlpha * 0.55f)
         currentMidrangeDb = smooth(currentMidrangeDb, targetMidrangeDb, smoothingAlpha)
         currentTrebleDb = smooth(currentTrebleDb, targetTrebleDb, smoothingAlpha)
         currentAutoHeadroomDb = smooth(currentAutoHeadroomDb, targetAutoHeadroomDb, smoothingAlpha)
+        currentInputGainLinear = dbToLinear(manualPreampDb + currentBassPregainDb + currentAutoHeadroomDb)
         currentBandGainsDb.indices.forEach { index ->
             currentBandGainsDb[index] = smooth(currentBandGainsDb[index], targetBandGainsDb[index], smoothingAlpha)
         }
@@ -727,7 +735,6 @@ internal class EqualizerAudioProcessor(
     }
 
     private fun rebuildCoefficients() {
-        val safeConfig = config.sanitized()
         for (channelIndex in 0 until channelCount) {
             for (bandIndex in currentBandGainsDb.indices) {
                 val frequencyHz = activeBandFrequenciesHz.getOrElse(bandIndex) { -1f }
@@ -815,7 +822,7 @@ internal class EqualizerAudioProcessor(
         channelIndex: Int,
         sample: Float,
     ): Float {
-        var processed = sample * dbToLinear(manualPreampDb + currentBassPregainDb + currentAutoHeadroomDb)
+        var processed = sample * currentInputGainLinear
         bandFilters[channelIndex].forEach { filter -> processed = filter.process(processed) }
         val bassDetectorInput = processed
         processed = bassHighPassFilters[channelIndex].process(processed)
@@ -834,10 +841,8 @@ internal class EqualizerAudioProcessor(
     ) {
         if (channelIndex !in bassEnergyEnvelope.indices || currentBassAmount <= 0.0005f) return
         val detectorSample = abs(sample).coerceIn(0f, 1f)
-        val attack = 1f - exp(-1.0 / (sampleRateHz.coerceAtLeast(8_000) * 0.028)).toFloat()
-        val release = 1f - exp(-1.0 / (sampleRateHz.coerceAtLeast(8_000) * 0.16)).toFloat()
         val current = bassEnergyEnvelope[channelIndex]
-        val alpha = if (detectorSample > current) attack else release
+        val alpha = if (detectorSample > current) bassEnvelopeAttackAlpha else bassEnvelopeReleaseAlpha
         bassEnergyEnvelope[channelIndex] = current + ((detectorSample - current) * alpha)
     }
 
@@ -908,7 +913,6 @@ internal class EqualizerAudioProcessor(
     }
 
     private fun transparentSafetyLimit(sample: Float): Float {
-        val safeConfig = config.sanitized()
         val threshold = safeConfig.limiterThreshold
         val knee = safeConfig.limiterKnee
         val sampleAbs = abs(sample)
@@ -924,7 +928,7 @@ internal class EqualizerAudioProcessor(
         limiterGain = if (targetGain < limiterGain) {
             limiterGain + ((targetGain - limiterGain) * attack)
         } else {
-            limiterGain + ((targetGain - limiterGain) * release)
+            limiterGain + ((targetGain - limiterGain) * limiterReleaseAlpha)
         }.coerceIn(0f, 1f)
         val limited = (sample * limiterGain).coerceIn(-threshold, threshold)
         val reduction = sampleAbs - abs(limited)
@@ -958,6 +962,14 @@ internal class EqualizerAudioProcessor(
             limiterEvents = limiterEvents,
             dspBypassed = targetWetMix == 0f,
         )
+    }
+
+    private fun envelopeAlpha(
+        sampleRateHz: Int,
+        seconds: Double,
+    ): Float {
+        val safeSampleRate = sampleRateHz.coerceAtLeast(8_000).toDouble()
+        return (1.0 - exp(-1.0 / (safeSampleRate * seconds))).toFloat().coerceIn(0.0001f, 1f)
     }
 }
 

@@ -121,6 +121,12 @@ internal class ReverbProcessor {
     private var targetCrossMix = 0f
     private var currentDampingFrequencyHz = 6_400f
     private var targetDampingFrequencyHz = 6_400f
+    private var activeTapDurations = ReverbTapDurations(
+        primaryMs = 24,
+        secondaryMs = 42,
+        diffuseMs = 78,
+        crossMs = 32,
+    )
     private var smoothingAlpha = 1f
     private var leftDelay = FloatArray(1)
     private var rightDelay = FloatArray(1)
@@ -179,12 +185,11 @@ internal class ReverbProcessor {
         currentDampingFrequencyHz = smooth(currentDampingFrequencyHz, targetDampingFrequencyHz, smoothingAlpha)
         if (currentWetMix <= 0.0005f) return
 
-        val taps = ReverbProcessorModel.tapDurationsMs(activeConfig.decayMs)
         if (channels == 1 || frame.size == 1) {
             val dry = sanitize(frame[0])
-            val primary = readDelay(monoDelay, taps.primaryMs)
-            val secondary = readDelay(monoDelay, taps.secondaryMs)
-            val diffuse = readDelay(monoDelay, taps.diffuseMs)
+            val primary = readDelay(monoDelay, activeTapDurations.primaryMs)
+            val secondary = readDelay(monoDelay, activeTapDurations.secondaryMs)
+            val diffuse = readDelay(monoDelay, activeTapDurations.diffuseMs)
             val wet = shapeWetSignal(monoDamping.process(
                 (primary * 0.34f) + (secondary * 0.28f) + (diffuse * 0.22f),
                 sampleRateHz,
@@ -198,14 +203,14 @@ internal class ReverbProcessor {
 
         val dryLeft = sanitize(frame[0])
         val dryRight = sanitize(frame[1])
-        val leftPrimary = readDelay(leftDelay, taps.primaryMs)
-        val leftSecondary = readDelay(leftDelay, taps.secondaryMs)
-        val leftDiffuse = readDelay(leftDelay, taps.diffuseMs)
-        val rightPrimary = readDelay(rightDelay, taps.primaryMs)
-        val rightSecondary = readDelay(rightDelay, taps.secondaryMs)
-        val rightDiffuse = readDelay(rightDelay, taps.diffuseMs)
-        val leftCross = readDelay(rightDelay, taps.crossMs)
-        val rightCross = readDelay(leftDelay, taps.crossMs)
+        val leftPrimary = readDelay(leftDelay, activeTapDurations.primaryMs)
+        val leftSecondary = readDelay(leftDelay, activeTapDurations.secondaryMs)
+        val leftDiffuse = readDelay(leftDelay, activeTapDurations.diffuseMs)
+        val rightPrimary = readDelay(rightDelay, activeTapDurations.primaryMs)
+        val rightSecondary = readDelay(rightDelay, activeTapDurations.secondaryMs)
+        val rightDiffuse = readDelay(rightDelay, activeTapDurations.diffuseMs)
+        val leftCross = readDelay(rightDelay, activeTapDurations.crossMs)
+        val rightCross = readDelay(leftDelay, activeTapDurations.crossMs)
 
         val wetLeft = shapeWetSignal(leftDamping.process(
             (leftPrimary * 0.34f) +
@@ -242,6 +247,7 @@ internal class ReverbProcessor {
         targetFeedback = ReverbProcessorModel.feedback(activeConfig.profile, activeConfig.decayMs)
         targetCrossMix = ReverbProcessorModel.crossMix(activeConfig.profile, activeConfig.decayMs)
         targetDampingFrequencyHz = ReverbProcessorModel.dampingFrequencyHz(activeConfig.profile, activeConfig.decayMs)
+        activeTapDurations = ReverbProcessorModel.tapDurationsMs(activeConfig.decayMs)
         if (ReverbProcessorModel.isBypassed(activeConfig)) {
             currentWetMix = 0f
             reset()
@@ -280,9 +286,6 @@ internal class ReverbProcessor {
 
     private fun sanitize(sample: Float): Float {
         return if (sample.isFinite()) sample.coerceIn(-1f, 1f) else 0f
-    }
-
-    private companion object {
     }
 }
 

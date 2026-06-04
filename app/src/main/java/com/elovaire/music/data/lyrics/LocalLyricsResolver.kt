@@ -24,7 +24,7 @@ internal class LocalLyricsResolver(
 
     private fun readEmbeddedLyrics(song: Song): LocalLyricsMatch? {
         val headerBytes = contentResolver.openInputStream(song.uri)?.use { input ->
-            input.readNBytes(4)
+            input.readBytesCompat(4)
         } ?: return null
 
         return when {
@@ -37,7 +37,7 @@ internal class LocalLyricsResolver(
     private fun readId3Lyrics(song: Song): LocalLyricsMatch? {
         return contentResolver.openInputStream(song.uri)?.use { rawInput ->
             val input = BufferedInputStream(rawInput, EMBEDDED_TAG_BUFFER_BYTES)
-            val header = input.readNBytes(10)
+            val header = input.readBytesCompat(10)
             if (header.size < 10 || !header.copyOfRange(0, 3).startsWithAscii("ID3")) {
                 return@use null
             }
@@ -47,7 +47,7 @@ internal class LocalLyricsResolver(
             if (tagSize <= 0 || tagSize > MAX_EMBEDDED_TAG_BYTES) {
                 return@use null
             }
-            val tagData = input.readNBytes(tagSize)
+            val tagData = input.readBytesCompat(tagSize)
             if (tagData.size < tagSize) return@use null
             val normalizedData = if ((flags and ID3_UNSYNCHRONIZATION_FLAG) != 0) {
                 removeId3Unsynchronization(tagData)
@@ -159,12 +159,12 @@ internal class LocalLyricsResolver(
     private fun readFlacLyrics(song: Song): LocalLyricsMatch? {
         return contentResolver.openInputStream(song.uri)?.use { rawInput ->
             val input = BufferedInputStream(rawInput, EMBEDDED_TAG_BUFFER_BYTES)
-            val magic = input.readNBytes(4)
+            val magic = input.readBytesCompat(4)
             if (magic.size < 4 || !magic.startsWithAscii("fLaC")) return@use null
 
             var isLastBlock = false
             while (!isLastBlock) {
-                val header = input.readNBytes(4)
+                val header = input.readBytesCompat(4)
                 if (header.size < 4) break
                 isLastBlock = (header[0].toInt() and 0x80) != 0
                 val blockType = header[0].toInt() and 0x7F
@@ -175,7 +175,7 @@ internal class LocalLyricsResolver(
                     input.skip(blockSize.toLong())
                     continue
                 }
-                val blockData = input.readNBytes(blockSize)
+                val blockData = input.readBytesCompat(blockSize)
                 if (blockData.size < blockSize) break
                 if (blockType == FLAC_BLOCK_VORBIS_COMMENT) {
                     parseFlacVorbisLyrics(blockData)?.let { return@use it }
@@ -379,6 +379,18 @@ internal class LocalLyricsResolver(
     private fun ByteArray.startsWithAscii(prefix: String): Boolean {
         if (size < prefix.length) return false
         return prefix.indices.all { index -> this[index].toInt().toChar() == prefix[index] }
+    }
+
+    private fun java.io.InputStream.readBytesCompat(byteCount: Int): ByteArray {
+        if (byteCount <= 0) return ByteArray(0)
+        val buffer = ByteArray(byteCount)
+        var offset = 0
+        while (offset < byteCount) {
+            val readCount = read(buffer, offset, byteCount - offset)
+            if (readCount <= 0) break
+            offset += readCount
+        }
+        return if (offset == buffer.size) buffer else buffer.copyOf(offset)
     }
 
     private fun String.removeBom(): String = removePrefix("\uFEFF")

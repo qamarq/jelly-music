@@ -6,6 +6,9 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Build
+import android.util.LruCache
+import android.util.Size
 import androidx.core.app.NotificationCompat
 import androidx.media3.common.Player
 import androidx.media3.common.util.NotificationUtil
@@ -17,6 +20,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 
@@ -81,6 +86,7 @@ class PlaybackNotificationController(
     private var pauseHideJob: Job? = null
     private var notificationDismissedWhilePaused = false
     private var lastManualPlaybackStartVersion = 0L
+    private var attachedPlayer: Player? = null
 
     init {
         scope.launch {
@@ -90,7 +96,7 @@ class PlaybackNotificationController(
                 notificationDismissedWhilePaused = false
                 val currentState = playbackManager.state.value
                 if (notificationsEnabled && shouldShowNotification(currentState)) {
-                    notificationManager.setPlayer(playbackManager.playerInstance)
+                    updateNotificationPlayer(playbackManager.playerInstance)
                 }
             }
         }
@@ -99,34 +105,43 @@ class PlaybackNotificationController(
                 if (!notificationsEnabled) return@collect
                 val currentState = playbackManager.state.value
                 if (shouldShowNotification(currentState)) {
-                    notificationManager.setPlayer(playbackManager.playerInstance)
+                    updateNotificationPlayer(playbackManager.playerInstance)
                 }
             }
         }
         scope.launch {
-            playbackManager.state.collectLatest { state ->
+            playbackManager.state
+                .map { state ->
+                    NotificationVisibilityState(
+                        songId = state.currentSong?.id,
+                        isPlaying = state.isPlaying,
+                    )
+                }
+                .distinctUntilChanged()
+                .collectLatest {
+                    val state = playbackManager.state.value
                 if (!notificationsEnabled) return@collectLatest
                 when {
                     state.currentSong == null -> {
                         pauseHideJob?.cancel()
                         notificationDismissedWhilePaused = false
-                        notificationManager.setPlayer(null)
+                        updateNotificationPlayer(null)
                     }
                     state.isPlaying -> {
                         pauseHideJob?.cancel()
                         if (notificationDismissedWhilePaused) {
-                            notificationManager.setPlayer(null)
+                            updateNotificationPlayer(null)
                             return@collectLatest
                         }
-                        notificationManager.setPlayer(playbackManager.playerInstance)
+                        updateNotificationPlayer(playbackManager.playerInstance)
                     }
                     else -> {
                         pauseHideJob?.cancel()
                         if (notificationDismissedWhilePaused) {
-                            notificationManager.setPlayer(null)
+                            updateNotificationPlayer(null)
                             return@collectLatest
                         }
-                        notificationManager.setPlayer(playbackManager.playerInstance)
+                        updateNotificationPlayer(playbackManager.playerInstance)
                         pauseHideJob = launch {
                             delay(PAUSE_NOTIFICATION_TIMEOUT_MS)
                             val latestState = playbackManager.state.value
@@ -136,12 +151,12 @@ class PlaybackNotificationController(
                                 !latestState.isPlaying &&
                                 !notificationDismissedWhilePaused
                             ) {
-                                notificationManager.setPlayer(null)
+                                updateNotificationPlayer(null)
                             }
                         }
                     }
                 }
-            }
+                }
         }
     }
 
@@ -149,14 +164,14 @@ class PlaybackNotificationController(
         notificationsEnabled = enabled
         if (!enabled) {
             pauseHideJob?.cancel()
-            notificationManager.setPlayer(null)
+            updateNotificationPlayer(null)
             return
         }
         val currentState = playbackManager.state.value
         if (shouldShowNotification(currentState)) {
-            notificationManager.setPlayer(playbackManager.playerInstance)
+            updateNotificationPlayer(playbackManager.playerInstance)
         } else {
-            notificationManager.setPlayer(null)
+            updateNotificationPlayer(null)
         }
     }
 
@@ -164,6 +179,12 @@ class PlaybackNotificationController(
         if (currentState.currentSong == null) return false
         if (notificationDismissedWhilePaused) return false
         return currentState.isPlaying || currentState.currentSong != null
+    }
+
+    private fun updateNotificationPlayer(player: Player?) {
+        if (attachedPlayer === player) return
+        attachedPlayer = player
+        notificationManager.setPlayer(player)
     }
 
     private inner class NotificationDescriptionAdapter : PlayerNotificationManager.MediaDescriptionAdapter {
@@ -250,9 +271,61 @@ class PlaybackNotificationController(
         }
 
         private fun loadBitmap(context: Context, uri: Uri): Bitmap? {
+            NotificationArtworkCache[uri.toString()]?.let { return it }
             return runCatching {
-                context.contentResolver.openInputStream(uri)?.use(BitmapFactory::decodeStream)
-            }.getOrNull()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    context.contentResolver.loadThumbnail(uri, Size(NOTIFICATION_ARTWORK_SIZE_PX, NOTIFICATION_ARTWORK_SIZE_PX), null)
+                } else {
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        BitmapFactory.decodeStream(input, null, bounds)
+                    }
+                    val options = BitmapFactory.Options().apply {
+                        inPreferredConfig = Bitmap.Config.RGB_565
+                        inSampleSize = calculateInSampleSize(bounds.outWidth, bounds.outHeight, NOTIFICATION_ARTWORK_SIZE_PX)
+                    }
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        BitmapFactory.decodeStream(input, null, options)
+                    }
+                }
+            }.getOrNull()?.also { bitmap ->
+                NotificationArtworkCache.put(uri.toString(), bitmap)
+            }
+        }
+
+        private fun calculateInSampleSize(
+            width: Int,
+            height: Int,
+            targetSize: Int,
+        ): Int {
+            if (width <= 0 || height <= 0 || targetSize <= 0) return 1
+            var sampleSize = 1
+            var halfWidth = width / 2
+            var halfHeight = height / 2
+            while (halfWidth / sampleSize >= targetSize && halfHeight / sampleSize >= targetSize) {
+                sampleSize *= 2
+            }
+            return sampleSize.coerceAtLeast(1)
+        }
+
+        private const val NOTIFICATION_ARTWORK_SIZE_PX = 256
+    }
+
+    private data class NotificationVisibilityState(
+        val songId: Long?,
+        val isPlaying: Boolean,
+    )
+
+    private object NotificationArtworkCache {
+        private val cache = object : LruCache<String, Bitmap>(12) {}
+
+        operator fun get(key: String): Bitmap? = cache.get(key)
+
+        fun put(
+            key: String,
+            bitmap: Bitmap,
+        ) {
+            cache.put(key, bitmap)
         }
     }
 }

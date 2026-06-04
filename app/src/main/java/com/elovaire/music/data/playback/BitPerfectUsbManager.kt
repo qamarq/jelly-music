@@ -1,6 +1,5 @@
 package elovaire.music.droidbeauty.app.data.playback
 
-import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
 import android.media.AudioFormat
@@ -8,6 +7,7 @@ import android.media.AudioManager
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.media3.common.C
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.audio.AudioSink
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,13 +30,11 @@ internal data class BitPerfectPlaybackStatus(
     val directPlaybackSupport: Int = AudioManager.DIRECT_PLAYBACK_NOT_SUPPORTED,
 )
 
+@UnstableApi
 internal class BitPerfectUsbManager(
-    context: Context,
     private val audioManager: AudioManager?,
     private val playbackAudioAttributes: AudioAttributes,
 ) {
-    @Suppress("unused")
-    private val appContext = context.applicationContext
     private val _status = MutableStateFlow(BitPerfectPlaybackStatus())
     val status: StateFlow<BitPerfectPlaybackStatus> = _status.asStateFlow()
 
@@ -48,6 +46,7 @@ internal class BitPerfectUsbManager(
         publishStatus()
     }
 
+    @UnstableApi
     fun updateCurrentAudioTrackConfig(audioTrackConfig: AudioSink.AudioTrackConfig?) {
         currentAudioTrackConfig = audioTrackConfig
         publishStatus()
@@ -64,8 +63,6 @@ internal class BitPerfectUsbManager(
     }
 
     fun preferredOutputDevice(): AudioDeviceInfo? = preferredRouteDevice
-
-    fun release() = Unit
 
     private fun publishStatus() {
         if (audioManager == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
@@ -142,6 +139,7 @@ internal class BitPerfectUsbManager(
     }
 }
 
+@UnstableApi
 private fun AudioSink.AudioTrackConfig.toPlatformAudioFormat(): AudioFormat? {
     val platformEncoding = encoding.toPlatformAudioEncoding() ?: return null
     if (sampleRate <= 0 || channelConfig == AudioFormat.CHANNEL_INVALID || channelConfig == 0) {

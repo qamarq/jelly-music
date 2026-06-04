@@ -31,7 +31,7 @@ class AppContainer(
         scope = appScope,
         preferenceStore = preferenceStore,
     )
-    private val playbackEffectsController = PlaybackEffectsController(appScope)
+    private val playbackEffectsController = PlaybackEffectsController()
     val playbackManager = PlaybackManager(
         context = applicationContext,
         scope = appScope,
@@ -55,12 +55,6 @@ class AppContainer(
 
     init {
         PlaybackNotificationController.ensureNotificationChannel(applicationContext)
-        appScope.launch {
-            playbackManager.state
-                .map { it.audioSessionId }
-                .distinctUntilChanged()
-                .collect(playbackEffectsController::updateAudioSessionId)
-        }
         appScope.launch {
             preferenceStore.eqSettings.collect { settings ->
                 playbackEffectsController.updateSettings(settings)
