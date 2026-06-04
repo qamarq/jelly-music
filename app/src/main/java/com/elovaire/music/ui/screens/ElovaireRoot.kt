@@ -365,6 +365,7 @@ private data class SongMenuActions(
     val onCreatePlaylist: (String) -> Long = { -1L },
     val onAddToQueue: (Song) -> Unit = {},
     val onDeleteFromLibrary: (Song) -> Unit = {},
+    val deletePhrase: UiPhrase = UiPhrase.DeleteFromLibrary,
 )
 
 private data class PendingSongDeletion(
@@ -1710,7 +1711,7 @@ fun ElovaireRoot(
     val sharedTopBarSpec = sharedTopBarController.registration?.spec
         ?: if (showTopLevelChrome) {
             SharedTopBarSpec.Unified(
-                title = topBarTitle(currentRoute),
+                title = topBarTitle(currentRoute, appLanguage),
                 showSettings = currentRoute in setOf(HOME_ROUTE, ALBUMS_ROUTE, PLAYLISTS_ROUTE),
                 supplementalActionIconResId = if (showPlaylistCreateAction) R.drawable.ic_lucide_plus else null,
                 supplementalActionContentDescription = if (showPlaylistCreateAction) "Create playlist" else null,
@@ -2259,7 +2260,7 @@ fun ElovaireRoot(
                             currentSongId = playbackState.currentSong?.id,
                             isCurrentSongPlaying = isPlaybackActuallyPlaying,
                             bottomPadding = detailBottomPadding,
-                            collapsedTopBarTitle = detailFallbackTitle(previousRoute),
+                            collapsedTopBarTitle = detailFallbackTitle(previousRoute, appLanguage),
                             onBack = navController::navigateUp,
                             onPlayAlbum = { selectedAlbum ->
                                 container.playbackManager.playAlbum(
@@ -5029,6 +5030,8 @@ private fun LibraryHubScreen(
     onOpenCollection: (LibraryCollectionKind) -> Unit,
     onAlbumSelected: (Album, ExpandOrigin) -> Unit,
 ) {
+    val language = LocalAppLanguage.current
+    val common = remember(language) { commonUiCopy(language) }
     val totalSongs = libraryState.songs.size
     val totalAlbums = libraryState.albums.size
     val recentlyAddedAlbums = remember(libraryState.albums) {
@@ -5067,29 +5070,29 @@ private fun LibraryHubScreen(
                     Column {
                         LibraryHubRow(
                             iconResId = R.drawable.ic_lucide_music,
-                            title = "Songs",
-                            detail = "${formatCountLabel(totalSongs, "song")} in your library",
+                            title = common.songs,
+                            detail = "${formatCountLabel(totalSongs, "song")} ${common.inYourLibrary}",
                             onClick = { onOpenCollection(LibraryCollectionKind.Songs) },
                         )
                         DividerLine()
                         LibraryHubRow(
                             iconResId = R.drawable.ic_lucide_disc_album,
-                            title = "Albums",
-                            detail = "${formatCountLabel(totalAlbums, "album")} in total",
+                            title = common.albums,
+                            detail = "${formatCountLabel(totalAlbums, "album")} ${common.inTotal}",
                             onClick = { onOpenCollection(LibraryCollectionKind.Albums) },
                         )
                         DividerLine()
                         LibraryHubRow(
                             iconResId = R.drawable.ic_lucide_mic_vocal,
-                            title = "Artists",
-                            detail = "${formatCountLabel(totalArtists, "artist")} found",
+                            title = common.artists,
+                            detail = "${formatCountLabel(totalArtists, "artist")} ${common.found}",
                             onClick = { onOpenCollection(LibraryCollectionKind.Artists) },
                         )
                         DividerLine()
                         LibraryHubRow(
                             iconResId = R.drawable.ic_lucide_guitar,
-                            title = "Genres",
-                            detail = "${formatCountLabel(totalGenres, "genre")} found",
+                            title = common.genres,
+                            detail = "${formatCountLabel(totalGenres, "genre")} ${common.found}",
                             onClick = { onOpenCollection(LibraryCollectionKind.Genres) },
                         )
                     }
@@ -5205,6 +5208,8 @@ private fun LibraryCollectionScreen(
     onGenreSelected: (String) -> Unit,
     onArtistSelected: (String) -> Unit,
 ) {
+    val language = LocalAppLanguage.current
+    val common = remember(language) { commonUiCopy(language) }
     when (kind) {
         LibraryCollectionKind.Songs -> SongCollectionScreen(
             songs = libraryState.songs,
@@ -5227,7 +5232,7 @@ private fun LibraryCollectionScreen(
                 sortMode = albumSortMode,
                 topPadding = detailTopBarOccupiedHeight(),
                 bottomPadding = bottomPadding,
-                title = "Albums",
+                title = common.albums,
                 subtitle = "Alphabetical by album artist, then album title",
                 onLayoutModeChanged = onAlbumCollectionLayoutModeChanged,
                 onSortModeChanged = onAlbumSortModeChanged,
@@ -5240,8 +5245,8 @@ private fun LibraryCollectionScreen(
                 onDeleteAlbumFromDevice = onDeleteAlbumFromDevice,
             )
             DetailListTopBar(
-                title = "Albums",
-                subtitle = "${libraryState.albums.size} albums",
+                title = common.albums,
+                subtitle = formatCountLabel(libraryState.albums.size, "album"),
                 onBack = onBack,
                 modifier = Modifier.align(Alignment.TopCenter),
             )
@@ -5276,6 +5281,8 @@ private fun SongCollectionScreen(
     onSongSelected: (Song, List<Song>) -> Unit,
     onToggleFavorite: (Long) -> Unit,
 ) {
+    val language = LocalAppLanguage.current
+    val common = remember(language) { commonUiCopy(language) }
     var showSortOptions by rememberSaveable { mutableStateOf(false) }
     val listState = rememberElovaireLazyListState("song_collection_list")
     val sortedSongs = remember(songs, sortMode) {
@@ -5351,8 +5358,8 @@ private fun SongCollectionScreen(
         }
 
         DetailListTopBar(
-            title = "Songs",
-            subtitle = "${sortedSongs.size} songs",
+            title = common.songs,
+            subtitle = formatCountLabel(sortedSongs.size, "song"),
             onBack = onBack,
             modifier = Modifier.align(Alignment.TopCenter),
         )
@@ -5459,6 +5466,8 @@ private fun ArtistCollectionScreen(
     onBack: () -> Unit,
     onArtistSelected: (String) -> Unit,
 ) {
+    val language = LocalAppLanguage.current
+    val common = remember(language) { commonUiCopy(language) }
     val scrollState = rememberElovaireScrollState("artist_collection")
     val artists = remember(songs) {
         songs
@@ -5508,8 +5517,8 @@ private fun ArtistCollectionScreen(
         )
 
         DetailListTopBar(
-            title = "Artists",
-            subtitle = "${artists.size} artists",
+            title = common.artists,
+            subtitle = formatCountLabel(artists.size, "artist"),
             onBack = onBack,
             modifier = Modifier.align(Alignment.TopCenter),
         )
@@ -5523,6 +5532,8 @@ private fun GenreCollectionScreen(
     onBack: () -> Unit,
     onGenreSelected: (String) -> Unit,
 ) {
+    val language = LocalAppLanguage.current
+    val common = remember(language) { commonUiCopy(language) }
     val scrollState = rememberElovaireScrollState("genre_collection")
     val genres = remember(songs) {
         songs
@@ -5570,8 +5581,8 @@ private fun GenreCollectionScreen(
         )
 
         DetailListTopBar(
-            title = "Genres",
-            subtitle = "${genres.size} genres",
+            title = common.genres,
+            subtitle = formatCountLabel(genres.size, "genre"),
             onBack = onBack,
             modifier = Modifier.align(Alignment.TopCenter),
         )
@@ -5614,7 +5625,7 @@ private fun GenreAlbumsScreen(
             topPadding = detailTopBarOccupiedHeight(),
             bottomPadding = bottomPadding,
             title = genre.ifBlank { "Unknown Genre" },
-            subtitle = "${filteredAlbums.size} albums tagged in this genre",
+            subtitle = formatCountLabel(filteredAlbums.size, "album"),
             onLayoutModeChanged = onLayoutModeChanged,
             onSortModeChanged = onSortModeChanged,
             onAlbumSelected = onAlbumSelected,
@@ -5627,7 +5638,7 @@ private fun GenreAlbumsScreen(
         )
         DetailListTopBar(
             title = genre.ifBlank { "Unknown Genre" },
-            subtitle = "${filteredAlbums.size} albums",
+            subtitle = formatCountLabel(filteredAlbums.size, "album"),
             onBack = onBack,
             modifier = Modifier.align(Alignment.TopCenter),
         )
@@ -5689,7 +5700,7 @@ private fun ArtistDetailScreen(
                     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         SectionTitleRow(
                             title = "Most played songs",
-                            subtitle = "${topSongs.size} tracks you return to the most",
+                            subtitle = "${formatCountLabel(topSongs.size, "track")} you return to the most",
                             compact = true,
                         )
                         Column {
@@ -5899,7 +5910,7 @@ private fun PlaylistGridTile(
             maxLines = 1,
         )
         Text(
-            text = "${playlist.songIds.size} songs",
+            text = formatCountLabel(playlist.songIds.size, "song"),
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -6783,7 +6794,7 @@ private fun SearchScreen(
                         key = "artist:${firstSong.artist.lowercase()}",
                         kind = SearchHistoryKind.Artist,
                         title = firstSong.artist,
-                        subtitle = "${artistSongs.size} songs",
+                        subtitle = formatCountLabel(artistSongs.size, "song"),
                         artUri = firstSong.artUri,
                         query = firstSong.artist,
                     )
@@ -8725,7 +8736,7 @@ private fun AlbumScreen(
                     fontWeight = FontWeight.Normal,
                 ),
             )
-            append("${album.songCount} tracks")
+            append(formatCountLabel(album.songCount, "track"))
             pop()
             pushStyle(SpanStyle(color = albumOnSurface.copy(alpha = 0.5f)))
             append("  •  ")
@@ -9287,6 +9298,7 @@ private fun PlaylistDetailScreen(
     }
 
     val songsById = remember(librarySongs) { librarySongs.associateBy { it.id } }
+    val defaultSongMenuActions = LocalSongMenuActions.current
     var editMode by rememberSaveable(playlist.id) { mutableStateOf(false) }
     var showAddSongsPicker by rememberSaveable(playlist.id) { mutableStateOf(false) }
     var editableSongIds by rememberSaveable(playlist.id) { mutableStateOf(playlist.songIds) }
@@ -9302,6 +9314,14 @@ private fun PlaylistDetailScreen(
         }
     }
     val displayedSongIds = if (editMode) editableSongIds else playlist.songIds
+    val playlistSongMenuActions = remember(defaultSongMenuActions, playlist.id, playlist.songIds) {
+        defaultSongMenuActions.copy(
+            onDeleteFromLibrary = { song ->
+                onUpdateSongOrder(playlist.songIds.filterNot { it == song.id })
+            },
+            deletePhrase = UiPhrase.RemoveFromList,
+        )
+    }
     val playlistSongs = remember(displayedSongIds, songsById) {
         displayedSongIds.mapNotNull(songsById::get)
     }
@@ -9362,11 +9382,12 @@ private fun PlaylistDetailScreen(
             showEditModeMenu = false
         }
     }
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-    ) {
+    CompositionLocalProvider(LocalSongMenuActions provides playlistSongMenuActions) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background),
+        ) {
         val listState = rememberElovaireLazyListState(playlist.id, "playlist_detail")
         val scope = rememberCoroutineScope()
         LazyColumn(
@@ -9584,7 +9605,7 @@ private fun PlaylistDetailScreen(
 
         DetailListTopBar(
             title = playlist.name,
-            subtitle = "${playlistSongs.size} songs",
+            subtitle = formatCountLabel(playlistSongs.size, "song"),
             onBack = {
                 if (showAddSongsPicker) {
                     showAddSongsPicker = false
@@ -9635,6 +9656,7 @@ private fun PlaylistDetailScreen(
                 ),
             )
         }
+    }
     }
 
     if (showAddSongsPicker && !playlist.isSystem) {
@@ -12881,7 +12903,7 @@ private fun SongOverflowMenuButton(
                         )
                         SongContextMenuItem(
                             iconResId = R.drawable.ic_lucide_trash_2,
-                            text = uiPhrase(language, UiPhrase.DeleteFromLibrary),
+                            text = uiPhrase(language, actions.deletePhrase),
                             tint = DestructiveRed,
                             containerColor = DestructiveRed.copy(alpha = 0.2f),
                             bottomPadding = 10.dp,
@@ -14094,6 +14116,55 @@ private fun formatCountLabel(
     }
 }
 
+private data class CommonUiCopy(
+    val home: String,
+    val library: String,
+    val playlists: String,
+    val search: String,
+    val welcome: String,
+    val songs: String,
+    val albums: String,
+    val artists: String,
+    val genres: String,
+    val light: String,
+    val dark: String,
+    val system: String,
+    val inYourLibrary: String,
+    val inTotal: String,
+    val found: String,
+    val refinedFooter: String,
+)
+
+private fun commonUiCopy(language: AppLanguage): CommonUiCopy = when (language) {
+    AppLanguage.Polish -> CommonUiCopy("Główna", "Biblioteka", "Playlisty", "Szukaj", "Witamy", "Utwory", "Albumy", "Artyści", "Gatunki", "Jasny", "Ciemny", "System", "w Twojej bibliotece", "łącznie", "znaleziono", "Twoja muzyka, dopracowana w eleganckie doświadczenie")
+    AppLanguage.Albanian -> CommonUiCopy("Kreu", "Biblioteka", "Listat", "Kërko", "Mirë se vini", "Këngë", "Albume", "Artistë", "Zhanre", "E çelët", "E errët", "Sistemi", "në bibliotekën tënde", "gjithsej", "u gjetën", "Muzika jote, e rafinuar në një përvojë elegante")
+    AppLanguage.ChineseSimplified -> CommonUiCopy("主页", "媒体库", "播放列表", "搜索", "欢迎", "歌曲", "专辑", "艺人", "流派", "浅色", "深色", "跟随系统", "在你的媒体库中", "总计", "已找到", "你的音乐，被雕琢成优雅的体验")
+    AppLanguage.Croatian -> CommonUiCopy("Početna", "Biblioteka", "Playliste", "Pretraži", "Dobrodošli", "Pjesme", "Albumi", "Izvođači", "Žanrovi", "Svijetlo", "Tamno", "Sustav", "u tvojoj biblioteci", "ukupno", "pronađeno", "Tvoja glazba, profinjena u elegantno iskustvo")
+    AppLanguage.Czech -> CommonUiCopy("Domů", "Knihovna", "Playlisty", "Hledat", "Vítejte", "Skladby", "Alba", "Umělci", "Žánry", "Světlý", "Tmavý", "Systém", "ve vaší knihovně", "celkem", "nalezeno", "Vaše hudba, vytříbená do elegantního zážitku")
+    AppLanguage.Danish -> CommonUiCopy("Hjem", "Bibliotek", "Playlister", "Søg", "Velkommen", "Sange", "Albummer", "Kunstnere", "Genrer", "Lys", "Mørk", "System", "i dit bibliotek", "i alt", "fundet", "Din musik, raffineret til en elegant oplevelse")
+    AppLanguage.Dutch -> CommonUiCopy("Home", "Bibliotheek", "Afspeellijsten", "Zoeken", "Welkom", "Nummers", "Albums", "Artiesten", "Genres", "Licht", "Donker", "Systeem", "in je bibliotheek", "in totaal", "gevonden", "Jouw muziek, verfijnd tot een elegante ervaring")
+    AppLanguage.Estonian -> CommonUiCopy("Avaleht", "Teek", "Esitusloendid", "Otsi", "Tere tulemast", "Lood", "Albumid", "Artistid", "Žanrid", "Hele", "Tume", "Süsteem", "sinu teegis", "kokku", "leitud", "Sinu muusika, viimistletud elegantseks elamuseks")
+    AppLanguage.French -> CommonUiCopy("Accueil", "Bibliothèque", "Playlists", "Recherche", "Bienvenue", "Morceaux", "Albums", "Artistes", "Genres", "Clair", "Sombre", "Système", "dans votre bibliothèque", "au total", "trouvés", "Votre musique, affinée en une expérience élégante")
+    AppLanguage.German -> CommonUiCopy("Start", "Bibliothek", "Playlists", "Suche", "Willkommen", "Titel", "Alben", "Künstler", "Genres", "Hell", "Dunkel", "System", "in deiner Bibliothek", "insgesamt", "gefunden", "Deine Musik, veredelt zu einem eleganten Erlebnis")
+    AppLanguage.Greek -> CommonUiCopy("Αρχική", "Βιβλιοθήκη", "Playlists", "Αναζήτηση", "Καλώς ήρθατε", "Τραγούδια", "Άλμπουμ", "Καλλιτέχνες", "Είδη", "Φωτεινό", "Σκούρο", "Σύστημα", "στη βιβλιοθήκη σας", "συνολικά", "βρέθηκαν", "Η μουσική σας, εκλεπτυσμένη σε μια κομψή εμπειρία")
+    AppLanguage.Hindi -> CommonUiCopy("होम", "लाइब्रेरी", "प्लेलिस्ट", "खोजें", "स्वागत है", "गाने", "एल्बम", "कलाकार", "शैलियाँ", "लाइट", "डार्क", "सिस्टम", "आपकी लाइब्रेरी में", "कुल", "मिले", "आपका संगीत, एक सुरुचिपूर्ण अनुभव में निखरा हुआ")
+    AppLanguage.Hungarian -> CommonUiCopy("Kezdőlap", "Könyvtár", "Lejátszási listák", "Keresés", "Üdvözöljük", "Dalok", "Albumok", "Előadók", "Műfajok", "Világos", "Sötét", "Rendszer", "a könyvtáradban", "összesen", "találat", "A zenéd, kifinomítva elegáns élménnyé")
+    AppLanguage.Italian -> CommonUiCopy("Home", "Libreria", "Playlist", "Cerca", "Benvenuto", "Brani", "Album", "Artisti", "Generi", "Chiaro", "Scuro", "Sistema", "nella tua libreria", "in totale", "trovati", "La tua musica, rifinita in un'esperienza elegante")
+    AppLanguage.Latin -> CommonUiCopy("Domus", "Bibliotheca", "Indices", "Quaere", "Salve", "Cantus", "Albumina", "Artifices", "Genera", "Clarus", "Obscurus", "Systema", "in bibliotheca tua", "omnino", "inventa", "Musica tua, in experientiam elegantem expolita")
+    AppLanguage.Latvian -> CommonUiCopy("Sākums", "Bibliotēka", "Atskaņošanas saraksti", "Meklēt", "Laipni lūdzam", "Dziesmas", "Albumi", "Mākslinieki", "Žanri", "Gaišs", "Tumšs", "Sistēma", "tavā bibliotēkā", "kopā", "atrasts", "Tava mūzika, izsmalcināta elegantā pieredzē")
+    AppLanguage.Lithuanian -> CommonUiCopy("Pradžia", "Biblioteka", "Grojaraščiai", "Paieška", "Sveiki", "Dainos", "Albumai", "Atlikėjai", "Žanrai", "Šviesi", "Tamsi", "Sistema", "jūsų bibliotekoje", "iš viso", "rasta", "Tavo muzika, ištobulinta į elegantišką patirtį")
+    AppLanguage.Macedonian -> CommonUiCopy("Почетна", "Библиотека", "Плејлисти", "Пребарај", "Добредојдовте", "Песни", "Албуми", "Артисти", "Жанрови", "Светла", "Темна", "Систем", "во вашата библиотека", "вкупно", "пронајдени", "Вашата музика, префинета во елегантно доживување")
+    AppLanguage.Norwegian -> CommonUiCopy("Hjem", "Bibliotek", "Spillelister", "Søk", "Velkommen", "Sanger", "Album", "Artister", "Sjangre", "Lys", "Mørk", "System", "i biblioteket ditt", "totalt", "funnet", "Musikken din, raffinert til en elegant opplevelse")
+    AppLanguage.Portuguese -> CommonUiCopy("Início", "Biblioteca", "Playlists", "Pesquisar", "Bem-vindo", "Músicas", "Álbuns", "Artistas", "Géneros", "Claro", "Escuro", "Sistema", "na sua biblioteca", "no total", "encontrados", "A sua música, refinada numa experiência elegante")
+    AppLanguage.Russian -> CommonUiCopy("Главная", "Библиотека", "Плейлисты", "Поиск", "Добро пожаловать", "Песни", "Альбомы", "Исполнители", "Жанры", "Светлая", "Тёмная", "Система", "в вашей библиотеке", "всего", "найдено", "Ваша музыка, отточенная до элегантного опыта")
+    AppLanguage.Serbian -> CommonUiCopy("Почетна", "Библиотека", "Плејлисте", "Претрага", "Добро дошли", "Песме", "Албуми", "Извођачи", "Жанрови", "Светла", "Тамна", "Систем", "у вашој библиотеци", "укупно", "пронађено", "Ваша музика, префињена у елегантно искуство")
+    AppLanguage.Spanish -> CommonUiCopy("Inicio", "Biblioteca", "Playlists", "Buscar", "Bienvenido", "Canciones", "Álbumes", "Artistas", "Géneros", "Claro", "Oscuro", "Sistema", "en tu biblioteca", "en total", "encontrados", "Tu música, refinada en una experiencia elegante")
+    AppLanguage.Swedish -> CommonUiCopy("Hem", "Bibliotek", "Spellistor", "Sök", "Välkommen", "Låtar", "Album", "Artister", "Genrer", "Ljust", "Mörkt", "System", "i ditt bibliotek", "totalt", "hittade", "Din musik, förädlad till en elegant upplevelse")
+    AppLanguage.Thai -> CommonUiCopy("หน้าแรก", "คลังเพลง", "เพลย์ลิสต์", "ค้นหา", "ยินดีต้อนรับ", "เพลง", "อัลบั้ม", "ศิลปิน", "แนวเพลง", "สว่าง", "มืด", "ระบบ", "ในคลังของคุณ", "ทั้งหมด", "พบ", "เพลงของคุณ ถูกขัดเกลาให้เป็นประสบการณ์อันสง่างาม")
+    AppLanguage.Ukrainian -> CommonUiCopy("Головна", "Бібліотека", "Плейлисти", "Пошук", "Ласкаво просимо", "Пісні", "Альбоми", "Виконавці", "Жанри", "Світла", "Темна", "Система", "у вашій бібліотеці", "усього", "знайдено", "Ваша музика, відточена до елегантного досвіду")
+    AppLanguage.English -> CommonUiCopy("Home", "Library", "Playlists", "Search", "Welcome", "Songs", "Albums", "Artists", "Genres", "Light", "Dark", "System", "in your library", "in total", "found", "Your music, refined into an elegant experience")
+}
+
 @Composable
 private fun EqualizerScreen(
     settings: EqSettings,
@@ -14727,9 +14798,9 @@ private fun SettingsScreen(
                             }
                         }
                         Text(
-                            text = copy.footerSubtitle,
-                            style = MaterialTheme.typography.bodyLarge.copy(fontSize = elovaireScaledSp(14f)),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            text = commonUiCopy(appLanguage).refinedFooter,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                         )
                     }
                 }
@@ -14773,8 +14844,8 @@ private fun LanguagePickerRow(
             )
             Text(
                 text = copy.currentlyUsed,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
             )
         }
         Box {
@@ -14811,46 +14882,67 @@ private fun LanguagePickerRow(
                     )
                 }
             }
+            val menuScrollState = rememberScrollState()
             DropdownMenu(
                 expanded = expanded,
                 onDismissRequest = { expanded = false },
+                containerColor = Color.Transparent,
+                shadowElevation = 0.dp,
+                tonalElevation = 0.dp,
             ) {
-                Column(
+                Box(
                     modifier = Modifier
                         .width(228.dp)
-                        .heightIn(max = 240.dp)
-                        .verticalScroll(rememberScrollState()),
+                        .heightIn(max = 240.dp),
                 ) {
-                    languages.forEach { language ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = language.nativeName,
-                                    style = MaterialTheme.typography.bodyMedium.copy(
-                                        fontWeight = if (language == selectedLanguage) {
-                                            FontWeight.SemiBold
-                                        } else {
-                                            FontWeight.Normal
-                                        },
-                                    ),
+                    DynamicBackdropSurface(
+                        modifier = Modifier.fillMaxSize(),
+                        shape = RoundedCornerShape(ElovaireRadii.card),
+                        overlayAlpha = 0.6f,
+                        borderColor = blurSurfaceBorderColor(),
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .verticalScroll(menuScrollState),
+                        ) {
+                            languages.forEach { language ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = language.nativeName,
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                fontWeight = if (language == selectedLanguage) {
+                                                    FontWeight.SemiBold
+                                                } else {
+                                                    FontWeight.Normal
+                                                },
+                                            ),
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            painter = painterResource(id = R.drawable.ic_lucide_languages),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                            tint = MaterialTheme.colorScheme.onSurface.copy(
+                                                alpha = if (language == selectedLanguage) 0.92f else 0.46f,
+                                            ),
+                                        )
+                                    },
+                                    onClick = {
+                                        expanded = false
+                                        onLanguageSelected(language)
+                                    },
                                 )
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    painter = painterResource(id = R.drawable.ic_lucide_languages),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp),
-                                    tint = MaterialTheme.colorScheme.onSurface.copy(
-                                        alpha = if (language == selectedLanguage) 0.92f else 0.46f,
-                                    ),
-                                )
-                            },
-                            onClick = {
-                                expanded = false
-                                onLanguageSelected(language)
-                            },
-                        )
+                            }
+                        }
                     }
+                    FastScrollbar(
+                        state = menuScrollState,
+                        topInset = 8.dp,
+                        bottomInset = 8.dp,
+                    )
                 }
             }
         }
@@ -16085,6 +16177,8 @@ private fun ThemeModeSegmentedPicker(
     onModeSelected: (ThemeMode) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val language = LocalAppLanguage.current
+    val common = remember(language) { commonUiCopy(language) }
     val options = listOf(ThemeMode.Light, ThemeMode.Dark, ThemeMode.System)
     BoxWithConstraints(
         modifier = modifier
@@ -16159,7 +16253,11 @@ private fun ThemeModeSegmentedPicker(
                             modifier = Modifier.size(14.dp),
                         )
                         Text(
-                            text = option.name,
+                            text = when (option) {
+                                ThemeMode.Light -> common.light
+                                ThemeMode.Dark -> common.dark
+                                ThemeMode.System -> common.system
+                            },
                             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
                             color = if (selected) {
                                 MaterialTheme.colorScheme.onPrimary
@@ -17730,22 +17828,24 @@ private fun suggestedAlbumsFor(
     }
 }
 
-private fun topBarTitle(route: String?): String {
+private fun topBarTitle(route: String?, language: AppLanguage): String {
+    val common = commonUiCopy(language)
     return when (route) {
-        ALBUMS_ROUTE -> "Library"
-        PLAYLISTS_ROUTE -> "Playlists"
-        SEARCH_ROUTE -> "Search"
-        else -> "Welcome"
+        ALBUMS_ROUTE -> common.library
+        PLAYLISTS_ROUTE -> common.playlists
+        SEARCH_ROUTE -> common.search
+        else -> common.welcome
     }
 }
 
-private fun detailFallbackTitle(route: String?): String {
+private fun detailFallbackTitle(route: String?, language: AppLanguage): String {
+    val common = commonUiCopy(language)
     return when (route) {
-        HOME_ROUTE -> "Home"
-        SEARCH_ROUTE -> "Search"
-        PLAYLISTS_ROUTE, "$PLAYLIST_ROUTE/{playlistId}" -> "Playlists"
-        ALBUMS_ROUTE, "$LIBRARY_COLLECTION_ROUTE/{kind}", "$GENRE_ROUTE/{genre}" -> "Library"
-        else -> "Library"
+        HOME_ROUTE -> common.home
+        SEARCH_ROUTE -> common.search
+        PLAYLISTS_ROUTE, "$PLAYLIST_ROUTE/{playlistId}" -> common.playlists
+        ALBUMS_ROUTE, "$LIBRARY_COLLECTION_ROUTE/{kind}", "$GENRE_ROUTE/{genre}" -> common.library
+        else -> common.library
     }
 }
 
