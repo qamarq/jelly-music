@@ -127,7 +127,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.AlertDialog
@@ -686,10 +685,11 @@ private enum class SearchContentMode {
 
 private enum class PlaylistPickerTab(
     val label: String,
+    @DrawableRes val iconResId: Int,
 ) {
-    Albums("Albums"),
-    Artists("Artists"),
-    Songs("Songs"),
+    Songs("Songs", R.drawable.ic_lucide_music),
+    Albums("Albums", R.drawable.ic_lucide_disc_album),
+    Artists("Artists", R.drawable.ic_lucide_mic_vocal),
 }
 
 private enum class AlbumSortMode(
@@ -2731,6 +2731,11 @@ fun ElovaireRoot(
                         },
                         onCreatePlaylist = container.preferenceStore::createPlaylist,
                         onQueueItemSelected = container.playbackManager::playQueueIndex,
+                        onQueueItemRemoved = container.playbackManager::removeQueueIndex,
+                        onOpenEqualizer = {
+                            isPlayerOverlayVisible = false
+                            navController.navigate(EQUALIZER_ROUTE)
+                        },
                         eqSettings = eqSettings,
                         onSpaciousnessChanged = container.preferenceStore::updateSpaciousness,
                         onVolumeChanged = { volume ->
@@ -5358,6 +5363,11 @@ private fun SongCollectionScreen(
             onBack = onBack,
             modifier = Modifier.align(Alignment.TopCenter),
         )
+        FastScrollbar(
+            state = listState,
+            topInset = detailTopBarOccupiedHeight() + ElovaireSpacing.detailCompactTopGap,
+            bottomInset = bottomPadding + 16.dp,
+        )
     }
 }
 
@@ -6854,7 +6864,7 @@ private fun SearchScreen(
                         )
                     },
                     trailingIcon = {
-                        AnimatedVisibility(
+                        androidx.compose.animation.AnimatedVisibility(
                             visible = isSearchUiActive,
                             enter = fadeIn(animationSpec = ElovaireMotion.fadeMedium()) +
                                 scaleIn(
@@ -8669,14 +8679,6 @@ private fun AlbumScreen(
         )
     val albumFavoriteTint = if (albumFavoriteBackground.luminance() > 0.56f) InkText else Color.White
     val albumOnSurface = MaterialTheme.colorScheme.onSurface
-    val albumActionBackground = gradient.first()
-        .copy(alpha = if (isLightTheme) 0.18f else 0.28f)
-        .compositeOver(MaterialTheme.colorScheme.surface.copy(alpha = if (isLightTheme) 0.92f else 0.86f))
-    val albumActionTint = if (albumActionBackground.luminance() > 0.56f) InkText else Color.White
-    val albumSecondaryActionBackground = gradient.last()
-        .copy(alpha = if (isLightTheme) 0.14f else 0.2f)
-        .compositeOver(MaterialTheme.colorScheme.surface.copy(alpha = if (isLightTheme) 0.9f else 0.8f))
-    val albumSecondaryActionTint = if (albumSecondaryActionBackground.luminance() > 0.56f) InkText else Color.White
     val albumInfoPillBackground = gradient.first()
         .copy(alpha = if (isLightTheme) 0.1f else 0.16f)
         .compositeOver(MaterialTheme.colorScheme.surface.copy(alpha = if (isLightTheme) 0.94f else 0.88f))
@@ -8922,15 +8924,16 @@ private fun AlbumScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             AlbumHeaderPlayButton(
-                                tint = albumActionTint,
-                                backgroundColor = albumActionBackground,
+                                tint = Color.White,
+                                backgroundColor = RoseAccent,
                                 onClick = { onPlayAlbum(album) },
                             )
                             AlbumHeaderActionButton(
                                 iconResId = R.drawable.ic_lucide_shuffle,
                                 contentDescription = "Shuffle album",
-                                tint = albumSecondaryActionTint,
-                                backgroundColor = albumSecondaryActionBackground,
+                                tint = Color.White,
+                                backgroundColor = RoseAccent.copy(alpha = 0.7f),
+                                iconSize = 18.dp,
                                 onClick = { onShuffleAlbum(album) },
                             )
                         }
@@ -9454,8 +9457,8 @@ private fun PlaylistDetailScreen(
                             )
                         }
                         AlbumHeaderPlayButton(
-                            tint = MaterialTheme.colorScheme.onSurface,
-                            backgroundColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.92f),
+                            tint = Color.White,
+                            backgroundColor = RoseAccent,
                             onClick = { onPlayPlaylist(playlistSongs, playlist.name) },
                         )
                     }
@@ -9980,14 +9983,20 @@ private fun AddSongsToPlaylistOverlay(
             .values
             .mapNotNull { songs ->
                 songs.firstOrNull()?.let { first ->
+                    val orderedSongs = songs.sortedWith(
+                        compareBy<Song> { it.discNumber.takeIf { disc -> disc > 0 } ?: Int.MAX_VALUE }
+                            .thenBy { it.trackNumber.takeIf { track -> track > 0 } ?: Int.MAX_VALUE }
+                            .thenBy { it.dateAddedSeconds }
+                            .thenBy { it.id },
+                    )
                     Album(
                         id = first.albumId,
                         title = first.album,
                         artist = first.artist,
                         artUri = first.artUri,
-                        songCount = songs.size,
-                        durationMs = songs.sumOf { it.durationMs },
-                        songs = songs,
+                        songCount = orderedSongs.size,
+                        durationMs = orderedSongs.sumOf { it.durationMs },
+                        songs = orderedSongs,
                     )
                 }
             }
@@ -10029,10 +10038,9 @@ private fun AddSongsToPlaylistOverlay(
     val selectedArtistSongs = remember(selectedArtistName, artists) {
         artists.firstOrNull { it.first.name == selectedArtistName }?.second.orEmpty()
     }
-    val filteredAlbumSongs = remember(selectedAlbum, trimmedQuery) {
-        selectedAlbum?.songs?.filter { song ->
-            searchMatchesComposite(trimmedQuery, listOf(song.title, song.artist, song.album))
-        }.orEmpty()
+    val filteredAlbumSongs = remember(selectedAlbum) {
+        selectedAlbum?.songs
+            .orEmpty()
     }
     val filteredArtistSongs = remember(selectedArtistSongs, trimmedQuery) {
         selectedArtistSongs.filter { song ->
@@ -10085,54 +10093,58 @@ private fun AddSongsToPlaylistOverlay(
             .background(MaterialTheme.colorScheme.background)
             .zIndex(12f),
     ) {
-        LazyColumn(
-            state = listState,
-            overscrollEffect = null,
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .ensureSingleItemRubberBand(listState),
-            contentPadding = PaddingValues(
-                start = 20.dp,
-                top = overlayTopPadding,
-                end = 20.dp,
-                bottom = overlayBottomPadding,
-            ),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                .padding(top = overlayTopPadding),
+            verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
-            item {
-                BoxWithConstraints(
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp),
+            ) {
+                Row(
                     modifier = Modifier
+                        .align(Alignment.Center)
                         .fillMaxWidth()
-                        .height(50.dp),
+                        .fillMaxHeight(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    val fullWidth = maxWidth + 40.dp
-                    Row(
-                        modifier = Modifier
-                            .width(fullWidth)
-                            .offset(x = (-20).dp)
-                            .fillMaxHeight(),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        PlaylistPickerTab.entries.forEach { tab ->
-                            val selected = selectedTab == tab
+                    PlaylistPickerTab.entries.forEach { tab ->
+                        val selected = selectedTab == tab
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(ElovaireRadii.pill))
+                                .clickable {
+                                    if (selected) {
+                                        selectedAlbumId = null
+                                        selectedArtistName = null
+                                        listResetVersion += 1L
+                                    } else {
+                                        selectedTab = tab
+                                        selectedAlbumId = null
+                                        selectedArtistName = null
+                                        listResetVersion += 1L
+                                    }
+                                }
+                                .padding(vertical = 14.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                painter = painterResource(id = tab.iconResId),
+                                contentDescription = null,
+                                tint = if (selected) {
+                                    MaterialTheme.colorScheme.onSurface
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f)
+                                },
+                                modifier = Modifier.size(16.dp),
+                            )
                             Text(
                                 text = tab.label,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable {
-                                        if (selected) {
-                                            selectedAlbumId = null
-                                            selectedArtistName = null
-                                            listResetVersion += 1L
-                                        } else {
-                                            selectedTab = tab
-                                            selectedAlbumId = null
-                                            selectedArtistName = null
-                                            listResetVersion += 1L
-                                        }
-                                    }
-                                    .padding(vertical = 14.dp),
                                 textAlign = TextAlign.Center,
                                 style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
                                 color = if (selected) {
@@ -10143,17 +10155,22 @@ private fun AddSongsToPlaylistOverlay(
                             )
                         }
                     }
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .width(fullWidth)
-                            .height(1.dp)
-                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
-                    )
                 }
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
+                )
             }
-            item {
-                val searchBarContentColor = MaterialTheme.colorScheme.onSurface
+
+            val searchBarContentColor = MaterialTheme.colorScheme.onSurface
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 20.dp, top = 16.dp, end = 20.dp, bottom = 16.dp),
+            ) {
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },
@@ -10170,7 +10187,7 @@ private fun AddSongsToPlaylistOverlay(
                         )
                     },
                     trailingIcon = {
-                        AnimatedVisibility(
+                        androidx.compose.animation.AnimatedVisibility(
                             visible = trimmedQuery.isNotBlank(),
                             enter = fadeIn(animationSpec = ElovaireMotion.fadeMedium()) +
                                 scaleIn(
@@ -10215,97 +10232,119 @@ private fun AddSongsToPlaylistOverlay(
                     ),
                 )
             }
-            when {
-                selectedTab == PlaylistPickerTab.Albums && selectedAlbum != null -> {
-                    items(filteredAlbumSongs, key = { it.id }) { song ->
-                        val selected = song.id in selectedSongIdSet
-                        SelectableSongRow(
-                            song = song,
-                            selected = selected,
-                            selectionIndicatorOnRight = true,
-                            showDivider = song != filteredAlbumSongs.lastOrNull(),
-                            onClick = {
-                                selectedSongIds = if (selected) {
-                                    selectedSongIds.filterNot { it == song.id }
-                                } else {
-                                    selectedSongIds + song.id
-                                }
-                            },
-                        )
-                    }
-                }
-                selectedTab == PlaylistPickerTab.Artists && selectedArtistName != null -> {
-                    items(filteredArtistSongs, key = { it.id }) { song ->
-                        val selected = song.id in selectedSongIdSet
-                        SelectableSongRow(
-                            song = song,
-                            selected = selected,
-                            selectionIndicatorOnRight = true,
-                            showDivider = song != filteredArtistSongs.lastOrNull(),
-                            onClick = {
-                                selectedSongIds = if (selected) {
-                                    selectedSongIds.filterNot { it == song.id }
-                                } else {
-                                    selectedSongIds + song.id
-                                }
-                            },
-                        )
-                    }
-                }
-                selectedTab == PlaylistPickerTab.Albums -> {
-                    items(filteredAlbums, key = { it.id }) { album ->
-                        SelectableAlbumPickerRow(
-                            album = album,
-                            selected = album.songs.all { it.id in selectedSongIdSet } && album.songs.isNotEmpty(),
-                            showDivider = album != filteredAlbums.lastOrNull(),
-                            onOpen = { selectedAlbumId = album.id },
-                            onToggleSelection = {
-                                val albumSongIds = album.songs.map(Song::id)
-                                val allSelected = albumSongIds.all { it in selectedSongIdSet }
-                                selectedSongIds = if (allSelected) {
-                                    selectedSongIds.filterNot { it in albumSongIds }
-                                } else {
-                                    (selectedSongIds + albumSongIds).distinct()
-                                }
-                            },
-                        )
-                    }
-                }
 
-                selectedTab == PlaylistPickerTab.Artists -> {
-                    items(filteredArtists, key = { it.first.name }) { (artist, _) ->
-                        Surface(
-                            shape = RoundedCornerShape(ElovaireRadii.tile),
-                            color = readableCardSurfaceColor(),
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = { selectedArtistName = artist.name },
-                        ) {
-                            ArtistRow(
-                                artist = artist,
-                                onClick = { selectedArtistName = artist.name },
-                            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+            ) {
+                LazyColumn(
+                    state = listState,
+                    overscrollEffect = null,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .ensureSingleItemRubberBand(listState),
+                    contentPadding = PaddingValues(
+                        start = 20.dp,
+                        end = 20.dp,
+                        bottom = overlayBottomPadding,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(0.dp),
+                ) {
+                    when {
+                        selectedTab == PlaylistPickerTab.Albums && selectedAlbum != null -> {
+                            items(filteredAlbumSongs, key = { it.id }) { song ->
+                                val selected = song.id in selectedSongIdSet
+                                SelectableSongRow(
+                                    song = song,
+                                    selected = selected,
+                                    selectionIndicatorOnRight = true,
+                                    showDivider = song != filteredAlbumSongs.lastOrNull(),
+                                    onClick = {
+                                        selectedSongIds = if (selected) {
+                                            selectedSongIds.filterNot { it == song.id }
+                                        } else {
+                                            selectedSongIds + song.id
+                                        }
+                                    },
+                                )
+                            }
+                        }
+                        selectedTab == PlaylistPickerTab.Artists && selectedArtistName != null -> {
+                            items(filteredArtistSongs, key = { it.id }) { song ->
+                                val selected = song.id in selectedSongIdSet
+                                SelectableSongRow(
+                                    song = song,
+                                    selected = selected,
+                                    selectionIndicatorOnRight = true,
+                                    showDivider = song != filteredArtistSongs.lastOrNull(),
+                                    onClick = {
+                                        selectedSongIds = if (selected) {
+                                            selectedSongIds.filterNot { it == song.id }
+                                        } else {
+                                            selectedSongIds + song.id
+                                        }
+                                    },
+                                )
+                            }
+                        }
+                        selectedTab == PlaylistPickerTab.Albums -> {
+                            items(filteredAlbums, key = { it.id }) { album ->
+                                SelectableAlbumPickerRow(
+                                    album = album,
+                                    selected = album.songs.all { it.id in selectedSongIdSet } && album.songs.isNotEmpty(),
+                                    showDivider = album != filteredAlbums.lastOrNull(),
+                                    onOpen = { selectedAlbumId = album.id },
+                                    onToggleSelection = {
+                                        val albumSongIds = album.songs.map(Song::id)
+                                        val allSelected = albumSongIds.all { it in selectedSongIdSet }
+                                        selectedSongIds = if (allSelected) {
+                                            selectedSongIds.filterNot { it in albumSongIds }
+                                        } else {
+                                            (selectedSongIds + albumSongIds).distinct()
+                                        }
+                                    },
+                                )
+                            }
+                        }
+
+                        selectedTab == PlaylistPickerTab.Artists -> {
+                            itemsIndexed(filteredArtists, key = { _, item -> item.first.name }) { index, (artist, _) ->
+                                ArtistRow(
+                                    artist = artist,
+                                    onClick = { selectedArtistName = artist.name },
+                                )
+                                if (index != filteredArtists.lastIndex) {
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                }
+                            }
+                        }
+
+                        selectedTab == PlaylistPickerTab.Songs -> {
+                            items(filteredSongs, key = { it.id }) { song ->
+                                val selected = song.id in selectedSongIdSet
+                                SelectableSongRow(
+                                    song = song,
+                                    selected = selected,
+                                    selectionIndicatorOnRight = true,
+                                    showDivider = song != filteredSongs.lastOrNull(),
+                                    onClick = {
+                                        selectedSongIds = if (selected) {
+                                            selectedSongIds.filterNot { it == song.id }
+                                        } else {
+                                            selectedSongIds + song.id
+                                        }
+                                    },
+                                )
+                            }
                         }
                     }
                 }
-
-                selectedTab == PlaylistPickerTab.Songs -> {
-                    items(filteredSongs, key = { it.id }) { song ->
-                        val selected = song.id in selectedSongIdSet
-                        SelectableSongRow(
-                            song = song,
-                            selected = selected,
-                            selectionIndicatorOnRight = true,
-                            showDivider = song != filteredSongs.lastOrNull(),
-                            onClick = {
-                                selectedSongIds = if (selected) {
-                                    selectedSongIds.filterNot { it == song.id }
-                                } else {
-                                    selectedSongIds + song.id
-                                }
-                            },
-                        )
-                    }
-                }
+                FastScrollbar(
+                    state = listState,
+                    topInset = 0.dp,
+                    bottomInset = overlayBottomPadding - 6.dp,
+                )
             }
         }
 
@@ -10326,11 +10365,6 @@ private fun AddSongsToPlaylistOverlay(
             onBack = stableHandleBack,
             actions = topBarActions,
             modifier = Modifier.align(Alignment.TopCenter),
-        )
-        FastScrollbar(
-            state = listState,
-            topInset = overlayTopPadding + 8.dp,
-            bottomInset = overlayBottomPadding - 6.dp,
         )
     }
 }
@@ -10840,6 +10874,8 @@ private fun NowPlayingScreen(
     onAddCurrentSongToPlaylist: (Long, Song) -> Unit,
     onCreatePlaylist: (String) -> Long,
     onQueueItemSelected: (Int) -> Unit,
+    onQueueItemRemoved: (Int) -> Unit,
+    onOpenEqualizer: () -> Unit,
     eqSettings: EqSettings,
     onSpaciousnessChanged: (Float) -> Unit,
     onVolumeChanged: (Float) -> Unit,
@@ -11583,7 +11619,7 @@ private fun NowPlayingScreen(
                     .align(Alignment.CenterHorizontally)
                     .weight(1f),
             ) {
-                val queueSheetTopExtension = 88.dp
+                val queueSheetTopExtension = 252.dp
                 Column(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(0.dp),
@@ -11765,6 +11801,18 @@ private fun NowPlayingScreen(
                     }
                 }
 
+                if (showQueueSheet) {
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = {},
+                            ),
+                    )
+                }
+
                 androidx.compose.animation.AnimatedVisibility(
                     visible = showQueueSheet,
                     modifier = Modifier
@@ -11794,6 +11842,9 @@ private fun NowPlayingScreen(
                     QueueSheet(
                         queue = playbackState.queue,
                         currentIndex = playbackState.currentIndex,
+                        playlists = playlists,
+                        playlistSongsById = enrichedSongsById,
+                        currentSong = currentSong,
                         tint = contentColor,
                         secondaryTint = secondaryContentColor,
                         modifier = Modifier
@@ -11801,6 +11852,7 @@ private fun NowPlayingScreen(
                             .height(maxHeight + queueSheetTopExtension)
                             .align(Alignment.BottomCenter),
                         onSongSelected = onQueueItemSelected,
+                        onQueueItemRemoved = onQueueItemRemoved,
                         shuffleEnabled = playbackState.shuffleEnabled,
                         onToggleShuffle = {
                             queueStatusText = if (playbackState.shuffleEnabled) {
@@ -11818,6 +11870,9 @@ private fun NowPlayingScreen(
                         },
                         spaciousnessAmount = eqSettings.spaciousness.coerceIn(0f, 1f),
                         onSpaciousnessAmountChanged = onSpaciousnessChanged,
+                        onOpenEqualizer = onOpenEqualizer,
+                        onAddSongToPlaylist = onAddCurrentSongToPlaylist,
+                        onCreatePlaylist = onCreatePlaylist,
                         statusText = queueStatusText,
                         onDismiss = { showQueueSheet = false },
                         isPlaying = playbackState.isPlaying,
@@ -12032,15 +12087,22 @@ private fun CompactPlaybackTimingRow(
 private fun QueueSheet(
     queue: List<Song>,
     currentIndex: Int,
+    playlists: List<Playlist>,
+    playlistSongsById: Map<Long, Song>,
+    currentSong: Song?,
     tint: Color,
     secondaryTint: Color,
     onSongSelected: (Int) -> Unit,
+    onQueueItemRemoved: (Int) -> Unit,
     shuffleEnabled: Boolean,
     onToggleShuffle: () -> Unit,
     spaciousnessEnabled: Boolean,
     onToggleSpaciousness: () -> Unit,
     spaciousnessAmount: Float,
     onSpaciousnessAmountChanged: (Float) -> Unit,
+    onOpenEqualizer: () -> Unit,
+    onAddSongToPlaylist: (Long, Song) -> Unit,
+    onCreatePlaylist: (String) -> Long,
     statusText: String?,
     onDismiss: () -> Unit,
     isPlaying: Boolean,
@@ -12048,6 +12110,7 @@ private fun QueueSheet(
 ) {
     val listState = rememberElovaireLazyListState("equalizer_screen")
     var showSpaciousnessSlider by remember(spaciousnessEnabled) { mutableStateOf(spaciousnessEnabled) }
+    var playlistTargetSong by remember(currentSong?.id, queue) { mutableStateOf<Song?>(null) }
     val footerExpanded = showSpaciousnessSlider || statusText != null
     val footerHeight by animateDpAsState(
         targetValue = if (footerExpanded) 90.dp else 60.dp,
@@ -12064,12 +12127,9 @@ private fun QueueSheet(
             listState.scrollToItem((currentIndex - 2).coerceAtLeast(0))
         }
     }
-    Surface(
+    Box(
         modifier = modifier
-            .fillMaxWidth()
-            .playerFrostedSurface(tint = tint),
-        shape = RoundedCornerShape(ElovaireRadii.module),
-        color = tint.copy(alpha = 0.05f),
+            .fillMaxWidth(),
     ) {
         Column(
             modifier = Modifier.fillMaxSize(),
@@ -12083,7 +12143,7 @@ private fun QueueSheet(
             ) {
                 Row(
                     modifier = Modifier
-                        .fillMaxWidth(0.85f)
+                        .fillMaxWidth()
                         .height(40.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
@@ -12151,29 +12211,29 @@ private fun QueueSheet(
                     modifier = Modifier
                         .fillMaxSize()
                         .ensureSingleItemRubberBand(listState),
-                    contentPadding = PaddingValues(vertical = 14.dp),
+                    contentPadding = PaddingValues(vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     itemsIndexed(queue, key = { index, song -> "${song.id}_$index" }) { index, song ->
                         QueueSongRow(
                             song = song,
-                            index = index,
                             active = index == currentIndex,
                             tint = tint,
                             secondaryTint = secondaryTint,
-                            showDivider = index != queue.lastIndex,
+                            showDivider = false,
                             onClick = { onSongSelected(index) },
                             isPlaying = isPlaying,
+                            onAddToPlaylist = { playlistTargetSong = song },
+                            onRemoveFromQueue = { onQueueItemRemoved(index) },
                         )
                     }
                 }
             }
             QueueSeparator(tint = tint, modifier = Modifier.fillMaxWidth())
-            val bottomSectionOpacity = 0.1f
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(footerHeight)
-                    .background(tint.copy(alpha = bottomSectionOpacity)),
+                    .height(footerHeight),
             ) {
                 AnimatedContent(
                     targetState = statusText,
@@ -12241,14 +12301,14 @@ private fun QueueSheet(
                 Row(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .height(60.dp)
-                        .padding(horizontal = 14.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        .fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     PlayerSecondaryActionButton(
                         iconResId = R.drawable.ic_lucide_wind,
-                        label = if (spaciousnessEnabled || showSpaciousnessSlider) "${(spaciousnessAmount.coerceIn(0f, 1f) * 100f).roundToInt()}%" else "",
+                        label = "",
+                        iconSize = 20.dp,
                         tint = tint,
                         showBackground = spaciousnessEnabled,
                         onClick = {
@@ -12266,9 +12326,34 @@ private fun QueueSheet(
                             }
                         },
                     )
+                    Spacer(modifier = Modifier.width(20.dp))
+                    PlayerSecondaryActionButton(
+                        iconResId = R.drawable.ic_lucide_sliders_vertical,
+                        label = "",
+                        iconSize = 20.dp,
+                        tint = tint,
+                        showBackground = false,
+                        onClick = {
+                            onDismiss()
+                            onOpenEqualizer()
+                        },
+                    )
+                    Spacer(modifier = Modifier.width(20.dp))
+                    PlayerSecondaryActionButton(
+                        iconResId = R.drawable.ic_lucide_plus,
+                        label = "",
+                        iconSize = 20.dp,
+                        tint = tint,
+                        showBackground = playlistTargetSong != null,
+                        onClick = {
+                            playlistTargetSong = currentSong
+                        },
+                    )
+                    Spacer(modifier = Modifier.width(20.dp))
                     PlayerSecondaryActionButton(
                         iconResId = R.drawable.ic_lucide_shuffle,
-                        label = if (shuffleEnabled) "Shuffle" else "",
+                        label = "",
+                        iconSize = 20.dp,
                         tint = tint,
                         showBackground = shuffleEnabled,
                         onClick = onToggleShuffle,
@@ -12276,6 +12361,18 @@ private fun QueueSheet(
                 }
             }
         }
+    }
+    playlistTargetSong?.let { song ->
+        AddToPlaylistPickerDialog(
+            playlists = playlists,
+            playlistSongsById = playlistSongsById,
+            onDismiss = { playlistTargetSong = null },
+            onPlaylistSelected = { playlistId ->
+                onAddSongToPlaylist(playlistId, song)
+                playlistTargetSong = null
+            },
+            onCreatePlaylist = onCreatePlaylist,
+        )
     }
 }
 
@@ -12294,13 +12391,14 @@ private fun QueueSeparator(
 @Composable
 private fun QueueSongRow(
     song: Song,
-    index: Int,
     active: Boolean,
     isPlaying: Boolean,
     tint: Color,
     secondaryTint: Color,
     showDivider: Boolean,
     onClick: () -> Unit,
+    onAddToPlaylist: () -> Unit,
+    onRemoveFromQueue: () -> Unit,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -12308,52 +12406,52 @@ private fun QueueSongRow(
     ) {
         Row(
             modifier = Modifier
-                .fillMaxWidth(0.9f)
+                .fillMaxWidth()
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                     onClick = onClick,
                 )
-                .padding(vertical = 14.dp),
+                .padding(vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
-                modifier = Modifier.width(30.dp),
+                modifier = Modifier.size(44.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                AnimatedContent(
-                    targetState = active && isPlaying,
-                    transitionSpec = {
-                        fadeIn(animationSpec = tween(180)) togetherWith fadeOut(animationSpec = tween(140))
-                    },
-                    label = "queue_row_track_indicator",
-                ) { showSignal ->
-                    if (showSignal) {
-                        AnimatedAudioLinesIcon(
-                            tint = tint.copy(alpha = 0.7f),
-                            modifier = Modifier.size(16.dp),
-                        )
-                    } else {
-                        Text(
-                            text = (index + 1).toString(),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = secondaryTint,
-                            textAlign = TextAlign.Center,
-                        )
-                    }
+                ArtworkImage(
+                    uri = song.artUri,
+                    title = song.album,
+                    modifier = Modifier.matchParentSize(),
+                    cornerRadius = ElovaireRadii.artworkSmall,
+                )
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = active && isPlaying,
+                    enter = fadeIn(animationSpec = tween(160)),
+                    exit = fadeOut(animationSpec = tween(160)),
+                ) {
+                    PlaybackActiveArtworkOverlay(
+                        uri = song.artUri,
+                        title = song.album,
+                        modifier = Modifier.matchParentSize(),
+                    )
                 }
             }
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Text(
-                    text = song.title,
-                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium),
+                ExplicitTitleText(
+                    title = song.title,
+                    isExplicit = song.isExplicit,
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+                    ),
                     color = if (active) tint else tint.copy(alpha = 0.84f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth(),
                 )
                 Text(
                     text = song.artist,
@@ -12363,20 +12461,152 @@ private fun QueueSongRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Text(
-                text = formatDuration(song.durationMs),
-                style = MaterialTheme.typography.labelLarge,
-                color = secondaryTint.copy(alpha = 0.78f),
-                maxLines = 1,
-                textAlign = TextAlign.End,
-            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = formatDuration(song.durationMs),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = secondaryTint.copy(alpha = 0.78f),
+                    maxLines = 1,
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.width(40.dp),
+                )
+                QueueSongOverflowMenuButton(
+                    tint = tint,
+                    onAddToPlaylist = onAddToPlaylist,
+                    onRemoveFromQueue = onRemoveFromQueue,
+                )
+            }
         }
         if (showDivider) {
             QueueSeparator(
                 tint = tint,
                 modifier = Modifier
-                    .fillMaxWidth(0.9f),
+                    .fillMaxWidth(),
             )
+        }
+    }
+}
+
+@Composable
+private fun QueueSongOverflowMenuButton(
+    tint: Color,
+    onAddToPlaylist: () -> Unit,
+    onRemoveFromQueue: () -> Unit,
+) {
+    val language = LocalAppLanguage.current
+    var expanded by remember { mutableStateOf(false) }
+    var shouldRenderMenu by remember { mutableStateOf(false) }
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val motionDurationScale = rememberSystemAnimationScale()
+    val buttonScale by animateFloatAsState(
+        targetValue = if (pressed) 0.88f else 1f,
+        animationSpec = ElovaireMotion.releaseSpringSpec(),
+        label = "queue_song_overflow_scale",
+    )
+    LaunchedEffect(expanded) {
+        if (expanded) {
+            shouldRenderMenu = true
+        } else if (shouldRenderMenu) {
+            delay(ElovaireMotion.scaleDurationMillis(180L, motionDurationScale))
+            shouldRenderMenu = false
+        }
+    }
+
+    Box {
+        Box(
+            modifier = Modifier
+                .size(24.dp)
+                .scale(buttonScale)
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = { expanded = true },
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.ic_lucide_ellipsis_vertical),
+                contentDescription = "Queue song options",
+                tint = tint.copy(alpha = 0.82f),
+                modifier = Modifier.size(20.dp),
+            )
+        }
+
+        if (shouldRenderMenu) {
+            DropdownMenu(
+                expanded = true,
+                onDismissRequest = { expanded = false },
+                offset = DpOffset(x = 0.dp, y = (-10).dp),
+                containerColor = Color.Transparent,
+                shadowElevation = 0.dp,
+                tonalElevation = 0.dp,
+            ) {
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = expanded,
+                    enter = fadeIn(animationSpec = tween(170, easing = LinearOutSlowInEasing)) +
+                        scaleIn(
+                            initialScale = 0.94f,
+                            transformOrigin = TransformOrigin(1f, 0f),
+                            animationSpec = tween(220, easing = FastOutSlowInEasing),
+                        ) +
+                        slideInVertically(
+                            initialOffsetY = { -it / 6 },
+                            animationSpec = tween(220, easing = FastOutSlowInEasing),
+                        ),
+                    exit = fadeOut(animationSpec = tween(130, easing = FastOutLinearInEasing)) +
+                        scaleOut(
+                            targetScale = 0.98f,
+                            transformOrigin = TransformOrigin(1f, 0f),
+                            animationSpec = tween(130, easing = FastOutLinearInEasing),
+                        ),
+                    label = "QueueSongOverflowMenuVisibility",
+                ) {
+                    QueueContextMenuSurface(
+                        modifier = Modifier.width(210.dp),
+                    ) {
+                        SongContextMenuItem(
+                            iconResId = R.drawable.ic_lucide_list_plus,
+                            text = uiPhrase(language, UiPhrase.AddToPlaylist),
+                            tint = tint,
+                            onClick = {
+                                expanded = false
+                                onAddToPlaylist()
+                            },
+                        )
+                        DividerLine()
+                        SongContextMenuItem(
+                            iconResId = R.drawable.ic_lucide_list_x,
+                            text = uiPhrase(language, UiPhrase.RemoveFromList),
+                            tint = tint,
+                            onClick = {
+                                expanded = false
+                                onRemoveFromQueue()
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QueueContextMenuSurface(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    DynamicBackdropSurface(
+        modifier = modifier,
+        shape = RoundedCornerShape(ElovaireRadii.card),
+        overlayAlpha = 0.1f,
+        borderColor = blurSurfaceBorderColor(),
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            content()
         }
     }
 }
@@ -12622,6 +12852,7 @@ private fun AlbumHeaderActionButton(
     contentDescription: String,
     tint: Color,
     backgroundColor: Color,
+    iconSize: Dp = 20.dp,
     onClick: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -12649,7 +12880,7 @@ private fun AlbumHeaderActionButton(
             painter = painterResource(id = iconResId),
             contentDescription = contentDescription,
             tint = tint,
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier.size(iconSize),
         )
     }
 }
@@ -14817,10 +15048,6 @@ private fun LanguagePickerRow(
     onLanguageSelected: (AppLanguage) -> Unit,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
-    val languages = remember {
-        AppLanguage.entries.sortedBy { it.englishName }
-    }
-    val menuListState = rememberLazyListState()
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
@@ -14878,71 +15105,225 @@ private fun LanguagePickerRow(
                     )
                 }
             }
-            DropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false },
-                containerColor = Color.Transparent,
-                shadowElevation = 0.dp,
-                tonalElevation = 0.dp,
+        }
+    }
+    if (expanded) {
+        LanguageSelectionDialog(
+            selectedLanguage = selectedLanguage,
+            title = copy.language,
+            onDismiss = { expanded = false },
+            onConfirm = { language ->
+                expanded = false
+                onLanguageSelected(language)
+            },
+        )
+    }
+}
+
+@Composable
+private fun LanguageSelectionDialog(
+    selectedLanguage: AppLanguage,
+    title: String,
+    onDismiss: () -> Unit,
+    onConfirm: (AppLanguage) -> Unit,
+) {
+    val listState = rememberElovaireLazyListState("language_picker")
+    val languages = remember {
+        AppLanguage.entries.sortedBy { it.englishName }
+    }
+    var pendingLanguage by rememberSaveable(selectedLanguage) { mutableStateOf(selectedLanguage) }
+    val visibleRows = 5
+    val rowHeight = 56.dp
+    val rowSpacing = 2.dp
+    val listHeight = (rowHeight * visibleRows) + (rowSpacing * (visibleRows - 1))
+
+    Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onDismiss,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            DynamicBackdropSurface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {},
+                    ),
+                shape = RoundedCornerShape(ElovaireRadii.card),
+                overlayAlpha = 0.6f,
+                borderColor = blurSurfaceBorderColor(),
             ) {
-                Box(
+                Column(
                     modifier = Modifier
-                        .width(228.dp)
-                        .heightIn(max = 240.dp),
+                        .padding(horizontal = 20.dp, vertical = 20.dp)
+                        .animateContentSize(animationSpec = ElovaireMotion.sizeSoft()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    DynamicBackdropSurface(
-                        modifier = Modifier.fillMaxSize(),
-                        shape = RoundedCornerShape(ElovaireRadii.card),
-                        overlayAlpha = 0.6f,
-                        borderColor = blurSurfaceBorderColor(),
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_lucide_languages),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium),
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(listHeight),
                     ) {
                         LazyColumn(
-                            state = menuListState,
+                            state = listState,
+                            overscrollEffect = null,
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .ensureSingleItemRubberBand(listState),
+                            verticalArrangement = Arrangement.spacedBy(rowSpacing),
                         ) {
-                            items(
-                                items = languages,
-                                key = { it.name },
-                            ) { language ->
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            text = language.nativeName,
-                                            style = MaterialTheme.typography.bodyMedium.copy(
-                                                fontWeight = if (language == selectedLanguage) {
-                                                    FontWeight.SemiBold
-                                                } else {
-                                                    FontWeight.Normal
-                                                },
-                                            ),
-                                        )
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            painter = painterResource(id = R.drawable.ic_lucide_languages),
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp),
-                                            tint = MaterialTheme.colorScheme.onSurface.copy(
-                                                alpha = if (language == selectedLanguage) 0.92f else 0.46f,
-                                            ),
-                                        )
-                                    },
-                                    onClick = {
-                                        expanded = false
-                                        onLanguageSelected(language)
-                                    },
+                            items(languages, key = { it.name }) { language ->
+                                LanguagePickerOptionRow(
+                                    language = language,
+                                    selected = language == pendingLanguage,
+                                    modifier = Modifier.animateItem(
+                                        placementSpec = spring(
+                                            dampingRatio = 0.76f,
+                                            stiffness = 360f,
+                                        ),
+                                    ),
+                                    onClick = { pendingLanguage = language },
                                 )
                             }
                         }
+                        FastScrollbar(
+                            state = listState,
+                            topInset = 0.dp,
+                            bottomInset = 0.dp,
+                            modifier = Modifier.padding(end = 3.dp),
+                        )
                     }
-                    FastScrollbar(
-                        state = menuListState,
-                        topInset = 8.dp,
-                        bottomInset = 8.dp,
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(onClick = onDismiss) {
+                            Text(
+                                text = uiPhrase(selectedLanguage, UiPhrase.Cancel),
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Surface(
+                            onClick = { onConfirm(pendingLanguage) },
+                            shape = RoundedCornerShape(ElovaireRadii.pill),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.92f),
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                        ) {
+                            Text(
+                                text = "OK",
+                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LanguagePickerOptionRow(
+    language: AppLanguage,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val highlightColor by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+        } else {
+            Color.Transparent
+        },
+        animationSpec = ElovaireMotion.colorFadeSpec(),
+        label = "language_picker_row_highlight",
+    )
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .padding(end = 16.dp)
+            .clip(RoundedCornerShape(ElovaireRadii.tile))
+            .background(highlightColor)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            )
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier.size(22.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_lucide_circle),
+                    contentDescription = null,
+                    tint = if (selected) {
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.94f)
+                    } else {
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.42f)
+                    },
+                    modifier = Modifier.size(20.dp),
+                )
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = selected,
+                    enter = fadeIn(animationSpec = tween(140)) + scaleIn(
+                        initialScale = 0.8f,
+                        animationSpec = ElovaireMotion.releaseSpringSpec(),
+                    ),
+                    exit = fadeOut(animationSpec = tween(120)) + scaleOut(
+                        targetScale = 0.8f,
+                        animationSpec = tween(120),
+                    ),
+                    label = "language_picker_check",
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_lucide_check),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.94f),
+                        modifier = Modifier.size(12.dp),
                     )
                 }
             }
+            Text(
+                text = language.nativeName,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                ),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
         }
     }
 }

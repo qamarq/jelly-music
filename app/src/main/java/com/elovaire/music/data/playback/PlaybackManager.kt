@@ -500,6 +500,40 @@ class PlaybackManager(
         updateState()
     }
 
+    fun removeQueueIndex(index: Int) {
+        val existingQueue = _state.value.queue
+        if (index !in existingQueue.indices) return
+        if (existingQueue.size == 1) {
+            stopAndClearQueue()
+            return
+        }
+        cancelPauseFade()
+        shouldResumeAfterTransientFocusLoss = false
+        pausedForAudioFocusLoss = false
+        val currentIndex = resolveCurrentQueueIndex(_state.value).takeIf { it in existingQueue.indices } ?: _state.value.currentIndex
+        val shouldKeepPlaying = _state.value.transportShowsPause || player.isPlaying || player.playWhenReady
+        val updatedQueue = existingQueue.toMutableList().apply { removeAt(index) }
+        player.removeMediaItem(index)
+        val fallbackIndex = when {
+            index < currentIndex -> currentIndex - 1
+            currentIndex >= updatedQueue.size -> updatedQueue.lastIndex
+            else -> currentIndex
+        }.coerceIn(0, updatedQueue.lastIndex)
+        _state.value = _state.value.copy(
+            queue = updatedQueue,
+            currentIndex = fallbackIndex,
+            transportShowsPause = shouldKeepPlaying,
+        )
+        if (shouldKeepPlaying && requestAudioFocus()) {
+            player.volume = effectivePlayerGain()
+            player.playWhenReady = true
+            if (!player.isPlaying) {
+                player.play()
+            }
+        }
+        updateState()
+    }
+
     fun release() {
         pauseFadeJob?.cancel()
         progressUpdateJob?.cancel()

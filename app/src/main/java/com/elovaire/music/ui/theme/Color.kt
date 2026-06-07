@@ -30,13 +30,13 @@ val InkText = Color(0xFF0D0D0D)
 val InkTextSecondary = Color(0xC20D0D0D)
 
 // Global accent color for highlighted buttons, active states, and key actions.
-val RoseAccent = Color(0xFF1567E3)
+val RoseAccent = Color(0xFF115FD5)
 
 // Secondary accent reserved for About screen card-section buttons.
-val AboutCardButtonAccent = Color(0xFF2697D3)
+val AboutCardButtonAccent = Color(0xFF1D9BD7)
 
 // Shared destructive action color for delete/remove actions.
-val DestructiveRed = Color(0xFFF53838)
+val DestructiveRed = Color(0xFFDE2C2C)
 
 // Dedicated green used by on/off setting toggles when enabled.
-val ToggleEnabledGreen = Color(0xFF27D17F)
+val ToggleEnabledGreen = Color(0xFF13D079)
