@@ -255,46 +255,70 @@ object ElovaireMotion {
         ))
 
     fun fullScreenForwardEnter(
-        initialOffsetX: (fullWidth: Int) -> Int = { it / 7 },
+        initialOffsetX: (fullWidth: Int) -> Int = { it / 6 },
     ): EnterTransition = fadeIn(
-        animationSpec = fadeSlow(),
-        initialAlpha = 0.74f,
+        animationSpec = tween(
+            durationMillis = 230,
+            easing = LinearOutSlowInEasing,
+        ),
+        initialAlpha = 0.82f,
     ) +
         slideInHorizontally(
-            animationSpec = offsetSoft(durationMillis = ScreenExpand),
+            animationSpec = tween(
+                durationMillis = 280,
+                easing = EmphasizedDecelerate,
+            ),
             initialOffsetX = initialOffsetX,
         )
 
     fun fullScreenForwardExit(
-        targetOffsetX: (fullWidth: Int) -> Int = { -(it / 20) },
+        targetOffsetX: (fullWidth: Int) -> Int = { -(it / 12) },
     ): ExitTransition = fadeOut(
-        animationSpec = fadeFast(),
-        targetAlpha = 0.92f,
+        animationSpec = tween(
+            durationMillis = 150,
+            easing = FastOutLinearInEasing,
+        ),
+        targetAlpha = 0.9f,
     ) +
         slideOutHorizontally(
-            animationSpec = offsetSoft(durationMillis = ScreenFade),
+            animationSpec = tween(
+                durationMillis = 210,
+                easing = EmphasizedAccelerate,
+            ),
             targetOffsetX = targetOffsetX,
         )
 
     fun fullScreenBackEnter(
-        initialOffsetX: (fullWidth: Int) -> Int = { -(it / 20) },
+        initialOffsetX: (fullWidth: Int) -> Int = { -(it / 12) },
     ): EnterTransition = fadeIn(
-        animationSpec = fadeSlow(),
-        initialAlpha = 0.82f,
+        animationSpec = tween(
+            durationMillis = 190,
+            easing = LinearOutSlowInEasing,
+        ),
+        initialAlpha = 0.9f,
     ) +
         slideInHorizontally(
-            animationSpec = offsetSoft(durationMillis = ScreenExpand),
+            animationSpec = tween(
+                durationMillis = 240,
+                easing = EmphasizedDecelerate,
+            ),
             initialOffsetX = initialOffsetX,
         )
 
     fun fullScreenBackExit(
-        targetOffsetX: (fullWidth: Int) -> Int = { it / 7 },
+        targetOffsetX: (fullWidth: Int) -> Int = { it / 5 },
     ): ExitTransition = fadeOut(
-        animationSpec = fadeFast(),
-        targetAlpha = 0.88f,
+        animationSpec = tween(
+            durationMillis = 170,
+            easing = FastOutLinearInEasing,
+        ),
+        targetAlpha = 0.84f,
     ) +
         slideOutHorizontally(
-            animationSpec = offsetSoft(durationMillis = ScreenExpand),
+            animationSpec = tween(
+                durationMillis = 250,
+                easing = EmphasizedAccelerate,
+            ),
             targetOffsetX = targetOffsetX,
         )
 
