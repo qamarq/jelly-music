@@ -325,16 +325,42 @@ object ElovaireMotion {
     fun topLevelEnter(
         forward: Boolean = true,
     ): EnterTransition = fadeIn(
-        animationSpec = fadeMedium(),
-        initialAlpha = 0.82f,
-    )
+        animationSpec = tween(
+            durationMillis = 220,
+            easing = LinearOutSlowInEasing,
+        ),
+        initialAlpha = 0.84f,
+    ) +
+        slideInHorizontally(
+            animationSpec = tween(
+                durationMillis = 260,
+                easing = EmphasizedDecelerate,
+            ),
+            initialOffsetX = { fullWidth ->
+                val offset = (fullWidth / 16f).roundToLong().toInt()
+                if (forward) offset else -offset
+            },
+        )
 
     fun topLevelExit(
         forward: Boolean = true,
     ): ExitTransition = fadeOut(
-        animationSpec = fadeFast(),
+        animationSpec = tween(
+            durationMillis = 160,
+            easing = FastOutLinearInEasing,
+        ),
         targetAlpha = 0.9f,
-    )
+    ) +
+        slideOutHorizontally(
+            animationSpec = tween(
+                durationMillis = 220,
+                easing = EmphasizedAccelerate,
+            ),
+            targetOffsetX = { fullWidth ->
+                val offset = (fullWidth / 20f).roundToLong().toInt()
+                if (forward) -offset else offset
+            },
+        )
 
     fun scaleDurationMillis(
         durationMillis: Long,

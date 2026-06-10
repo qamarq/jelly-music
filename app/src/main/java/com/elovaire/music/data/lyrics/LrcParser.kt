@@ -7,6 +7,7 @@ import kotlin.math.min
 private val TIMESTAMP_REGEX = Regex("""\[(?:(\d{1,2}):)?(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?]""")
 private val METADATA_LINE_REGEX = Regex("""^\[([a-zA-Z]+):(.*)]$""")
 private val METADATA_ONLY_LINE_REGEX = Regex("""^\s*\[?\s*(by|ar|ti|al|offset|length)\s*[:：].*\]?\s*$""", RegexOption.IGNORE_CASE)
+private val SECTION_HEADER_REGEX = Regex("""^\s*\[[^\]]+]\s*$""")
 
 internal fun parseSyncedLyrics(rawLyrics: String?): List<LyricsLine>? {
     if (rawLyrics.isNullOrBlank()) return null
@@ -98,6 +99,7 @@ internal fun sanitizeLyricLine(line: String): String? {
     if (normalized.startsWith("you might also like")) return null
     if (normalized.startsWith("submit corrections")) return null
     if (normalized.startsWith("contributors")) return null
+    if (SECTION_HEADER_REGEX.matches(cleaned)) return null
     if (METADATA_ONLY_LINE_REGEX.matches(cleaned)) return null
     return cleaned
 }

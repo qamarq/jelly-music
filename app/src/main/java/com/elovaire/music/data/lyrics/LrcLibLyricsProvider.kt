@@ -265,6 +265,7 @@ internal class LrcLibLyricsProvider : LyricsProvider {
             instrumental = optFlexibleFlag("instrumental"),
             plainLyrics = optNullableString("plainLyrics"),
             syncedLyrics = optNullableString("syncedLyrics"),
+            sourceUrl = null,
         )
     }
 

@@ -187,8 +187,8 @@ internal class LyricsCache(
     }
 
     private companion object {
-        const val CACHE_FILE_NAME = "lyrics_cache_v1.json"
-        const val CACHE_VERSION = 1
+        const val CACHE_FILE_NAME = "lyrics_cache_v3.json"
+        const val CACHE_VERSION = 3
         const val MAX_ENTRIES = 320
         const val RESULT_FOUND = "found"
         const val RESULT_NOT_FOUND = "not_found"

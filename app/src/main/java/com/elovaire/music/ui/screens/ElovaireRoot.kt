@@ -36,6 +36,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.updateTransition
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.spring
@@ -9126,8 +9127,8 @@ private fun AnimatedAudioLinesIcon(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 950, easing = LinearOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
+            animation = tween(durationMillis = 1180, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
         ),
         label = "audio_lines_value",
     )
@@ -9138,12 +9139,13 @@ private fun AnimatedAudioLinesIcon(
         val gap = (size.width - (lineWidth * baseHeights.size)) / (baseHeights.size - 1).coerceAtLeast(1)
         val centerY = size.height / 2f
         baseHeights.forEachIndexed { index, baseHeight ->
+            val primaryPhase = ((phase + phaseOffsets[index]) % 1f) * 6.2831855f
+            val secondaryPhase = ((phase * 1.82f) + (phaseOffsets[index] * 0.58f)) * 6.2831855f
             val animationFactor = (
-                (
-                    sin(((phase + phaseOffsets[index]) * 6.2831855f).toDouble()) + 1.0
-                    ) / 2.0
+                ((sin(primaryPhase.toDouble()) + 1.0) * 0.5 * 0.72) +
+                    ((sin(secondaryPhase.toDouble()) + 1.0) * 0.5 * 0.28)
                 ).toFloat()
-            val heightFactor = (baseHeight * 0.68f) + (animationFactor * 0.22f)
+            val heightFactor = (baseHeight * 0.66f) + (animationFactor * 0.24f)
             val lineHeight = size.height * heightFactor
             val startX = index * (lineWidth + gap) + (lineWidth / 2f)
             drawLine(
@@ -9164,6 +9166,7 @@ private fun PlaybackActiveArtworkOverlay(
     modifier: Modifier = Modifier,
 ) {
     val artworkShape = RoundedCornerShape(ElovaireRadii.artworkSmall)
+    val artworkBitmap = rememberArtworkBitmap(uri = uri, size = 256).value
     Box(
         modifier = modifier
             .graphicsLayer {
@@ -9174,22 +9177,37 @@ private fun PlaybackActiveArtworkOverlay(
             .clip(artworkShape),
         contentAlignment = Alignment.Center,
     ) {
-        ArtworkImage(
-            uri = uri,
-            title = title,
-            modifier = Modifier
-                .matchParentSize()
-                .blur(16.dp),
-            cornerRadius = ElovaireRadii.artworkSmall,
-        )
+        if (artworkBitmap != null) {
+            Image(
+                bitmap = artworkBitmap,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .matchParentSize()
+                    .graphicsLayer {
+                        scaleX = 1.08f
+                        scaleY = 1.08f
+                    }
+                    .blur(18.dp),
+            )
+        } else {
+            ArtworkImage(
+                uri = uri,
+                title = title,
+                modifier = Modifier
+                    .matchParentSize()
+                    .blur(18.dp),
+                cornerRadius = ElovaireRadii.artworkSmall,
+            )
+        }
         Box(
             modifier = Modifier
                 .matchParentSize()
-                .background(Color.Black.copy(alpha = 0.08f)),
+                .background(Color.Black.copy(alpha = 0.12f)),
         )
         AnimatedAudioLinesIcon(
-            tint = Color.White.copy(alpha = 0.78f),
-            modifier = Modifier.size(19.dp),
+            tint = Color.White.copy(alpha = 0.82f),
+            modifier = Modifier.size(20.dp),
         )
     }
 }
@@ -10276,104 +10294,149 @@ private fun AddSongsToPlaylistOverlay(
                     .fillMaxWidth()
                     .weight(1f),
             ) {
-                LazyColumn(
-                    state = listState,
-                    overscrollEffect = null,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .ensureSingleItemRubberBand(listState),
-                    contentPadding = PaddingValues(
-                        start = 20.dp,
-                        end = 20.dp,
-                        bottom = overlayBottomPadding,
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(0.dp),
+                val pickerContentKey = when {
+                    selectedTab == PlaylistPickerTab.Albums && selectedAlbum != null -> "album:${selectedAlbum.id}"
+                    selectedTab == PlaylistPickerTab.Artists && selectedArtistName != null -> "artist:${selectedArtistName.orEmpty()}"
+                    else -> "tab:${selectedTab.name}"
+                }
+                ElovaireAnimatedContent(
+                    targetState = pickerContentKey,
+                    modifier = Modifier.fillMaxSize(),
+                    transitionSpec = {
+                        val forward = targetState > initialState
+                        (fadeIn(
+                            animationSpec = tween(
+                                durationMillis = 220,
+                                easing = LinearOutSlowInEasing,
+                            ),
+                            initialAlpha = 0.86f,
+                        ) + slideInHorizontally(
+                            animationSpec = tween(
+                                durationMillis = 260,
+                                easing = FastOutSlowInEasing,
+                            ),
+                            initialOffsetX = { fullWidth ->
+                                val offset = (fullWidth / 18f).roundToInt()
+                                if (forward) offset else -offset
+                            },
+                        )) togetherWith (fadeOut(
+                            animationSpec = tween(
+                                durationMillis = 150,
+                                easing = FastOutLinearInEasing,
+                            ),
+                            targetAlpha = 0.9f,
+                        ) + slideOutHorizontally(
+                            animationSpec = tween(
+                                durationMillis = 210,
+                                easing = FastOutSlowInEasing,
+                            ),
+                            targetOffsetX = { fullWidth ->
+                                val offset = (fullWidth / 22f).roundToInt()
+                                if (forward) -offset else offset
+                            },
+                        ))
+                    },
+                    label = "PlaylistAddSongsContent",
                 ) {
-                    when {
-                        selectedTab == PlaylistPickerTab.Albums && selectedAlbum != null -> {
-                            items(filteredAlbumSongs, key = { it.id }) { song ->
-                                val selected = song.id in selectedSongIdSet
-                                SelectableSongRow(
-                                    song = song,
-                                    selected = selected,
-                                    selectionIndicatorOnRight = true,
-                                    showDivider = song != filteredAlbumSongs.lastOrNull(),
-                                    onClick = {
-                                        selectedSongIds = if (selected) {
-                                            selectedSongIds.filterNot { it == song.id }
-                                        } else {
-                                            selectedSongIds + song.id
-                                        }
-                                    },
-                                )
-                            }
-                        }
-                        selectedTab == PlaylistPickerTab.Artists && selectedArtistName != null -> {
-                            items(filteredArtistSongs, key = { it.id }) { song ->
-                                val selected = song.id in selectedSongIdSet
-                                SelectableSongRow(
-                                    song = song,
-                                    selected = selected,
-                                    selectionIndicatorOnRight = true,
-                                    showDivider = song != filteredArtistSongs.lastOrNull(),
-                                    onClick = {
-                                        selectedSongIds = if (selected) {
-                                            selectedSongIds.filterNot { it == song.id }
-                                        } else {
-                                            selectedSongIds + song.id
-                                        }
-                                    },
-                                )
-                            }
-                        }
-                        selectedTab == PlaylistPickerTab.Albums -> {
-                            items(filteredAlbums, key = { it.id }) { album ->
-                                SelectableAlbumPickerRow(
-                                    album = album,
-                                    selected = album.songs.all { it.id in selectedSongIdSet } && album.songs.isNotEmpty(),
-                                    showDivider = album != filteredAlbums.lastOrNull(),
-                                    onOpen = { selectedAlbumId = album.id },
-                                    onToggleSelection = {
-                                        val albumSongIds = album.songs.map(Song::id)
-                                        val allSelected = albumSongIds.all { it in selectedSongIdSet }
-                                        selectedSongIds = if (allSelected) {
-                                            selectedSongIds.filterNot { it in albumSongIds }
-                                        } else {
-                                            (selectedSongIds + albumSongIds).distinct()
-                                        }
-                                    },
-                                )
-                            }
-                        }
-
-                        selectedTab == PlaylistPickerTab.Artists -> {
-                            itemsIndexed(filteredArtists, key = { _, item -> item.first.name }) { index, (artist, _) ->
-                                ArtistRow(
-                                    artist = artist,
-                                    onClick = { selectedArtistName = artist.name },
-                                )
-                                if (index != filteredArtists.lastIndex) {
-                                    Spacer(modifier = Modifier.height(2.dp))
+                    LazyColumn(
+                        state = listState,
+                        overscrollEffect = null,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .ensureSingleItemRubberBand(listState),
+                        contentPadding = PaddingValues(
+                            start = 20.dp,
+                            end = 20.dp,
+                            bottom = overlayBottomPadding,
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(0.dp),
+                    ) {
+                        when {
+                            selectedTab == PlaylistPickerTab.Albums && selectedAlbum != null -> {
+                                items(filteredAlbumSongs, key = { it.id }) { song ->
+                                    val selected = song.id in selectedSongIdSet
+                                    SelectableSongRow(
+                                        song = song,
+                                        selected = selected,
+                                        selectionIndicatorOnRight = true,
+                                        showDivider = song != filteredAlbumSongs.lastOrNull(),
+                                        onClick = {
+                                            selectedSongIds = if (selected) {
+                                                selectedSongIds.filterNot { it == song.id }
+                                            } else {
+                                                selectedSongIds + song.id
+                                            }
+                                        },
+                                    )
                                 }
                             }
-                        }
+                            selectedTab == PlaylistPickerTab.Artists && selectedArtistName != null -> {
+                                items(filteredArtistSongs, key = { it.id }) { song ->
+                                    val selected = song.id in selectedSongIdSet
+                                    SelectableSongRow(
+                                        song = song,
+                                        selected = selected,
+                                        selectionIndicatorOnRight = true,
+                                        showDivider = song != filteredArtistSongs.lastOrNull(),
+                                        onClick = {
+                                            selectedSongIds = if (selected) {
+                                                selectedSongIds.filterNot { it == song.id }
+                                            } else {
+                                                selectedSongIds + song.id
+                                            }
+                                        },
+                                    )
+                                }
+                            }
+                            selectedTab == PlaylistPickerTab.Albums -> {
+                                items(filteredAlbums, key = { it.id }) { album ->
+                                    SelectableAlbumPickerRow(
+                                        album = album,
+                                        selected = album.songs.all { it.id in selectedSongIdSet } && album.songs.isNotEmpty(),
+                                        showDivider = album != filteredAlbums.lastOrNull(),
+                                        onOpen = { selectedAlbumId = album.id },
+                                        onToggleSelection = {
+                                            val albumSongIds = album.songs.map(Song::id)
+                                            val allSelected = albumSongIds.all { it in selectedSongIdSet }
+                                            selectedSongIds = if (allSelected) {
+                                                selectedSongIds.filterNot { it in albumSongIds }
+                                            } else {
+                                                (selectedSongIds + albumSongIds).distinct()
+                                            }
+                                        },
+                                    )
+                                }
+                            }
 
-                        selectedTab == PlaylistPickerTab.Songs -> {
-                            items(filteredSongs, key = { it.id }) { song ->
-                                val selected = song.id in selectedSongIdSet
-                                SelectableSongRow(
-                                    song = song,
-                                    selected = selected,
-                                    selectionIndicatorOnRight = true,
-                                    showDivider = song != filteredSongs.lastOrNull(),
-                                    onClick = {
-                                        selectedSongIds = if (selected) {
-                                            selectedSongIds.filterNot { it == song.id }
-                                        } else {
-                                            selectedSongIds + song.id
-                                        }
-                                    },
-                                )
+                            selectedTab == PlaylistPickerTab.Artists -> {
+                                itemsIndexed(filteredArtists, key = { _, item -> item.first.name }) { index, (artist, _) ->
+                                    ArtistRow(
+                                        artist = artist,
+                                        onClick = { selectedArtistName = artist.name },
+                                    )
+                                    if (index != filteredArtists.lastIndex) {
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                    }
+                                }
+                            }
+
+                            selectedTab == PlaylistPickerTab.Songs -> {
+                                items(filteredSongs, key = { it.id }) { song ->
+                                    val selected = song.id in selectedSongIdSet
+                                    SelectableSongRow(
+                                        song = song,
+                                        selected = selected,
+                                        selectionIndicatorOnRight = true,
+                                        showDivider = song != filteredSongs.lastOrNull(),
+                                        onClick = {
+                                            selectedSongIds = if (selected) {
+                                                selectedSongIds.filterNot { it == song.id }
+                                            } else {
+                                                selectedSongIds + song.id
+                                            }
+                                        },
+                                    )
+                                }
                             }
                         }
                     }
@@ -11657,7 +11720,7 @@ private fun NowPlayingScreen(
                     .align(Alignment.CenterHorizontally)
                     .weight(1f),
             ) {
-                val queueSheetTopExtension = 392.dp
+                val queueSheetTopExtension = 462.dp
                 Column(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(0.dp),
@@ -12249,8 +12312,8 @@ private fun QueueSheet(
                     modifier = Modifier
                         .fillMaxSize()
                         .ensureSingleItemRubberBand(listState),
-                    contentPadding = PaddingValues(vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                    contentPadding = PaddingValues(vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(1.dp),
                 ) {
                     itemsIndexed(queue, key = { index, song -> "${song.id}_$index" }) { index, song ->
                         QueueSongRow(
@@ -12445,12 +12508,16 @@ private fun QueueSongRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(
+                    if (active) tint.copy(alpha = 0.1f) else Color.Transparent,
+                )
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                     onClick = onClick,
                 )
-                .padding(vertical = 12.dp),
+                .padding(horizontal = 6.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

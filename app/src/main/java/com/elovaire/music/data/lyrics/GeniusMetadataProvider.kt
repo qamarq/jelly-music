@@ -106,6 +106,7 @@ internal class GeniusMetadataProvider(
             instrumental = false,
             plainLyrics = "",
             syncedLyrics = "",
+            sourceUrl = optNullableString("url").takeIf { it.isNotBlank() },
         )
     }
 

@@ -26,6 +26,7 @@ internal class LyricsRepository(
     private val cache = LyricsCache(applicationContext)
     private val localLyricsResolver = LocalLyricsResolver(applicationContext)
     private val geniusMetadataProvider = GeniusMetadataProvider()
+    private val geniusLyricsProvider = GeniusLyricsProvider().takeIf { it.isConfigured() }
     private val lrclibProvider = LrcLibLyricsProvider()
     private val lyricsOvhProvider = LyricsOvhProvider()
     private val serviceScope = CoroutineScope(SupervisorJob() + ioDispatcher)
@@ -320,10 +321,29 @@ internal class LyricsRepository(
             provider = lyricsOvhProvider,
             identity = identity,
             candidates = ovhCandidates,
-            minimumScore = Ovh_MIN_SCORE,
+            minimumScore = OVH_MIN_SCORE,
         )
 
-        return@coroutineScope listOfNotNull(lrclibMatch, ovhMatch)
+        val geniusMatch = geniusLyricsProvider?.let { provider ->
+            val geniusQuery = LyricsSearchQuery(
+                identity = identity,
+                variants = fastVariants.take(MAX_GENIUS_QUERY_VARIANTS),
+            )
+            val geniusCandidates = runCatching {
+                provider.search(geniusQuery)
+            }.getOrElse { throwable ->
+                logDebug("genius lyrics search failed for ${identity.normalizedLookupKey}", throwable)
+                emptyList()
+            }
+            selectBestCandidateMatch(
+                provider = provider,
+                identity = identity,
+                candidates = geniusCandidates,
+                minimumScore = GENIUS_MIN_SCORE,
+            )
+        }
+
+        return@coroutineScope listOfNotNull(lrclibMatch, geniusMatch, ovhMatch)
             .maxWithOrNull(compareBy<ProviderLyricsMatch>({ if (it.payload.isSynced) 1 else 0 }, { it.confidence }))
     }
 
@@ -419,8 +439,8 @@ internal class LyricsRepository(
         const val TAG = "LyricsRepository"
         const val LOCAL_LOOKUP_TIMEOUT_MS = 250L
         const val FAST_NOT_FOUND_BUDGET_MS = 2_000L
-        const val FULL_REMOTE_LOOKUP_BUDGET_MS = 3_800L
-        const val GENIUS_LOOKUP_TIMEOUT_MS = 420L
+        const val FULL_REMOTE_LOOKUP_BUDGET_MS = 2_800L
+        const val GENIUS_LOOKUP_TIMEOUT_MS = 250L
         const val MAX_FAST_REMOTE_QUERY_VARIANTS = 5
         const val POSITIVE_CACHE_TTL_MS = 30L * 24L * 60L * 60L * 1000L
         const val CACHE_TTL_NOT_FOUND_MS = 30_000L
@@ -428,8 +448,10 @@ internal class LyricsRepository(
         const val CACHE_TTL_OFFLINE_MS = 90_000L
         const val FULL_MODE_MIN_SCORE = 78
         const val FAST_MODE_MIN_SCORE = 82
-        const val Ovh_MIN_SCORE = 74
+        const val OVH_MIN_SCORE = 74
+        const val GENIUS_MIN_SCORE = 62
         const val HIGH_CONFIDENCE_SYNC_SCORE = 88
         const val MAX_LYRICS_OVH_QUERY_VARIANTS = 2
+        const val MAX_GENIUS_QUERY_VARIANTS = 5
     }
 }

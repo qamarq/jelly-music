@@ -43,6 +43,7 @@ data class LyricsCandidate(
     val instrumental: Boolean,
     val plainLyrics: String,
     val syncedLyrics: String,
+    val sourceUrl: String? = null,
 )
 
 data class LyricsLine(

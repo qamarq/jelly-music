@@ -24,6 +24,7 @@ internal class LyricsOvhProvider : LyricsProvider {
                     instrumental = false,
                     plainLyrics = "",
                     syncedLyrics = "",
+                    sourceUrl = null,
                 )
             }
     }
