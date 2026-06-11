@@ -1,155 +1,321 @@
-# Elovaire
+Task: please cleanly remove all attempted or functional support for these audio formats:
 
-<p align="center">
-  <img
-    src="https://raw.githubusercontent.com/droidbeauty/elovaire-music/refs/heads/main/renders/1.png"
-    alt="Elovaire - elegant Android music player for local libraries"
-    width="100%"
-  />
-</p>
+- WMA
+    
+- APE / Monkey’s Audio
+    
+- DSF / DSD Stream File
+    
+- DFF / DSD Interchange File Format
+    
 
----
+These formats are no longer desired. The app should no longer scan, index, display, classify, advertise, or attempt playback of these formats.
 
-<p align="center">
-  <a href="https://github.com/droidbeauty/elovaire-music/releases/latest">
-    <img
-      alt="Download the latest Elovaire release"
-      src="https://img.shields.io/github/v/release/droidbeauty/elovaire-music?style=for-the-badge&label=Download%20latest&logo=github&logoColor=white&color=3CB371"
-    />
-  </a>
-  &nbsp;
-  <a href="https://ko-fi.com/droidbeauty">
-    <img
-      alt="Support Elovaire on Ko-fi"
-      src="https://img.shields.io/badge/Support%20on%20Ko--fi-ff5f5f?style=for-the-badge&logo=kofi&logoColor=white"
-    />
-  </a>
-</p>
-
-<p align="center">
-  <b>Your music, refined into an elegant local listening experience</b>
-</p>
-
-<p align="center">
-  Elovaire is a native Android music player for offline music libraries, built around clean browsing, expressive artwork, smooth playback, and thoughtful audio controls.
-</p>
+Do this safely and completely without breaking support for the remaining formats.
 
 ---
 
-## About
+## Goal
 
-Elovaire is designed for people who still care about music stored directly on their device.
-
-The app gives albums, artists, playlists, lyrics, queue controls, and the now-playing screen a polished visual space without making the player feel noisy or overcomplicated. It is made to feel calm, responsive and personal whether you are quickly starting a track or settling into a longer listening session.
-
-Unlike streaming platforms, Elovaire focuses on local files stored on device. It's offline-first, tag-aware and puts highlight on your favorite albums or songs. Streamlined interface keeps library navigation and search organized around your own collection.
-
-## Highlights
-
-- Offline-first playback for music stored on your Android device
-- Artwork-led home, library, playlist, search, and now-playing screens
-- Elegant, intuitive UI with frosted blur accents
-- Smooth navigation and UI transitions
-- Built-in update engine based on looking for the latest GitHub release
-
----
-
-<p align="center">
-  <img
-    src="https://raw.githubusercontent.com/droidbeauty/elovaire-music/refs/heads/main/renders/2.png"
-    width="49%"
-  />
-  <img
-    src="https://raw.githubusercontent.com/droidbeauty/elovaire-music/refs/heads/main/renders/3.png"
-    width="49%"
-  />
-</p>
-
-## Features
-
-- Full now-playing screen with queue, lyrics overlay, volume control, repeat, shuffle, and playback actions
-- Compact now-playing bar for quick access while browsing
-- Library views for songs, albums, artists, genres, and playlists
-- Search with recent history and expandable song results
-- Timed and plain lyrics support with local embedded lyrics, sidecar lyric files, and online lookup fallbacks
-- 18-band equalizer with presets, bass and treble controls, and visual EQ editing
-- Spaciousness presets for wider stereo presentation
-- True mono playback toggle that downmixes stereo into centered dual-mono output
-- Light, dark, and system theme modes
-- Common local audio formats supported through Android Media3 and platform decoders, including MP3, AAC/M4A, ALAC, FLAC, WAV, AIFF, Ogg, and Opus where supported by the device
-
----
-
-<p align="center">
-  <img
-    src="https://raw.githubusercontent.com/droidbeauty/elovaire-music/refs/heads/main/renders/4.png"
-    width="100%"
-  />
-</p>
-
-<p align="center">
-  <img
-    src="https://raw.githubusercontent.com/droidbeauty/elovaire-music/refs/heads/main/renders/5.png"
-    width="100%"
-  />
-</p>
-
----
-
-## Built With
-
-Elovaire is a native Android project built with:
-
-- Kotlin
-- Jetpack Compose
-- Compose Navigation
-- Android Media3 / ExoPlayer
-- Android `MediaStore`
-- Android Storage Access Framework
-- Haze for frosted glass and backdrop blur surfaces
-- Gradle Kotlin DSL
-
----
-
-<p align="center">
-  <img
-    src="https://raw.githubusercontent.com/droidbeauty/elovaire-music/refs/heads/main/renders/6.png"
-    width="100%"
-  />
-</p>
-
----
-
-## Building
-
-Clone the repository and open it in Android Studio:
-
-```bash
-git clone https://github.com/droidbeauty/elovaire-music.git
-cd elovaire-music
-```
-
-Build a debug APK from the command line:
-
-```bash
-./gradlew assembleDebug
-```
-
-The generated APK will be available under:
+Remove support for:
 
 ```text
-app/build/outputs/apk/debug/
+.wma
+.ape
+.dsf
+.dff
 ```
 
-## Support
+Keep support for the existing desired formats:
 
-Elovaire is a personal project made in pursuit of a beautiful, focused alternative to streaming-first music apps. Support is optional, but always appreciated.
+```text
+.mp3
+.m4a
+.aac
+.flac
+.wav
+.ogg
+.opus
+.amr
+.3gp
+.mp4
+.mka
+```
 
-<p align="center">
-  <a href="https://ko-fi.com/droidbeauty">
-    <img
-      alt="Support Elovaire on Ko-fi"
-      src="https://img.shields.io/badge/Leave%20a%20tip-Ko--fi-ff5f5f?style=for-the-badge&logo=kofi&logoColor=white"
-    />
-  </a>
-</p>
+Do not remove support for any desired format.
+
+---
+
+## Current known source target
+
+Start by inspecting the library scanning code, especially:
+
+```text
+app/src/main/java/com/elovaire/music/data/library/LibraryRepository.kt
+app/src/main/java/com/elovaire/music/data/library/MediaStoreScanner.kt
+```
+
+The current scanner-supported extension list includes unwanted formats such as:
+
+```kotlin
+"wma",
+"ape",
+"dsf",
+"dff",
+```
+
+Remove those from the supported-extension path.
+
+---
+
+## Required scope
+
+Search the full project for all references to:
+
+```text
+wma
+ape
+dsf
+dff
+WMA
+APE
+DSF
+DFF
+Monkey
+Monkey's Audio
+DSD
+Direct Stream Digital
+```
+
+Check:
+
+- Kotlin source files.
+    
+- XML resources.
+    
+- String resources.
+    
+- Drawable/resource names.
+    
+- Tests.
+    
+- Documentation-like in-app text if any.
+    
+- File format labels.
+    
+- Media quality display code.
+    
+- Metadata extraction logic.
+    
+- Format-detection helpers.
+    
+- Library filtering logic.
+    
+- Search/filter UI.
+    
+- Error messages.
+    
+- Any hardcoded supported-format display text.
+    
+- Any changelog/about text embedded in source, if it affects current UI.
+    
+
+Do not rely only on the extension list. Remove all app-facing attempted support paths for these formats.
+
+---
+
+## Required behavior after removal
+
+After the change:
+
+1. Files ending in `.wma`, `.ape`, `.dsf`, or `.dff` should not be imported into the music library.
+    
+2. They should not appear in song lists, albums, artists, genres, playlists, search results, or recent playback.
+    
+3. They should not be selectable as supported audio files.
+    
+4. They should not be advertised or described as supported.
+    
+5. Existing indexed entries for these formats should disappear after a library refresh/rescan.
+    
+6. Existing playlists/favorites/recent entries should not crash if they previously referenced removed-format songs.
+    
+7. The app should fail safely if an old persisted object points to one of these files.
+    
+8. The app should not crash when the filesystem contains these files.
+    
+9. The app should continue scanning and playing all remaining supported formats normally.
+    
+
+---
+
+## Cleanup requirements
+
+Remove or update:
+
+- Supported extension lists.
+    
+- Format name/label mapping.
+    
+- Any metadata parsing special cases for these formats.
+    
+- Any UI labels that claim support.
+    
+- Any tests or test data expecting support.
+    
+- Any fallback logic that exists only for these formats.
+    
+- Any dead helper functions that become unused after removal.
+    
+- Any unused imports/constants caused by this removal.
+    
+
+Do not remove broader code that is still needed for supported formats.
+
+---
+
+## Important compatibility handling
+
+If the app persists library snapshots, playlists, favorites, recent playback, play counts, or search history containing old WMA/APE/DSF/DFF songs, handle that gracefully.
+
+The preferred behavior is:
+
+- On next scan/refresh, removed-format songs are filtered out.
+    
+- If a playlist references a removed-format song ID that no longer exists in the library, the app should ignore the missing song safely.
+    
+- If recent playback references a removed-format song ID, the app should not crash.
+    
+- If favorites reference a removed-format song ID, the app should not crash.
+    
+- Do not add a complex migration unless the current persistence model requires it.
+    
+- Do not delete user playlists or unrelated data.
+    
+
+---
+
+## Validation requirements
+
+Run/check the relevant verification directly. Do not create separate test-plan documentation.
+
+Verify:
+
+- Debug build succeeds.
+    
+- Lint/tests succeed if available.
+    
+- Library scan still imports:
+    
+    - MP3
+        
+    - M4A
+        
+    - AAC
+        
+    - FLAC
+        
+    - WAV
+        
+    - OGG
+        
+    - OPUS
+        
+    - AMR
+        
+    - 3GP
+        
+    - MP4
+        
+    - MKA
+        
+- Library scan ignores:
+    
+    - WMA
+        
+    - APE
+        
+    - DSF
+        
+    - DFF
+        
+- Search does not show ignored formats.
+    
+- Albums/artists/genres do not include ignored-format songs.
+    
+- Playlists do not crash if they reference a removed song.
+    
+- Favorites do not crash if they reference a removed song.
+    
+- Recent playback does not crash if it references a removed song.
+    
+- Manual refresh/rescan removes previously indexed ignored-format songs.
+    
+- Playback of all remaining supported formats still works.
+    
+- File deletion, folder switching, and MediaStore refresh behavior still work.
+    
+
+---
+
+## Change discipline
+
+Keep the change small and focused.
+
+Do not:
+
+- rewrite the whole scanner;
+    
+- change playback architecture;
+    
+- alter supported formats unrelated to WMA/APE/DSF/DFF;
+    
+- change UI design;
+    
+- change playlist behavior beyond safe missing-song handling;
+    
+- add bundled decoders;
+    
+- add FFmpeg;
+    
+- add new dependencies;
+    
+- create documentation files.
+    
+
+Do:
+
+- remove the unwanted extensions cleanly;
+    
+- remove dead code created by the removal;
+    
+- preserve all desired formats;
+    
+- preserve app stability;
+    
+- keep the diff easy to review.
+    
+
+---
+
+## Final expected result
+
+The app should no longer support or attempt to support WMA, APE, DSF or DFF.
+
+The remaining supported playback/import list should effectively be:
+
+```text
+MP3
+M4A
+AAC
+FLAC
+WAV
+OGG
+OPUS
+AMR
+3GP
+MP4
+MKA
+```
+
+The user experience should improve by avoiding unsupported or device-dependent tracks appearing in the library and later failing during playback.
