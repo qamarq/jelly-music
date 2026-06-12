@@ -67,21 +67,23 @@ internal class LibrarySnapshotStore(
                         ),
                     )
                 }
-            }
+            }.filter(::isSupportedLibrarySong)
+            val filteredSignature = signatureFromSongs(songs)
 
             CachedLibrarySnapshot(
                 snapshot = LibrarySnapshot(
                     songs = songs,
                     albums = buildAlbumsFromSongs(songs),
                 ),
-                signature = signature,
+                signature = if (songs.size == signature.songCount) signature else filteredSignature,
             )
         }.getOrNull()
     }
 
     fun save(snapshot: LibrarySnapshot) {
         runCatching {
-            val signature = signatureFromSongs(snapshot.songs)
+            val songs = snapshot.songs.filter(::isSupportedLibrarySong)
+            val signature = signatureFromSongs(songs)
             val serializedSnapshot = JSONObject().apply {
                 put("version", SNAPSHOT_VERSION)
                 put("songCount", signature.songCount)
@@ -90,7 +92,7 @@ internal class LibrarySnapshotStore(
                 put(
                     "songs",
                     JSONArray().apply {
-                        snapshot.songs.forEach { song ->
+                        songs.forEach { song ->
                             put(
                                 JSONObject().apply {
                                     put("id", song.id)

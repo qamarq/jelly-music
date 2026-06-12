@@ -300,63 +300,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
-private const val HOME_ROUTE = "home"
-private const val ALBUMS_ROUTE = "albums"
-private const val PLAYLISTS_ROUTE = "playlists"
-private const val PLAYLIST_ROUTE = "playlist"
-private const val SEARCH_ROUTE = "search"
-private const val PLAYER_ROUTE = "player"
-private const val EQUALIZER_ROUTE = "equalizer"
-private const val SETTINGS_ROUTE = "settings"
-private const val CHANGELOG_ROUTE = "changelog"
-private const val ABOUT_ROUTE = "about"
-private const val ALBUM_ROUTE = "album"
-private const val LIBRARY_COLLECTION_ROUTE = "library_collection"
-private const val GENRE_ROUTE = "genre"
-private const val ARTIST_ROUTE = "artist"
-private val TopLevelRoutes = setOf(
-    HOME_ROUTE,
-    ALBUMS_ROUTE,
-    PLAYLISTS_ROUTE,
-    SEARCH_ROUTE,
-)
-private const val NOW_PLAYING_TITLE_TEXT_SIZE_SP = 23f
-private const val NOW_PLAYING_ARTIST_TEXT_SIZE_SP = 18f
-private const val ALBUM_HEADER_TITLE_TEXT_SIZE_SP = 23f
-private const val ALBUM_HEADER_ARTIST_TEXT_SIZE_SP = 18f
-private val EQ_DB_SCALE_WIDTH = 30.dp
-private val EQ_DB_SCALE_GAP = 10.dp
-private val EQ_BAND_SPACING = 40.dp
-private val EQ_GRAPH_EDGE_PADDING = 18.dp
-private val aboutLogoImageCache = java.util.concurrent.ConcurrentHashMap<String, androidx.compose.ui.graphics.ImageBitmap>()
-private val lazyListPositionCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Int, Int>>()
-private val lazyGridPositionCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Int, Int>>()
-private val scrollPositionCache = java.util.concurrent.ConcurrentHashMap<String, Int>()
-private val topLevelScrollCachePrefixes = mapOf(
-    HOME_ROUTE to listOf("home_screen"),
-    ALBUMS_ROUTE to listOf(
-        "library_hub",
-        "song_collection_list",
-        "artist_collection",
-        "genre_collection",
-        "album_collection_list",
-        "album_collection_grid",
-        "artist_detail",
-        "album_detail",
-    ),
-    PLAYLISTS_ROUTE to listOf(
-        "playlists_screen",
-        "playlist_detail",
-        "playlist_add_songs_overlay",
-    ),
-    SEARCH_ROUTE to listOf("search_screen"),
-)
-
-private data class TopLevelDestination(
-    val route: String,
-    val iconResId: Int,
-    val contentDescription: String,
-)
+internal val aboutLogoImageCache = java.util.concurrent.ConcurrentHashMap<String, androidx.compose.ui.graphics.ImageBitmap>()
 
 private data class SongMenuActions(
     val playlists: List<Playlist> = emptyList(),
@@ -373,92 +317,7 @@ private data class PendingSongDeletion(
     val parentDirectories: Set<String> = emptySet(),
 )
 
-private enum class DetailRouteTransitionMode {
-    TileExpand,
-    Standard,
-}
-
-private object ElovaireNavigationTransitions {
-    fun depthOf(route: String?): Int {
-        return when (route.normalizedNavigationRoute()) {
-            HOME_ROUTE,
-            ALBUMS_ROUTE,
-            PLAYLISTS_ROUTE,
-            SEARCH_ROUTE,
-            PLAYER_ROUTE,
-            null,
-            -> 0
-
-            SETTINGS_ROUTE,
-            EQUALIZER_ROUTE,
-            CHANGELOG_ROUTE,
-            ABOUT_ROUTE,
-            "$LIBRARY_COLLECTION_ROUTE/{kind}",
-            "$GENRE_ROUTE/{genre}",
-            "$ARTIST_ROUTE/{artistName}",
-            -> 1
-
-            "$PLAYLIST_ROUTE/{playlistId}",
-            "$ALBUM_ROUTE/{albumId}",
-            -> 2
-
-            else -> 1
-        }
-    }
-
-    fun usesTileExpand(
-        route: String?,
-        mode: DetailRouteTransitionMode,
-    ): Boolean {
-        return mode == DetailRouteTransitionMode.TileExpand && route.normalizedNavigationRoute().isExpandFromTileRoute()
-    }
-
-    fun isTopLevelRouteTransition(
-        initialRoute: String?,
-        targetRoute: String?,
-    ): Boolean {
-        return topLevelRouteIndex(initialRoute) >= 0 && topLevelRouteIndex(targetRoute) >= 0
-    }
-
-    fun isForwardTopLevelRouteTransition(
-        initialRoute: String?,
-        targetRoute: String?,
-    ): Boolean {
-        val initialIndex = topLevelRouteIndex(initialRoute)
-        val targetIndex = topLevelRouteIndex(targetRoute)
-        return initialIndex >= 0 && targetIndex >= 0 && targetIndex > initialIndex
-    }
-
-    private fun topLevelRouteIndex(route: String?): Int {
-        return when (route.normalizedNavigationRoute()) {
-            HOME_ROUTE -> 0
-            ALBUMS_ROUTE -> 1
-            PLAYLISTS_ROUTE -> 2
-            SEARCH_ROUTE -> 3
-            else -> -1
-        }
-    }
-}
-
-private fun resolveTreePath(uri: Uri): String {
-    val treeDocumentId = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull().orEmpty()
-    if (treeDocumentId.isBlank()) return ""
-    val separatorIndex = treeDocumentId.indexOf(':')
-    if (separatorIndex <= 0) return ""
-    val volume = treeDocumentId.substring(0, separatorIndex)
-    val relativePath = treeDocumentId.substring(separatorIndex + 1).trim('/').replace(':', '/')
-    val basePath = if (volume.equals("primary", ignoreCase = true)) {
-        "/storage/emulated/0"
-    } else {
-        "/storage/$volume"
-    }
-    return listOf(basePath, relativePath)
-        .filter { it.isNotBlank() }
-        .joinToString("/")
-        .replace("//", "/")
-}
-
-private fun Context.loadAboutScreenModel(): AboutScreenModel {
+internal fun Context.loadAboutScreenModel(): AboutScreenModel {
     val parser = resources.getXml(R.xml.info_screen)
     val sections = mutableListOf<AboutSection>()
     var currentSectionTitle = ""
@@ -548,36 +407,7 @@ private fun Context.loadAboutScreenModel(): AboutScreenModel {
     return AboutScreenModel(sections = sections)
 }
 
-private fun defaultLibraryPickerUri(preferredUri: Uri? = null): Uri? {
-    if (preferredUri != null) return preferredUri
-    return runCatching {
-        DocumentsContract.buildTreeDocumentUri(
-            "com.android.externalstorage.documents",
-            "primary:",
-        )
-    }.getOrNull()
-}
-
-private fun createLibraryFolderPickerIntent(initialUri: Uri?): Intent {
-    return Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
-        addFlags(
-            Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
-                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
-                Intent.FLAG_GRANT_PREFIX_URI_PERMISSION,
-        )
-        if (initialUri != null) {
-            putExtra(DocumentsContract.EXTRA_INITIAL_URI, initialUri)
-        }
-    }
-}
-
 private val LocalSongMenuActions = compositionLocalOf { SongMenuActions() }
-private data class BackdropSnapshot(
-    val bitmap: Bitmap,
-    val sourceWidth: Int,
-    val sourceHeight: Int,
-)
 
 private val LocalChromeBackdropBitmap = compositionLocalOf<BackdropSnapshot?> { null }
 private val LocalChromeHazeState = compositionLocalOf<HazeState?> { null }
@@ -587,7 +417,7 @@ private val LocalSharedTopBarController = compositionLocalOf<SharedTopBarControl
 private val LocalRenderSharedTopBarContent = compositionLocalOf { false }
 private val LocalSharedBackIconPainter = compositionLocalOf<Painter?> { null }
 private val LocalSharedTopMenuIconPainter = compositionLocalOf<Painter?> { null }
-private val LocalAppLanguage = compositionLocalOf { AppLanguage.English }
+internal val LocalAppLanguage = compositionLocalOf { AppLanguage.English }
 
 private data class TopBarActionSpec(
     @DrawableRes val iconResId: Int,
@@ -632,225 +462,30 @@ private data class SharedTopBarRegistration(
     val spec: SharedTopBarSpec,
 )
 
-private data class AboutScreenModel(
+internal data class AboutScreenModel(
     val sections: List<AboutSection>,
 )
 
-private data class AboutSection(
+internal data class AboutSection(
     val title: String,
     val description: String?,
     val entries: List<AboutEntry>,
 )
 
-private data class AboutEntry(
+internal data class AboutEntry(
     val title: String,
     val description: String?,
     val logoUri: String?,
     val links: List<AboutLink>,
 )
 
-private data class AboutLink(
+internal data class AboutLink(
     val label: String,
     val url: String,
 )
 
 private class SharedTopBarController {
     var registration by mutableStateOf<SharedTopBarRegistration?>(null)
-}
-
-private enum class AlbumLayoutMode {
-    Compact,
-    Grid,
-}
-
-private enum class SongSortMode(
-    val label: String,
-) {
-    Title("Song name"),
-    Artist("Artist name"),
-    Album("Album"),
-}
-
-private enum class SearchSongSortMode {
-    Title,
-    Artist,
-}
-
-private enum class SearchContentMode {
-    Discover,
-    Results,
-    AllSongs,
-}
-
-private enum class PlaylistPickerTab(
-    val label: String,
-    @DrawableRes val iconResId: Int,
-) {
-    Songs("Songs", R.drawable.ic_lucide_music),
-    Albums("Albums", R.drawable.ic_lucide_disc_album),
-    Artists("Artists", R.drawable.ic_lucide_mic_vocal),
-}
-
-private enum class AlbumSortMode(
-    val label: String,
-) {
-    Artist("Artist name"),
-    Album("Album name"),
-}
-
-private fun String.toAlbumSortMode(): AlbumSortMode {
-    return AlbumSortMode.entries.firstOrNull { it.name.equals(this, ignoreCase = true) }
-        ?: AlbumSortMode.Artist
-}
-
-private fun String.toAlbumLayoutMode(): AlbumLayoutMode {
-    return AlbumLayoutMode.entries.firstOrNull { it.name.equals(this, ignoreCase = true) }
-        ?: AlbumLayoutMode.Grid
-}
-
-private fun String.toSongSortMode(): SongSortMode {
-    return SongSortMode.entries.firstOrNull { it.name.equals(this, ignoreCase = true) }
-        ?: SongSortMode.Title
-}
-
-private enum class LibraryCollectionKind {
-    Songs,
-    Albums,
-    Artists,
-    Genres,
-}
-
-private enum class HomeScreenState {
-    Loading,
-    Empty,
-    Content,
-}
-
-private data class ExpandOrigin(
-    val xFraction: Float = 0.5f,
-    val yFraction: Float = 0.5f,
-)
-
-private data class NowPlayingTransitionSnapshot(
-    val songId: Long,
-    val barBounds: androidx.compose.ui.geometry.Rect,
-    val artworkBounds: androidx.compose.ui.geometry.Rect,
-)
-
-private enum class PlayerOverlayTransitionState {
-    Compact,
-    Expanding,
-    Expanded,
-    Dragging,
-    Collapsing,
-}
-
-private val androidx.compose.ui.geometry.Rect.isValidTransitionBounds: Boolean
-    get() = left.isFinite() &&
-        top.isFinite() &&
-        right.isFinite() &&
-        bottom.isFinite() &&
-        width > 1f &&
-        height > 1f
-
-private data class ArtistEntry(
-    val name: String,
-    val artUri: android.net.Uri?,
-    val albumCount: Int,
-    val songCount: Int,
-)
-
-private data class GenreEntry(
-    val name: String,
-    val albumCount: Int,
-)
-
-private sealed interface LyricsUiState {
-    data object Hidden : LyricsUiState
-    data object Loading : LyricsUiState
-    data class Ready(val payload: LyricsPayload) : LyricsUiState
-    data object Empty : LyricsUiState
-}
-
-private fun LyricsResult.toUiState(): LyricsUiState = when (this) {
-    is LyricsResult.Found -> LyricsUiState.Ready(payload)
-    LyricsResult.NotFound -> LyricsUiState.Empty
-    LyricsResult.Timeout -> LyricsUiState.Empty
-}
-
-private enum class ProgressiveChromeEdge {
-    Top,
-    Bottom,
-}
-
-private data class PlayerAdaptivePalette(
-    val backdropBase: Color,
-    val tintColor: Color,
-    val contentColor: Color,
-    val secondaryContentColor: Color,
-)
-
-private fun Color.contrastRatioAgainst(other: Color): Float {
-    val lighter = max(luminance(), other.luminance()) + 0.05f
-    val darker = min(luminance(), other.luminance()) + 0.05f
-    return lighter / darker
-}
-
-private fun pickReadablePlayerForeground(
-    background: Color,
-    preferred: Color,
-): Color {
-    val candidates = listOf(
-        preferred,
-        Color.White,
-        InkText,
-    ).distinct()
-    return candidates.maxByOrNull { it.contrastRatioAgainst(background) } ?: Color.White
-}
-
-private fun artworkLedPlayerBase(primary: Color, secondary: Color): Color {
-    val averageLuminance = (primary.luminance() + secondary.luminance()) / 2f
-    val deepAnchor = if (averageLuminance > 0.52f) {
-        Color(0xFF0B1014)
-    } else {
-        Color(0xFF050608)
-    }
-    return primary.copy(alpha = 0.58f)
-        .compositeOver(secondary.copy(alpha = 0.4f))
-        .compositeOver(deepAnchor)
-}
-
-private fun buildPlayerAdaptivePalette(
-    gradient: List<Color>,
-    appBackground: Color,
-    darkTheme: Boolean,
-): PlayerAdaptivePalette {
-    val primary = gradient.firstOrNull() ?: appBackground
-    val secondary = gradient.lastOrNull() ?: primary
-    val backdropBase = artworkLedPlayerBase(primary, secondary)
-    val preferredForeground = if (backdropBase.luminance() < 0.34f) {
-        secondary.copy(alpha = 1f).compositeOver(Color.White.copy(alpha = 0.88f))
-    } else {
-        primary.copy(alpha = 1f).compositeOver(InkText.copy(alpha = 0.74f))
-    }
-    val contentColor = pickReadablePlayerForeground(
-        background = backdropBase,
-        preferred = preferredForeground,
-    )
-    val accentForeground = pickReadablePlayerForeground(
-        background = backdropBase,
-        preferred = if (contentColor.luminance() > 0.5f) {
-            secondary.copy(alpha = 1f).compositeOver(Color.White.copy(alpha = 0.72f))
-        } else {
-            primary.copy(alpha = 1f).compositeOver(InkText.copy(alpha = 0.42f))
-        },
-    )
-    return PlayerAdaptivePalette(
-        backdropBase = backdropBase,
-        tintColor = primary.copy(alpha = 0.76f).compositeOver(secondary.copy(alpha = 0.24f)),
-        contentColor = contentColor,
-        secondaryContentColor = accentForeground.copy(alpha = 0.82f),
-    )
 }
 
 @Composable
@@ -906,7 +541,7 @@ private fun statusBarInsetDp(): Dp {
 }
 
 @Composable
-private fun navigationBarInsetDp(): Dp {
+internal fun navigationBarInsetDp(): Dp {
     val density = LocalDensity.current
     return with(density) { WindowInsets.navigationBars.getBottom(this).toDp() }
 }
@@ -930,7 +565,7 @@ private fun screenContainerSizePx(): androidx.compose.ui.unit.IntSize {
 private fun topBarOccupiedHeight(): Dp = statusBarInsetDp() + ElovaireSpacing.topBarContentHeight
 
 @Composable
-private fun detailTopBarOccupiedHeight(): Dp = statusBarInsetDp() + ElovaireSpacing.detailTopBarContentHeight
+internal fun detailTopBarOccupiedHeight(): Dp = statusBarInsetDp() + ElovaireSpacing.detailTopBarContentHeight
 
 @Composable
 private fun sharedTopBarOccupiedHeight(): Dp =
@@ -1004,7 +639,7 @@ private fun Modifier.horizontalGestureSafe(): Modifier {
 }
 
 @Composable
-private fun rememberElovaireLazyListState(vararg inputs: Any?): LazyListState {
+internal fun rememberElovaireLazyListState(vararg inputs: Any?): LazyListState {
     val cacheKey = remember(*inputs) {
         inputs.joinToString(separator = "|") { it?.toString().orEmpty() }
     }
@@ -1139,7 +774,7 @@ private fun Modifier.elovairePressBounce(
 
 @OptIn(ExperimentalHazeApi::class)
 @Composable
-private fun DynamicBackdropSurface(
+internal fun DynamicBackdropSurface(
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(0.dp),
     overlayAlpha: Float = 0.7f,
@@ -2998,7 +2633,7 @@ private fun UnifiedTopBar(
 }
 
 @Composable
-private fun PinnedBackTopBar(
+internal fun PinnedBackTopBar(
     title: String,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
@@ -7566,7 +7201,7 @@ private fun ToggleIconChip(
 }
 
 @Composable
-private fun readableSecondaryTextColor(): Color {
+internal fun readableSecondaryTextColor(): Color {
     return if (MaterialTheme.colorScheme.background.luminance() > 0.5f) {
         InkText.copy(alpha = 0.82f)
     } else {
@@ -7575,7 +7210,7 @@ private fun readableSecondaryTextColor(): Color {
 }
 
 @Composable
-private fun secondaryBodyTextStyle(): TextStyle {
+internal fun secondaryBodyTextStyle(): TextStyle {
     return MaterialTheme.typography.bodyLarge.copy(
         lineHeight = elovaireScaledSp(19.2f),
     )
@@ -7605,7 +7240,7 @@ private fun readableCardBorderColor(): Color {
 }
 
 @Composable
-private fun ModuleCard(
+internal fun ModuleCard(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
@@ -10704,7 +10339,7 @@ private fun SelectableAlbumPickerRow(
 }
 
 @Composable
-private fun DividerLine(
+internal fun DividerLine(
     modifier: Modifier = Modifier,
 ) {
     Box(
@@ -14347,7 +13982,7 @@ private fun BoxScope.FastScrollbarTrack(
     }
 }
 
-private fun Modifier.ensureSingleItemRubberBand(state: androidx.compose.foundation.lazy.LazyListState): Modifier = composed {
+internal fun Modifier.ensureSingleItemRubberBand(state: androidx.compose.foundation.lazy.LazyListState): Modifier = composed {
     val baseModifier = this.kuperRubberBand(
         canScrollBackward = { state.canScrollBackward },
         canScrollForward = { state.canScrollForward },
@@ -14361,7 +13996,7 @@ private fun Modifier.ensureSingleItemRubberBand(state: androidx.compose.foundati
     )
 }
 
-private fun Modifier.ensureSingleItemRubberBand(state: LazyGridState): Modifier = composed {
+internal fun Modifier.ensureSingleItemRubberBand(state: LazyGridState): Modifier = composed {
     val baseModifier = this.kuperRubberBand(
         canScrollBackward = { state.canScrollBackward },
         canScrollForward = { state.canScrollForward },
@@ -14742,7 +14377,7 @@ private fun localizedCountLabel(
     return "$count $label"
 }
 
-private enum class MiscPhrase {
+internal enum class MiscPhrase {
     RecentlyAdded,
     WhatsNew,
     NoSongsYet,
@@ -14752,7 +14387,7 @@ private enum class MiscPhrase {
     AddSongs,
 }
 
-private fun miscPhrase(language: AppLanguage, phrase: MiscPhrase): String = when (language) {
+internal fun miscPhrase(language: AppLanguage, phrase: MiscPhrase): String = when (language) {
     AppLanguage.Polish -> when (phrase) {
         MiscPhrase.RecentlyAdded -> "Ostatnio dodane"
         MiscPhrase.WhatsNew -> "Co nowego?"
@@ -15007,7 +14642,7 @@ private fun miscPhrase(language: AppLanguage, phrase: MiscPhrase): String = when
     }
 }
 
-private data class CommonUiCopy(
+internal data class CommonUiCopy(
     val home: String,
     val library: String,
     val playlists: String,
@@ -15026,7 +14661,7 @@ private data class CommonUiCopy(
     val refinedFooter: String,
 )
 
-private fun commonUiCopy(language: AppLanguage): CommonUiCopy = when (language) {
+internal fun commonUiCopy(language: AppLanguage): CommonUiCopy = when (language) {
     AppLanguage.Polish -> CommonUiCopy("Główna", "Biblioteka", "Playlisty", "Szukaj", "Witamy", "Utwory", "Albumy", "Artyści", "Gatunki", "Jasny", "Ciemny", "System", "w Twojej bibliotece", "łącznie", "znaleziono", "Twoja muzyka, dopracowana w eleganckie doświadczenie")
     AppLanguage.Albanian -> CommonUiCopy("Kreu", "Biblioteka", "Listat", "Kërko", "Mirë se vini", "Këngë", "Albume", "Artistë", "Zhanre", "E çelët", "E errët", "Sistemi", "në bibliotekën tënde", "gjithsej", "u gjetën", "Muzika jote, e rafinuar në një përvojë elegante")
     AppLanguage.ChineseSimplified -> CommonUiCopy("主页", "媒体库", "播放列表", "搜索", "欢迎", "歌曲", "专辑", "艺人", "流派", "浅色", "深色", "跟随系统", "在你的媒体库中", "总计", "已找到", "你的音乐，被雕琢成优雅的体验")
@@ -15354,7 +14989,7 @@ private fun EqualizerScreen(
     }
 }
 
-private data class SettingsLanguageCopy(
+internal data class SettingsLanguageCopy(
     val settings: String,
     val appearance: String,
     val theme: String,
@@ -15378,7 +15013,7 @@ private data class SettingsLanguageCopy(
     val footerSubtitle: String,
 )
 
-private fun settingsCopy(language: AppLanguage): SettingsLanguageCopy = when (language) {
+internal fun settingsCopy(language: AppLanguage): SettingsLanguageCopy = when (language) {
     AppLanguage.Polish -> SettingsLanguageCopy("Ustawienia", "Wygląd", "Motyw", "Rozmiar tekstu", "Język", "Obecnie używany: ${language.nativeName}", "Dźwięk", "Podbicie basu", "Przestrzenność", "Korektor", "Włącz mono", "Przełącza odtwarzanie stereo na mono", "Inne ustawienia", "Skanuj bibliotekę", "Odśwież indeksowanie w poszukiwaniu nowych multimediów", "Skanuj", "Sprawdź aktualizacje", "Sprawdź, czy jest dostępna nowa wersja", "Sprawdź", "Lista zmian", "Zaprojektowane z pasją do muzyki i świetnego designu")
     AppLanguage.ChineseSimplified -> SettingsLanguageCopy("设置", "外观", "主题", "文字大小", "语言", "当前使用：${language.nativeName}", "声音", "低音增强", "空间感", "均衡器", "启用单声道", "将立体声播放切换为单声道", "其他设置", "扫描媒体库", "刷新索引以查找新媒体", "扫描", "检查更新", "检查是否有新版本可用", "检查", "更新日志", "为音乐和优秀设计倾注热情")
     AppLanguage.Czech -> SettingsLanguageCopy("Nastavení", "Vzhled", "Motiv", "Velikost textu", "Jazyk", "Aktuálně používaný: ${language.nativeName}", "Zvuk", "Zesílení basů", "Prostorovost", "Ekvalizér", "Zapnout mono", "Přepne stereo přehrávání na mono", "Další nastavení", "Skenovat knihovnu", "Obnoví index pro nová média", "Skenovat", "Zkontrolovat aktualizace", "Zjistit, zda je k dispozici nová verze", "Zkontrolovat", "Změny", "Navrženo s vášní pro hudbu a skvělý design")
@@ -15409,7 +15044,7 @@ private fun settingsCopy(language: AppLanguage): SettingsLanguageCopy = when (la
     AppLanguage.English -> SettingsLanguageCopy("Settings", "Appearance", "Theme", "Text size", "Language", "Currently used: ${language.nativeName}", "Sound", "Bass boost", "Spaciousness", "Equalizer", "Enable mono", "Switches stereo playback to mono", "Other settings", "Scan library", "Refresh indexing in search for new media", "Scan", "Check for updates", "Check if there's new version available", "Check", "Changelog", "Designed with passion for music and great design")
 }
 
-private enum class UiPhrase {
+internal enum class UiPhrase {
     About,
     AddToPlaylist,
     AddToQueue,
@@ -15432,7 +15067,7 @@ private enum class UiPhrase {
     EffectStrength,
 }
 
-private fun uiPhrase(language: AppLanguage, phrase: UiPhrase): String {
+internal fun uiPhrase(language: AppLanguage, phrase: UiPhrase): String {
     return uiPhraseTranslations[language]?.get(phrase) ?: uiPhraseTranslations.getValue(AppLanguage.English).getValue(phrase)
 }
 
@@ -16065,711 +15700,6 @@ private fun LanguagePickerOptionRow(
             )
         }
     }
-}
-
-@Composable
-private fun ChangelogScreen(
-    releases: List<ChangelogRelease>,
-    onBack: () -> Unit,
-) {
-    val listState = rememberLazyListState()
-    val release = remember(releases) {
-        releases.firstOrNull { it.version == BuildConfig.VERSION_NAME } ?: releases.firstOrNull()
-    }
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-    ) {
-        LazyColumn(
-            state = listState,
-            overscrollEffect = null,
-            modifier = Modifier
-                .fillMaxSize()
-                .ensureSingleItemRubberBand(listState),
-            contentPadding = PaddingValues(
-                bottom = navigationBarInsetDp() + 24.dp,
-            ),
-            verticalArrangement = Arrangement.spacedBy(18.dp),
-        ) {
-            item {
-                Image(
-                    painter = painterResource(id = R.drawable.changelog_header),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(354.dp),
-                )
-            }
-
-            item {
-                Row(
-                    modifier = Modifier
-                        .padding(horizontal = 18.dp)
-                        .fillMaxWidth(0.9f),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = miscPhrase(LocalAppLanguage.current, MiscPhrase.WhatsNew),
-                        style = MaterialTheme.typography.headlineMedium,
-                    )
-                    Surface(
-                        shape = RoundedCornerShape(ElovaireRadii.pill),
-                        color = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) {
-                            Color.White.copy(alpha = 0.16f)
-                        } else {
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
-                        },
-                        contentColor = MaterialTheme.colorScheme.onSurface,
-                    ) {
-                        Text(
-                            text = BuildConfig.VERSION_NAME,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
-                        )
-                    }
-                }
-            }
-
-            item {
-                Box(modifier = Modifier.padding(horizontal = 18.dp)) {
-                    ModuleCard {
-                        ChangelogReleaseContent(
-                            release = release,
-                            contentHorizontalPadding = 2.dp,
-                        )
-                    }
-                }
-            }
-        }
-        PinnedBackTopBar(
-            title = settingsCopy(LocalAppLanguage.current).changelog,
-            onBack = onBack,
-            modifier = Modifier.align(Alignment.TopCenter),
-        )
-    }
-}
-
-@Composable
-private fun ChangelogBottomSheetOverlay(
-    releases: List<ChangelogRelease>,
-    onDismiss: () -> Unit,
-) {
-    val listState = rememberLazyListState()
-    val release = remember(releases) {
-        releases.firstOrNull { it.version == BuildConfig.VERSION_NAME } ?: releases.firstOrNull()
-    }
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = {},
-            ),
-    ) {
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onDismiss,
-                ),
-        )
-        DynamicBackdropSurface(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .fillMaxHeight(0.5f),
-            shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
-            overlayAlpha = 0.6f,
-            borderColor = null,
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(top = 18.dp),
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 20.dp, end = 16.dp, bottom = 14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = miscPhrase(LocalAppLanguage.current, MiscPhrase.WhatsNew),
-                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium),
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Surface(
-                            shape = RoundedCornerShape(ElovaireRadii.pill),
-                            color = MaterialTheme.colorScheme.background,
-                            contentColor = MaterialTheme.colorScheme.onSurface,
-                        ) {
-                            Text(
-                                text = BuildConfig.VERSION_NAME,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
-                            )
-                        }
-                    }
-                    Box(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = onDismiss,
-                            ),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_lucide_x),
-                            contentDescription = "Close changelog",
-                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.92f),
-                            modifier = Modifier.size(16.dp),
-                        )
-                    }
-                }
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .padding(start = 20.dp, end = 20.dp, top = 6.dp, bottom = navigationBarInsetDp() + 18.dp),
-                    contentAlignment = Alignment.TopCenter,
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .fillMaxHeight()
-                            .clip(RoundedCornerShape(ElovaireRadii.card))
-                            .background(MaterialTheme.colorScheme.background),
-                    ) {
-                        LazyColumn(
-                            state = listState,
-                            overscrollEffect = null,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .ensureSingleItemRubberBand(listState),
-                            contentPadding = PaddingValues(
-                                top = 18.dp,
-                                bottom = 18.dp,
-                            ),
-                        ) {
-                            item {
-                                ChangelogReleaseContent(
-                                    release = release,
-                                    contentHorizontalPadding = 20.dp,
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ChangelogReleaseContent(
-    release: ChangelogRelease?,
-    contentHorizontalPadding: Dp = 20.dp,
-) {
-    val changes = release?.changes?.filter { it.isNotBlank() }.orEmpty()
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = contentHorizontalPadding),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(0.dp),
-    ) {
-        if (changes.isEmpty()) {
-            Text(
-                text = "No changelog entries yet",
-                style = MaterialTheme.typography.bodyLarge,
-                color = readableSecondaryTextColor(),
-            )
-        } else {
-            changes.forEachIndexed { index, change ->
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
-                ) {
-                    Text(
-                        text = change,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    if (index != changes.lastIndex) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(1.dp)
-                                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)),
-                        )
-                    }
-                }
-                if (index != changes.lastIndex) {
-                    Spacer(modifier = Modifier.height(14.dp))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun AboutScreen(
-    onBack: () -> Unit,
-    bottomPadding: Dp,
-) {
-    val context = LocalContext.current
-    val language = LocalAppLanguage.current
-    val aboutModel = remember(context) { context.loadAboutScreenModel() }
-    val listState = rememberElovaireLazyListState("about_screen")
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-    ) {
-        LazyColumn(
-            state = listState,
-            overscrollEffect = null,
-            modifier = Modifier
-                .fillMaxSize()
-                .ensureSingleItemRubberBand(listState),
-            contentPadding = PaddingValues(
-                start = 18.dp,
-                end = 18.dp,
-                top = detailTopBarOccupiedHeight() + ElovaireSpacing.topBarToFirstContentGap,
-                bottom = bottomPadding,
-            ),
-            verticalArrangement = Arrangement.spacedBy(18.dp),
-        ) {
-            itemsIndexed(aboutModel.sections, key = { index, section -> "${section.title}_$index" }) { index, section ->
-                AboutSectionCard(
-                    section = section,
-                    renderOnBackground = index == 0,
-                    showEntryLogo = index == 0,
-                )
-            }
-        }
-        PinnedBackTopBar(
-            title = uiPhrase(language, UiPhrase.About),
-            onBack = onBack,
-            modifier = Modifier.align(Alignment.TopCenter),
-        )
-    }
-}
-
-@Composable
-private fun AboutSectionCard(
-    section: AboutSection,
-    renderOnBackground: Boolean = false,
-    showEntryLogo: Boolean = false,
-) {
-    val content: @Composable () -> Unit = {
-        Column(
-            verticalArrangement = Arrangement.spacedBy(18.dp),
-            horizontalAlignment = Alignment.Start,
-        ) {
-            section.entries.forEachIndexed { index, entry ->
-                AboutEntryBlock(
-                    entry = entry,
-                    horizontalScrollableLinks = renderOnBackground,
-                    useCardAccentButtons = !renderOnBackground,
-                    useRoseAccentButtons = renderOnBackground,
-                    showLogo = showEntryLogo && index == 0,
-                )
-                if (index != section.entries.lastIndex) {
-                    DividerLine()
-                }
-            }
-        }
-    }
-    if (renderOnBackground) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 2.dp),
-        ) {
-            content()
-        }
-    } else {
-        ModuleCard {
-            content()
-        }
-    }
-}
-
-@Composable
-private fun AboutEntryBlock(
-    entry: AboutEntry,
-    horizontalScrollableLinks: Boolean = false,
-    useCardAccentButtons: Boolean = false,
-    useRoseAccentButtons: Boolean = false,
-    showLogo: Boolean = false,
-) {
-    val context = LocalContext.current
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        if (showLogo) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(20.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                AboutEntryLogo(
-                    logoUri = entry.logoUri,
-                    title = entry.title,
-                )
-                AboutEntryTextStack(
-                    entry = entry,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        } else {
-            AboutEntryTextStack(entry = entry)
-        }
-        if (entry.links.isNotEmpty()) {
-            if (horizontalScrollableLinks) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    entry.links.forEach { link ->
-                        AboutLinkPill(
-                            link = link,
-                            useCardAccent = useCardAccentButtons,
-                            useRoseAccent = useRoseAccentButtons,
-                            onClick = {
-                                runCatching {
-                                    context.startActivity(
-                                        Intent(Intent.ACTION_VIEW, Uri.parse(link.url)).apply {
-                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                        },
-                                    )
-                                }
-                            },
-                        )
-                    }
-                }
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    entry.links.forEach { link ->
-                        Box(modifier = Modifier.weight(1f)) {
-                            AboutLinkPill(
-                                link = link,
-                                useCardAccent = useCardAccentButtons,
-                                useRoseAccent = useRoseAccentButtons,
-                                onClick = {
-                                    runCatching {
-                                        context.startActivity(
-                                            Intent(Intent.ACTION_VIEW, Uri.parse(link.url)).apply {
-                                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                            },
-                                        )
-                                    }
-                                },
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun AboutEntryTextStack(
-    entry: AboutEntry,
-    modifier: Modifier = Modifier,
-) {
-    val language = LocalAppLanguage.current
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        Text(
-            text = localizedAboutTitle(entry.title, language),
-            style = MaterialTheme.typography.displayLarge.copy(fontSize = elovaireScaledSp(22f)),
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        entry.description?.takeIf { it.isNotBlank() }?.let { description ->
-            Text(
-                text = localizedAboutDescription(entry.title, description, language),
-                style = secondaryBodyTextStyle(),
-                color = readableSecondaryTextColor(),
-            )
-        }
-    }
-}
-
-@Composable
-private fun AboutEntryLogo(
-    logoUri: String?,
-    title: String,
-) {
-    val context = LocalContext.current
-    val drawableRes = remember(context, logoUri) {
-        context.resolveAboutLogoDrawableRes(logoUri)
-    }
-    val remoteBitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(
-        initialValue = logoUri?.trim()?.let(aboutLogoImageCache::get),
-        key1 = logoUri,
-        key2 = drawableRes,
-    ) {
-        val source = logoUri?.trim()?.takeIf { it.isNotBlank() } ?: return@produceState
-        if (drawableRes != null) return@produceState
-        aboutLogoImageCache[source]?.let {
-            value = it
-            return@produceState
-        }
-        value = null
-        value = withContext(Dispatchers.IO) {
-            runCatching {
-                when {
-                    source.startsWith("http://", ignoreCase = true) ||
-                        source.startsWith("https://", ignoreCase = true) -> {
-                        URL(source).openConnection().run {
-                            connectTimeout = 2_500
-                            readTimeout = 2_500
-                            getInputStream().use { BitmapFactory.decodeStream(it) }
-                        }
-                    }
-
-                    else -> context.contentResolver.openInputStream(Uri.parse(source))?.use { input ->
-                        BitmapFactory.decodeStream(input)
-                    }
-                }?.asImageBitmap()?.also { bitmap ->
-                    aboutLogoImageCache[source] = bitmap
-                }
-            }.getOrNull()
-        }
-    }
-    val uri = remember(logoUri, drawableRes, remoteBitmap) {
-        logoUri
-            ?.takeIf { it.isNotBlank() }
-            ?.takeIf { drawableRes == null && remoteBitmap == null }
-            ?.let(Uri::parse)
-    }
-    Box(
-        modifier = Modifier
-            .size(60.dp)
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)),
-        contentAlignment = Alignment.Center,
-    ) {
-        when {
-            drawableRes != null -> {
-                Image(
-                    painter = painterResource(id = drawableRes),
-                    contentDescription = title,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                )
-            }
-
-            remoteBitmap != null -> {
-                Image(
-                    bitmap = remoteBitmap!!,
-                    contentDescription = title,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                )
-            }
-
-            else -> {
-                ArtworkImage(
-                    uri = uri,
-                    title = title,
-                    modifier = Modifier.fillMaxSize(),
-                    cornerRadius = 30.dp,
-                    requestedSizePx = 160,
-                )
-            }
-        }
-    }
-}
-
-private fun Context.resolveAboutLogoDrawableRes(logoUri: String?): Int? {
-    val source = logoUri?.trim()?.takeIf { it.isNotBlank() } ?: return null
-    val drawableName = when {
-        source.startsWith("@drawable/") -> source.substringAfter("@drawable/")
-        source.startsWith("drawable/") -> source.substringAfter("drawable/")
-        source.startsWith("android.resource://") && "/drawable/" in source -> source.substringAfterLast("/drawable/")
-        else -> null
-    }
-        ?.substringBefore('?')
-        ?.substringBefore('#')
-        ?.trim()
-        ?.takeIf { it.isNotBlank() }
-        ?: return null
-    return resources.getIdentifier(drawableName, "drawable", packageName)
-        .takeIf { it != 0 }
-}
-
-@Composable
-private fun AboutLinkPill(
-    link: AboutLink,
-    useCardAccent: Boolean = false,
-    useRoseAccent: Boolean = false,
-    onClick: () -> Unit,
-) {
-    val language = LocalAppLanguage.current
-    val containerColor = when {
-        useRoseAccent -> RoseAccent.copy(alpha = 0.72f)
-        useCardAccent -> AboutCardButtonAccent
-        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f)
-    }
-    val contentColor = if (containerColor.luminance() > 0.42f) InkText else Color.White
-    Surface(
-        modifier = Modifier,
-        onClick = onClick,
-        shape = RoundedCornerShape(ElovaireRadii.pill),
-        color = containerColor,
-        contentColor = contentColor,
-    ) {
-        Row(
-            modifier = Modifier
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                painter = painterResource(id = aboutIconForUrl(link.url)),
-                contentDescription = null,
-                modifier = Modifier.size(16.dp),
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = localizedAboutLinkLabel(link.label, language),
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                maxLines = 1,
-                overflow = TextOverflow.Clip,
-            )
-        }
-    }
-}
-
-@DrawableRes
-private fun aboutIconForUrl(url: String): Int {
-    val normalizedUrl = url.lowercase()
-    return when {
-        "instagram.com" in normalizedUrl -> R.drawable.ic_about_instagram
-        "twitter.com" in normalizedUrl || "x.com" in normalizedUrl -> R.drawable.ic_about_twitter
-        "github.com" in normalizedUrl -> R.drawable.ic_about_github
-        "ko-fi.com" in normalizedUrl || "kofi.com" in normalizedUrl -> R.drawable.ic_about_coffee
-        else -> R.drawable.ic_about_globe
-    }
-}
-
-private fun localizedAboutTitle(
-    title: String,
-    language: AppLanguage,
-): String = when (title) {
-    "Droid Beauty" -> title
-    "Elovaire" -> title
-    "Resources" -> when (language) {
-        AppLanguage.Polish -> "Zasoby"
-        AppLanguage.ChineseSimplified -> "资源"
-        AppLanguage.Czech -> "Zdroje"
-        AppLanguage.French -> "Ressources"
-        AppLanguage.German -> "Ressourcen"
-        AppLanguage.Italian -> "Risorse"
-        AppLanguage.Japanese -> "リソース"
-        AppLanguage.Portuguese -> "Recursos"
-        AppLanguage.Russian -> "Ресурсы"
-        AppLanguage.Spanish -> "Recursos"
-        AppLanguage.Ukrainian -> "Ресурси"
-        else -> title
-    }
-    else -> title
-}
-
-private fun localizedAboutDescription(
-    title: String,
-    description: String,
-    language: AppLanguage,
-): String = when (title) {
-    "Droid Beauty" -> when (language) {
-        AppLanguage.Polish -> "Minimalnie zaprojektowane aplikacje i doświadczenia dla piękniejszego Androida"
-        AppLanguage.ChineseSimplified -> "以极简设计打造更美好的 Android 应用与体验"
-        AppLanguage.Czech -> "Minimalisticky navržené aplikace a zážitky pro krásnější Android"
-        AppLanguage.French -> "Des applications et expériences au design minimal pour embellir Android"
-        AppLanguage.German -> "Minimal gestaltete Apps und Erlebnisse für ein schöneres Android"
-        AppLanguage.Italian -> "App ed esperienze dal design minimale per rendere Android più bello"
-        AppLanguage.Japanese -> "Android をより美しくする、ミニマルに設計されたアプリと体験"
-        AppLanguage.Portuguese -> "Apps e experiências de design minimal para tornar o Android mais bonito"
-        AppLanguage.Russian -> "Минималистичные приложения и впечатления для более красивого Android"
-        AppLanguage.Spanish -> "Apps y experiencias de diseño minimalista para hacer Android más bello"
-        AppLanguage.Ukrainian -> "Мінімалістично створені застосунки й враження для красивішого Android"
-        else -> description
-    }
-    "Elovaire" -> when (language) {
-        AppLanguage.Polish -> "Elegancki odtwarzacz offline stworzony z myślą o Twojej lokalnej muzyce"
-        AppLanguage.ChineseSimplified -> "为你的本地音乐打造的优雅离线播放器"
-        AppLanguage.Czech -> "Elegantní offline přehrávač vytvořený pro vaši místní hudbu"
-        AppLanguage.French -> "Un lecteur hors ligne élégant conçu pour votre musique locale"
-        AppLanguage.German -> "Ein eleganter Offline-Player für deine lokale Musik"
-        AppLanguage.Italian -> "Un player offline elegante creato per la tua musica locale"
-        AppLanguage.Japanese -> "ローカル音楽のために作られた、エレガントなオフラインプレーヤー"
-        AppLanguage.Portuguese -> "Um reprodutor offline elegante feito para a sua música local"
-        AppLanguage.Russian -> "Элегантный офлайн-плеер для вашей локальной музыки"
-        AppLanguage.Spanish -> "Un reproductor sin conexión elegante hecho para tu música local"
-        AppLanguage.Ukrainian -> "Елегантний офлайн-програвач для вашої локальної музики"
-        else -> description
-    }
-    "Resources" -> when (language) {
-        AppLanguage.Polish -> "Projekty, narzędzia i biblioteki, które pomagają tworzyć Elovaire"
-        AppLanguage.ChineseSimplified -> "帮助打造 Elovaire 的项目、工具和库"
-        AppLanguage.Czech -> "Projekty, nástroje a knihovny, které pomáhají tvořit Elovaire"
-        AppLanguage.French -> "Projets, outils et bibliothèques qui aident à créer Elovaire"
-        AppLanguage.German -> "Projekte, Werkzeuge und Bibliotheken, die Elovaire ermöglichen"
-        AppLanguage.Italian -> "Progetti, strumenti e librerie che aiutano a creare Elovaire"
-        AppLanguage.Japanese -> "Elovaire の制作を支えるプロジェクト、ツール、ライブラリ"
-        AppLanguage.Portuguese -> "Projetos, ferramentas e bibliotecas que ajudam a criar o Elovaire"
-        AppLanguage.Russian -> "Проекты, инструменты и библиотеки, которые помогают создавать Elovaire"
-        AppLanguage.Spanish -> "Proyectos, herramientas y bibliotecas que ayudan a crear Elovaire"
-        AppLanguage.Ukrainian -> "Проєкти, інструменти та бібліотеки, що допомагають створювати Elovaire"
-        else -> description
-    }
-    else -> description
-}
-
-private fun localizedAboutLinkLabel(
-    label: String,
-    language: AppLanguage,
-): String = when (label.lowercase()) {
-    "website", "play store" -> when (language) {
-        AppLanguage.Polish -> if (label.equals("Play Store", true)) "Sklep Play" else "Strona"
-        AppLanguage.ChineseSimplified -> if (label.equals("Play Store", true)) "Play 商店" else "网站"
-        AppLanguage.Czech -> if (label.equals("Play Store", true)) "Obchod Play" else "Web"
-        AppLanguage.French -> if (label.equals("Play Store", true)) "Play Store" else "Site web"
-        AppLanguage.German -> if (label.equals("Play Store", true)) "Play Store" else "Website"
-        AppLanguage.Italian -> if (label.equals("Play Store", true)) "Play Store" else "Sito web"
-        AppLanguage.Japanese -> if (label.equals("Play Store", true)) "Play ストア" else "ウェブサイト"
-        AppLanguage.Portuguese -> if (label.equals("Play Store", true)) "Play Store" else "Site"
-        AppLanguage.Russian -> if (label.equals("Play Store", true)) "Play Маркет" else "Сайт"
-        AppLanguage.Spanish -> if (label.equals("Play Store", true)) "Play Store" else "Sitio web"
-        AppLanguage.Ukrainian -> if (label.equals("Play Store", true)) "Play Маркет" else "Сайт"
-        else -> label
-    }
-    "twitter" -> if (language == AppLanguage.Japanese) "X" else label
-    "instagram", "github", "ko-fi" -> label
-    else -> label
 }
 
 @Composable
@@ -19009,186 +17939,6 @@ private fun suggestedAlbumsFor(
             if (size == 6) return@buildList
         }
     }
-}
-
-private fun topBarTitle(route: String?, language: AppLanguage): String {
-    val common = commonUiCopy(language)
-    return when (route) {
-        ALBUMS_ROUTE -> common.library
-        PLAYLISTS_ROUTE -> common.playlists
-        SEARCH_ROUTE -> common.search
-        else -> common.welcome
-    }
-}
-
-private fun detailFallbackTitle(route: String?, language: AppLanguage): String {
-    val common = commonUiCopy(language)
-    return when (route) {
-        HOME_ROUTE -> common.home
-        SEARCH_ROUTE -> common.search
-        PLAYLISTS_ROUTE, "$PLAYLIST_ROUTE/{playlistId}" -> common.playlists
-        ALBUMS_ROUTE, "$LIBRARY_COLLECTION_ROUTE/{kind}", "$GENRE_ROUTE/{genre}" -> common.library
-        else -> common.library
-    }
-}
-
-private fun String?.normalizedNavigationRoute(): String? {
-    return when {
-        this == null -> null
-        startsWith("$ALBUM_ROUTE/") -> "$ALBUM_ROUTE/{albumId}"
-        startsWith("$PLAYLIST_ROUTE/") -> "$PLAYLIST_ROUTE/{playlistId}"
-        startsWith("$GENRE_ROUTE/") -> "$GENRE_ROUTE/{genre}"
-        startsWith("$ARTIST_ROUTE/") -> "$ARTIST_ROUTE/{artistName}"
-        startsWith("$LIBRARY_COLLECTION_ROUTE/") -> "$LIBRARY_COLLECTION_ROUTE/{kind}"
-        else -> this
-    }
-}
-
-private fun NavBackStackEntry.elovaireConcreteRoute(): String? {
-    return when (destination.route) {
-        "$ALBUM_ROUTE/{albumId}" -> "$ALBUM_ROUTE/${arguments?.getLong("albumId") ?: return null}"
-        "$PLAYLIST_ROUTE/{playlistId}" -> "$PLAYLIST_ROUTE/${arguments?.getLong("playlistId") ?: return null}"
-        "$GENRE_ROUTE/{genre}" -> "$GENRE_ROUTE/${Uri.encode(arguments?.getString("genre") ?: return null)}"
-        "$ARTIST_ROUTE/{artistName}" -> "$ARTIST_ROUTE/${Uri.encode(arguments?.getString("artistName") ?: return null)}"
-        "$LIBRARY_COLLECTION_ROUTE/{kind}" -> "$LIBRARY_COLLECTION_ROUTE/${arguments?.getString("kind") ?: return null}"
-        else -> destination.route
-    }
-}
-
-private fun String?.isExpandFromTileRoute(): Boolean {
-    return this.normalizedNavigationRoute() == "$ALBUM_ROUTE/{albumId}" ||
-        this.normalizedNavigationRoute() == "$PLAYLIST_ROUTE/{playlistId}"
-}
-
-private fun androidx.navigation.NavBackStackEntry.concreteNavigationRoute(): String? {
-    val route = destination.route ?: return null
-    val args = arguments
-    return when (route) {
-        "$ALBUM_ROUTE/{albumId}" -> args?.getLong("albumId")?.takeIf { it > 0L }?.let { "$ALBUM_ROUTE/$it" }
-        "$PLAYLIST_ROUTE/{playlistId}" -> args?.getLong("playlistId")?.takeIf { it > 0L }?.let { "$PLAYLIST_ROUTE/$it" }
-        "$LIBRARY_COLLECTION_ROUTE/{kind}" -> args?.getString("kind")?.let { "$LIBRARY_COLLECTION_ROUTE/$it" }
-        "$GENRE_ROUTE/{genre}" -> args?.getString("genre")?.let { "$GENRE_ROUTE/${Uri.encode(it)}" }
-        "$ARTIST_ROUTE/{artistName}" -> args?.getString("artistName")?.let { "$ARTIST_ROUTE/${Uri.encode(it)}" }
-        else -> route
-    }
-}
-
-private fun topLevelOwnerRoute(
-    route: String?,
-    browsingOriginRoute: String?,
-): String? {
-    return when (route.normalizedNavigationRoute()) {
-        HOME_ROUTE -> HOME_ROUTE
-        SEARCH_ROUTE -> SEARCH_ROUTE
-        ALBUMS_ROUTE -> ALBUMS_ROUTE
-        PLAYLISTS_ROUTE -> PLAYLISTS_ROUTE
-        "$LIBRARY_COLLECTION_ROUTE/{kind}" -> ALBUMS_ROUTE
-        "$PLAYLIST_ROUTE/{playlistId}" -> PLAYLISTS_ROUTE
-        "$GENRE_ROUTE/{genre}",
-        "$ARTIST_ROUTE/{artistName}",
-        "$ALBUM_ROUTE/{albumId}",
-        -> browsingOriginRoute.takeIf { it in TopLevelRoutes } ?: ALBUMS_ROUTE
-
-        else -> browsingOriginRoute.takeIf { it in TopLevelRoutes }
-    }
-}
-
-private fun transitionTopLevelOwnerRoute(
-    route: String?,
-    fallbackTopLevelRoute: String?,
-): String? {
-    return when (route.normalizedNavigationRoute()) {
-        HOME_ROUTE -> HOME_ROUTE
-        SEARCH_ROUTE -> SEARCH_ROUTE
-        ALBUMS_ROUTE -> ALBUMS_ROUTE
-        PLAYLISTS_ROUTE -> PLAYLISTS_ROUTE
-        "$LIBRARY_COLLECTION_ROUTE/{kind}",
-        "$GENRE_ROUTE/{genre}",
-        "$ARTIST_ROUTE/{artistName}",
-        -> ALBUMS_ROUTE
-
-        "$PLAYLIST_ROUTE/{playlistId}" -> PLAYLISTS_ROUTE
-        "$ALBUM_ROUTE/{albumId}" -> fallbackTopLevelRoute.takeIf { it in TopLevelRoutes } ?: ALBUMS_ROUTE
-        else -> fallbackTopLevelRoute.takeIf { it in TopLevelRoutes }
-    }
-}
-
-private fun ExpandOrigin.toTransformOrigin(): TransformOrigin {
-    return TransformOrigin(
-        pivotFractionX = xFraction.coerceIn(0f, 1f),
-        pivotFractionY = yFraction.coerceIn(0f, 1f),
-    )
-}
-
-private fun lerpFloat(start: Float, stop: Float, fraction: Float): Float {
-    return start + ((stop - start) * fraction.coerceIn(0f, 1f))
-}
-
-private fun lerpRect(
-    start: androidx.compose.ui.geometry.Rect,
-    stop: androidx.compose.ui.geometry.Rect,
-    fraction: Float,
-): androidx.compose.ui.geometry.Rect {
-    val clampedFraction = fraction.coerceIn(0f, 1f)
-    return androidx.compose.ui.geometry.Rect(
-        left = lerpFloat(start.left, stop.left, clampedFraction),
-        top = lerpFloat(start.top, stop.top, clampedFraction),
-        right = lerpFloat(start.right, stop.right, clampedFraction),
-        bottom = lerpFloat(start.bottom, stop.bottom, clampedFraction),
-    )
-}
-
-private fun androidx.compose.ui.geometry.Rect.coerceWithin(
-    bounds: androidx.compose.ui.geometry.Rect,
-): androidx.compose.ui.geometry.Rect {
-    val width = width.coerceAtLeast(1f).coerceAtMost(bounds.width)
-    val height = height.coerceAtLeast(1f).coerceAtMost(bounds.height)
-    val clampedLeft = left.coerceIn(bounds.left, bounds.right - width)
-    val clampedTop = top.coerceIn(bounds.top, bounds.bottom - height)
-    return androidx.compose.ui.geometry.Rect(
-        left = clampedLeft,
-        top = clampedTop,
-        right = clampedLeft + width,
-        bottom = clampedTop + height,
-    )
-}
-
-private fun androidx.compose.ui.geometry.Rect?.toExpandOrigin(
-    screenWidthPx: Float,
-    screenHeightPx: Float,
-): ExpandOrigin {
-    if (this == null || screenWidthPx <= 0f || screenHeightPx <= 0f) {
-        return ExpandOrigin()
-    }
-
-    val centerX = (left + right) / 2f
-    val centerY = (top + bottom) / 2f
-    return ExpandOrigin(
-        xFraction = (centerX / screenWidthPx).coerceIn(0.1f, 0.9f),
-        yFraction = (centerY / screenHeightPx).coerceIn(0.1f, 0.9f),
-    )
-}
-
-private fun albumSearchHistoryEntry(album: Album): SearchHistoryEntry {
-    return SearchHistoryEntry(
-        key = "album:${album.id}",
-        kind = SearchHistoryKind.Album,
-        title = album.title,
-        subtitle = album.artist,
-        artUri = album.artUri,
-        albumId = album.id,
-    )
-}
-
-private fun artistSearchHistoryEntry(song: Song): SearchHistoryEntry {
-    return SearchHistoryEntry(
-        key = "artist:${song.artist.lowercase()}",
-        kind = SearchHistoryKind.Artist,
-        title = song.artist,
-        subtitle = song.album,
-        artUri = song.artUri,
-        query = song.artist,
-    )
 }
 
 private fun hasAudioPermission(context: Context): Boolean {

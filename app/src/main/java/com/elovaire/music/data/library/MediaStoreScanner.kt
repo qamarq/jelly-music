@@ -104,10 +104,13 @@ class MediaStoreScanner(
                 if (!shouldIncludeRelativePath(relativePath, allowedRelativeRoots)) {
                     continue
                 }
+                val fileName = cursor.getString(fileNameIndex).orUnknown("unknown-file")
+                if (!isSupportedAudioFileName(fileName)) {
+                    continue
+                }
                 val id = cursor.getLong(idIndex)
                 val albumId = cursor.getLong(albumIdIndex)
                 val songUri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id)
-                val fileName = cursor.getString(fileNameIndex).orUnknown("unknown-file")
                 val fileSizeBytes = sizeIndex.takeIf { it >= 0 }?.let(cursor::getLong)?.takeIf { it > 0L }
                 val durationMs = cursor.getLong(durationIndex).coerceAtLeast(0L)
                 val dateAddedSeconds = cursor.getLong(dateAddedIndex)
@@ -211,6 +214,7 @@ class MediaStoreScanner(
             arrayOf(
                 MediaStore.Audio.Media._ID,
                 MediaStore.Audio.Media.DATE_ADDED,
+                MediaStore.Audio.Media.DISPLAY_NAME,
                 MediaStore.MediaColumns.RELATIVE_PATH,
             ),
             buildSelection(),
@@ -219,10 +223,15 @@ class MediaStoreScanner(
         )?.use { cursor ->
             val idIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
             val dateAddedIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
+            val fileNameIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DISPLAY_NAME)
             val relativePathIndex = cursor.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
             while (cursor.moveToNext()) {
                 val relativePath = relativePathIndex.takeIf { it >= 0 }?.let(cursor::getString)
                 if (!shouldIncludeRelativePath(relativePath, allowedRelativeRoots)) {
+                    continue
+                }
+                val fileName = cursor.getString(fileNameIndex).orUnknown("unknown-file")
+                if (!isSupportedAudioFileName(fileName)) {
                     continue
                 }
                 val id = cursor.getLong(idIndex)
@@ -686,8 +695,6 @@ class MediaStoreScanner(
             mimeType.equals("audio/aac", ignoreCase = true) -> "AAC"
             mimeType.equals("audio/mp4a-latm", ignoreCase = true) && extension == "M4A" -> "AAC"
             mimeType.equals("audio/wav", ignoreCase = true) || mimeType.equals("audio/x-wav", ignoreCase = true) -> "WAV"
-            extension == "DSF" -> "DSD"
-            extension == "DFF" -> "DSD"
             else -> extension
         }
     }
@@ -709,7 +716,7 @@ class MediaStoreScanner(
         resolvedFormat: String,
     ): Int? {
         if (fileSizeBytes == null || fileSizeBytes <= 0L || durationMs <= 0L) return null
-        if (resolvedFormat.uppercase() in setOf("WAV", "FLAC", "APE", "DSD")) return null
+        if (resolvedFormat.uppercase() in setOf("WAV", "FLAC")) return null
         val seconds = durationMs / 1000.0
         if (seconds <= 0.0) return null
         return ((fileSizeBytes * 8.0) / seconds).toInt().takeIf { it > 0 }
@@ -721,7 +728,7 @@ class MediaStoreScanner(
         return "$artistColumn COLLATE NOCASE ASC, $albumColumn COLLATE NOCASE ASC"
     }
 
-    private companion object {
+    internal companion object {
         val ALBUM_ART_URI: Uri = Uri.parse("content://media/external/audio/albumart")
         const val MEDIA_SCAN_TIMEOUT_SECONDS = 8L
         const val TARGETED_MEDIA_SCAN_TIMEOUT_SECONDS = 5L
@@ -745,10 +752,6 @@ class MediaStoreScanner(
             "wav",
             "ogg",
             "opus",
-            "wma",
-            "ape",
-            "dsf",
-            "dff",
             "amr",
             "3gp",
             "mp4",
@@ -849,6 +852,18 @@ private fun isLosslessFormat(format: String): Boolean {
     return format in LOSSLESS_AUDIO_FORMATS
 }
 
-private val LOSSY_AUDIO_FORMATS = setOf("MP3", "AAC", "OGG", "OPUS", "WMA", "AMR", "3GP", "MP4", "M4A")
-private val LOSSLESS_AUDIO_FORMATS = setOf("FLAC", "WAV", "APE")
+internal fun isSupportedAudioExtension(extension: String): Boolean {
+    return extension.lowercase() in MediaStoreScanner.SUPPORTED_AUDIO_EXTENSIONS
+}
+
+internal fun isSupportedAudioFileName(fileName: String): Boolean {
+    return fileName.substringAfterLast('.', "").let(::isSupportedAudioExtension)
+}
+
+internal fun isSupportedLibrarySong(song: Song): Boolean {
+    return isSupportedAudioFileName(song.fileName)
+}
+
+private val LOSSY_AUDIO_FORMATS = setOf("MP3", "AAC", "OGG", "OPUS", "AMR", "3GP", "MP4", "M4A")
+private val LOSSLESS_AUDIO_FORMATS = setOf("FLAC", "WAV")
 private val LOSSLESS_QUALITY_REGEX = Regex("""\d{1,2}/\d{1,3}(?:\.\d)?kHz""")

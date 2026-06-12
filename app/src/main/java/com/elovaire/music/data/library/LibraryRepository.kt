@@ -299,7 +299,7 @@ class LibraryRepository(
                 ensureMusicDirectoryObserver()
             }
             val requiresFullMediaIndexRefresh = event and FULL_INDEX_REFRESH_EVENT_MASK != 0
-            if (changedFile == null || changedFile.isDirectory || changedFile.extension.lowercase() in SUPPORTED_AUDIO_EXTENSIONS) {
+            if (changedFile == null || changedFile.isDirectory || isSupportedAudioExtension(changedFile.extension)) {
                 scheduleMediaRefresh(
                     forceMediaIndex = requiresFullMediaIndexRefresh,
                     changedFilePath = if (requiresFullMediaIndexRefresh) null else changedFile?.absolutePath,
@@ -397,22 +397,5 @@ class LibraryRepository(
                 FileObserver.MOVED_FROM or
                 FileObserver.DELETE_SELF or
                 FileObserver.MOVE_SELF
-        val SUPPORTED_AUDIO_EXTENSIONS = setOf(
-            "mp3",
-            "m4a",
-            "aac",
-            "flac",
-            "wav",
-            "ogg",
-            "opus",
-            "wma",
-            "ape",
-            "dsf",
-            "dff",
-            "amr",
-            "3gp",
-            "mp4",
-            "mka",
-        )
     }
 }
