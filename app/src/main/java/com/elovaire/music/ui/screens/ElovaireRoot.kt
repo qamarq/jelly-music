@@ -246,6 +246,9 @@ import elovaire.music.droidbeauty.app.data.lyrics.LyricsLookupMode
 import elovaire.music.droidbeauty.app.data.lyrics.LyricsPayload
 import elovaire.music.droidbeauty.app.data.lyrics.LyricsResult
 import elovaire.music.droidbeauty.app.data.lyrics.LyricsService
+import elovaire.music.droidbeauty.app.data.tags.AlbumTagEditRequest
+import elovaire.music.droidbeauty.app.data.tags.AlbumTagEditorService
+import elovaire.music.droidbeauty.app.data.tags.AlbumTagMatchSuggestion
 import elovaire.music.droidbeauty.app.data.playback.EqualizerDspConfig
 import elovaire.music.droidbeauty.app.data.playback.EqualizerDspModel
 import elovaire.music.droidbeauty.app.data.playback.PlaybackCollectionKind
@@ -274,6 +277,7 @@ import elovaire.music.droidbeauty.app.ui.motion.ElovaireAnimatedVisibility
 import elovaire.music.droidbeauty.app.ui.motion.ElovaireMotion
 import elovaire.music.droidbeauty.app.ui.motion.SyncElovaireMotionScale
 import elovaire.music.droidbeauty.app.ui.motion.rememberSystemAnimationScale
+import elovaire.music.droidbeauty.app.ui.screens.tags.AlbumTagEditorScreen
 import elovaire.music.droidbeauty.app.ui.theme.ElovaireRadii
 import elovaire.music.droidbeauty.app.ui.theme.ElovaireSpacing
 import elovaire.music.droidbeauty.app.ui.theme.AboutCardButtonAccent
@@ -1166,6 +1170,9 @@ fun ElovaireRoot(
         if (concreteRoute in setOf(PLAYER_ROUTE, SETTINGS_ROUTE, EQUALIZER_ROUTE, CHANGELOG_ROUTE, ABOUT_ROUTE)) {
             return@LaunchedEffect
         }
+        if (normalizedConcreteRoute == "$ALBUM_TAG_EDITOR_ROUTE/{albumId}") {
+            return@LaunchedEffect
+        }
         if (normalizedConcreteRoute in setOf("$ALBUM_ROUTE/{albumId}", "$PLAYLIST_ROUTE/{playlistId}")) {
             return@LaunchedEffect
         }
@@ -1845,6 +1852,9 @@ fun ElovaireRoot(
                             bottomPadding = detailBottomPadding,
                             collapsedTopBarTitle = detailFallbackTitle(previousRoute, appLanguage),
                             onBack = navController::navigateUp,
+                            onOpenTagEditor = { selectedAlbum ->
+                                navController.navigate("$ALBUM_TAG_EDITOR_ROUTE/${selectedAlbum.id}")
+                            },
                             onPlayAlbum = { selectedAlbum ->
                                 container.playbackManager.playAlbum(
                                     album = selectedAlbum,
@@ -1875,6 +1885,131 @@ fun ElovaireRoot(
                             onToggleFavorite = container.preferenceStore::toggleFavoriteSong,
                             onSetAlbumFavorite = { songIds, favorite ->
                                 container.preferenceStore.setFavoriteSongs(songIds, favorite)
+                            },
+                        )
+                    }
+
+                    composable(
+                        route = "$ALBUM_TAG_EDITOR_ROUTE/{albumId}",
+                        arguments = listOf(navArgument("albumId") { type = NavType.LongType }),
+                    ) { backStackEntry ->
+                        val albumId = backStackEntry.arguments?.getLong("albumId") ?: 0L
+                        val album = libraryState.albums.firstOrNull { it.id == albumId }
+                        val tagEditorService = remember(context.applicationContext) {
+                            AlbumTagEditorService(context.applicationContext)
+                        }
+                        val routeScope = rememberCoroutineScope()
+                        var pendingWriteRequest by remember(albumId) { mutableStateOf<AlbumTagEditRequest?>(null) }
+                        var pickedCoverArtUri by remember(albumId) { mutableStateOf<Uri?>(null) }
+                        var autofillSuggestion by remember(albumId) { mutableStateOf<AlbumTagMatchSuggestion?>(null) }
+                        var editorStatusMessage by rememberSaveable(albumId) { mutableStateOf<String?>(null) }
+                        var isSavingTags by remember(albumId) { mutableStateOf(false) }
+                        var isMatchingTags by remember(albumId) { mutableStateOf(false) }
+                        var performAlbumTagSave by remember(albumId) {
+                            mutableStateOf<(suspend (AlbumTagEditRequest) -> Unit)?>(null)
+                        }
+
+                        val albumTagWriteLauncher = rememberLauncherForActivityResult(
+                            contract = ActivityResultContracts.StartIntentSenderForResult(),
+                        ) { result ->
+                            val pendingRequest = pendingWriteRequest ?: return@rememberLauncherForActivityResult
+                            pendingWriteRequest = null
+                            if (result.resultCode == Activity.RESULT_OK) {
+                                routeScope.launch {
+                                    performAlbumTagSave?.invoke(pendingRequest)
+                                }
+                            }
+                        }
+
+                        val coverArtPickerLauncher = rememberLauncherForActivityResult(
+                            contract = ActivityResultContracts.OpenDocument(),
+                        ) { uri ->
+                            if (uri != null) {
+                                pickedCoverArtUri = uri
+                            }
+                        }
+                        performAlbumTagSave = { request ->
+                            isSavingTags = true
+                            editorStatusMessage = null
+                            runCatching {
+                                tagEditorService.applyEdits(request)
+                            }.onSuccess {
+                                container.libraryRepository.refresh(
+                                    forceMediaIndex = true,
+                                    enrichMetadata = true,
+                                    showLoadingIndicator = false,
+                                )
+                                navController.navigateUp()
+                            }.onFailure { throwable ->
+                                val recoverableIntentSender = when {
+                                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && throwable is RecoverableSecurityException -> {
+                                        throwable.userAction.actionIntent.intentSender
+                                    }
+                                    else -> null
+                                }
+                                if (recoverableIntentSender != null) {
+                                    pendingWriteRequest = request
+                                    albumTagWriteLauncher.launch(
+                                        IntentSenderRequest.Builder(recoverableIntentSender).build(),
+                                    )
+                                } else {
+                                    editorStatusMessage = throwable.message ?: "Unable to save tags."
+                                }
+                            }
+                            isSavingTags = false
+                        }
+
+                        AlbumTagEditorScreen(
+                            album = album,
+                            appLanguage = appLanguage,
+                            isSaving = isSavingTags,
+                            isMatching = isMatchingTags,
+                            statusMessage = editorStatusMessage,
+                            autofillSuggestion = autofillSuggestion,
+                            pickedCoverArtUri = pickedCoverArtUri,
+                            onBack = navController::navigateUp,
+                            onSave = { request ->
+                                routeScope.launch {
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                                        pendingWriteRequest = request
+                                        album?.songs
+                                            ?.takeIf { it.isNotEmpty() }
+                                            ?.let { songsToWrite ->
+                                                albumTagWriteLauncher.launch(
+                                                    IntentSenderRequest.Builder(
+                                                        MediaStore.createWriteRequest(
+                                                            context.contentResolver,
+                                                            songsToWrite.map(Song::uri),
+                                                        ).intentSender,
+                                                    ).build(),
+                                                )
+                                            }
+                                            ?: performAlbumTagSave?.invoke(request)
+                                    } else {
+                                        performAlbumTagSave?.invoke(request)
+                                    }
+                                }
+                            },
+                            onAutoMatch = {
+                                val targetAlbum = album
+                                if (targetAlbum != null) {
+                                    routeScope.launch {
+                                    isMatchingTags = true
+                                    editorStatusMessage = null
+                                    autofillSuggestion = runCatching {
+                                        tagEditorService.findBestOnlineMatch(targetAlbum)
+                                    }.onFailure { throwable ->
+                                        editorStatusMessage = throwable.message ?: "Unable to match album online."
+                                    }.getOrNull()
+                                    if (autofillSuggestion == null && editorStatusMessage == null) {
+                                        editorStatusMessage = "No close online match found."
+                                    }
+                                    isMatchingTags = false
+                                }
+                                }
+                            },
+                            onPickCoverArt = {
+                                coverArtPickerLauncher.launch(arrayOf("image/*"))
                             },
                         )
                     }
@@ -8405,6 +8540,7 @@ private fun AlbumScreen(
     playlists: List<Playlist>,
     playlistSongsById: Map<Long, Song>,
     onBack: () -> Unit,
+    onOpenTagEditor: (Album) -> Unit,
     onPlayAlbum: (Album) -> Unit,
     onShuffleAlbum: (Album) -> Unit,
     onSongSelected: (Song, List<Song>) -> Unit,
@@ -8784,6 +8920,13 @@ private fun AlbumScreen(
             title = detailTopBarTitle,
             subtitle = null,
             onBack = onBack,
+            actions = listOf(
+                TopBarActionSpec(
+                    iconResId = R.drawable.ic_lucide_square_pen,
+                    contentDescription = "Edit tags",
+                    onClick = { onOpenTagEditor(album) },
+                ),
+            ),
             modifier = Modifier.align(Alignment.TopCenter),
         )
         AnimatedVisibility(
@@ -10591,6 +10734,22 @@ private fun DetailListTopBar(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                }
+            }
+            if (actions.isNotEmpty()) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    actions.forEach { action ->
+                        HeaderIconButton(
+                            iconResId = action.iconResId,
+                            contentDescription = action.contentDescription,
+                            showBackground = false,
+                            onClick = action.onClick,
+                            modifier = Modifier.zIndex(1f),
+                        )
+                    }
                 }
             }
         }

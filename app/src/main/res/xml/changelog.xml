@@ -6,11 +6,9 @@
       2. Edit the bullet points inside that release.
       3. Add newer releases above older ones.
     -->
-    <release version="2.0">
-        <item>Rebuilt core of the app to improve performance</item>
-        <item>UI refinements in search tab</item>
-        <item>Tweaks to on-device music scanning method for even faster library sync</item>
-        <item>Improved overall animation smoothness</item>
-        <item>General code clean-up</item>
+    <release version="2.1">
+        <item>Added feature to manually edit tags from album preview list</item>
+        <item>Improved lyrics parsing method</item>
+        <item>Tweaks to animations</item>
     </release>
 </changelog>

@@ -26,9 +26,7 @@ internal class LyricsRepository(
     private val cache = LyricsCache(applicationContext)
     private val localLyricsResolver = LocalLyricsResolver(applicationContext)
     private val geniusMetadataProvider = GeniusMetadataProvider()
-    private val geniusLyricsProvider = GeniusLyricsProvider().takeIf { it.isConfigured() }
-    private val lrclibProvider = LrcLibLyricsProvider()
-    private val lyricsOvhProvider = LyricsOvhProvider()
+    private val geniusLyricsProvider = GeniusLyricsProvider()
     private val serviceScope = CoroutineScope(SupervisorJob() + ioDispatcher)
     private val inFlightRequests = ConcurrentHashMap<String, Deferred<LyricsLookupOutcome>>()
 
@@ -287,64 +285,22 @@ internal class LyricsRepository(
             "remote query variants for ${identity.normalizedLookupKey}: ${fastVariants.size}",
         )
 
-        val lrclibQuery = LyricsSearchQuery(
+        val geniusQuery = LyricsSearchQuery(
             identity = identity,
-            variants = fastVariants,
+            variants = fastVariants.take(MAX_GENIUS_QUERY_VARIANTS),
         )
-        val lrclibCandidates = runCatching {
-            lrclibProvider.search(lrclibQuery)
+        val geniusCandidates = runCatching {
+            geniusLyricsProvider.search(geniusQuery)
         }.getOrElse { throwable ->
-            logDebug("lrclib search failed for ${identity.normalizedLookupKey}", throwable)
+            logDebug("genius lyrics search failed for ${identity.normalizedLookupKey}", throwable)
             emptyList()
         }
-        val lrclibMatch = selectBestCandidateMatch(
-            provider = lrclibProvider,
+        return@coroutineScope selectBestCandidateMatch(
+            provider = geniusLyricsProvider,
             identity = identity,
-            candidates = lrclibCandidates,
+            candidates = geniusCandidates,
             minimumScore = if (lookupMode == LyricsLookupMode.FastPresenceCheck) FAST_MODE_MIN_SCORE else FULL_MODE_MIN_SCORE,
         )
-        if (lrclibMatch != null && lrclibMatch.payload.isSynced && lrclibMatch.confidence >= HIGH_CONFIDENCE_SYNC_SCORE) {
-            return@coroutineScope lrclibMatch
-        }
-
-        val ovhQuery = LyricsSearchQuery(
-            identity = identity,
-            variants = fastVariants.take(MAX_LYRICS_OVH_QUERY_VARIANTS),
-        )
-        val ovhCandidates = runCatching {
-            lyricsOvhProvider.search(ovhQuery)
-        }.getOrElse { throwable ->
-            logDebug("lyrics.ovh search failed for ${identity.normalizedLookupKey}", throwable)
-            emptyList()
-        }
-        val ovhMatch = selectBestCandidateMatch(
-            provider = lyricsOvhProvider,
-            identity = identity,
-            candidates = ovhCandidates,
-            minimumScore = OVH_MIN_SCORE,
-        )
-
-        val geniusMatch = geniusLyricsProvider?.let { provider ->
-            val geniusQuery = LyricsSearchQuery(
-                identity = identity,
-                variants = fastVariants.take(MAX_GENIUS_QUERY_VARIANTS),
-            )
-            val geniusCandidates = runCatching {
-                provider.search(geniusQuery)
-            }.getOrElse { throwable ->
-                logDebug("genius lyrics search failed for ${identity.normalizedLookupKey}", throwable)
-                emptyList()
-            }
-            selectBestCandidateMatch(
-                provider = provider,
-                identity = identity,
-                candidates = geniusCandidates,
-                minimumScore = GENIUS_MIN_SCORE,
-            )
-        }
-
-        return@coroutineScope listOfNotNull(lrclibMatch, geniusMatch, ovhMatch)
-            .maxWithOrNull(compareBy<ProviderLyricsMatch>({ if (it.payload.isSynced) 1 else 0 }, { it.confidence }))
     }
 
     private suspend fun selectBestCandidateMatch(
@@ -438,20 +394,18 @@ internal class LyricsRepository(
     private companion object {
         const val TAG = "LyricsRepository"
         const val LOCAL_LOOKUP_TIMEOUT_MS = 250L
-        const val FAST_NOT_FOUND_BUDGET_MS = 2_000L
-        const val FULL_REMOTE_LOOKUP_BUDGET_MS = 2_800L
+        const val FAST_NOT_FOUND_BUDGET_MS = 1_100L
+        const val FULL_REMOTE_LOOKUP_BUDGET_MS = 1_800L
         const val GENIUS_LOOKUP_TIMEOUT_MS = 250L
-        const val MAX_FAST_REMOTE_QUERY_VARIANTS = 5
+        const val MAX_FAST_REMOTE_QUERY_VARIANTS = 4
         const val POSITIVE_CACHE_TTL_MS = 30L * 24L * 60L * 60L * 1000L
         const val CACHE_TTL_NOT_FOUND_MS = 30_000L
         const val CACHE_TTL_TIMEOUT_MS = 15_000L
         const val CACHE_TTL_OFFLINE_MS = 90_000L
         const val FULL_MODE_MIN_SCORE = 78
         const val FAST_MODE_MIN_SCORE = 82
-        const val OVH_MIN_SCORE = 74
         const val GENIUS_MIN_SCORE = 62
         const val HIGH_CONFIDENCE_SYNC_SCORE = 88
-        const val MAX_LYRICS_OVH_QUERY_VARIANTS = 2
-        const val MAX_GENIUS_QUERY_VARIANTS = 5
+        const val MAX_GENIUS_QUERY_VARIANTS = 4
     }
 }

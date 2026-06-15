@@ -34,6 +34,7 @@ internal const val SETTINGS_ROUTE = "settings"
 internal const val CHANGELOG_ROUTE = "changelog"
 internal const val ABOUT_ROUTE = "about"
 internal const val ALBUM_ROUTE = "album"
+internal const val ALBUM_TAG_EDITOR_ROUTE = "album_tag_editor"
 internal const val LIBRARY_COLLECTION_ROUTE = "library_collection"
 internal const val GENRE_ROUTE = "genre"
 internal const val ARTIST_ROUTE = "artist"
@@ -112,6 +113,7 @@ internal object ElovaireNavigationTransitions {
 
             "$PLAYLIST_ROUTE/{playlistId}",
             "$ALBUM_ROUTE/{albumId}",
+            "$ALBUM_TAG_EDITOR_ROUTE/{albumId}",
             -> 2
 
             else -> 1
@@ -439,6 +441,7 @@ internal fun String?.normalizedNavigationRoute(): String? {
     return when {
         this == null -> null
         startsWith("$ALBUM_ROUTE/") -> "$ALBUM_ROUTE/{albumId}"
+        startsWith("$ALBUM_TAG_EDITOR_ROUTE/") -> "$ALBUM_TAG_EDITOR_ROUTE/{albumId}"
         startsWith("$PLAYLIST_ROUTE/") -> "$PLAYLIST_ROUTE/{playlistId}"
         startsWith("$GENRE_ROUTE/") -> "$GENRE_ROUTE/{genre}"
         startsWith("$ARTIST_ROUTE/") -> "$ARTIST_ROUTE/{artistName}"
@@ -450,6 +453,7 @@ internal fun String?.normalizedNavigationRoute(): String? {
 internal fun androidx.navigation.NavBackStackEntry.elovaireConcreteRoute(): String? {
     return when (destination.route) {
         "$ALBUM_ROUTE/{albumId}" -> "$ALBUM_ROUTE/${arguments?.getLong("albumId") ?: return null}"
+        "$ALBUM_TAG_EDITOR_ROUTE/{albumId}" -> "$ALBUM_TAG_EDITOR_ROUTE/${arguments?.getLong("albumId") ?: return null}"
         "$PLAYLIST_ROUTE/{playlistId}" -> "$PLAYLIST_ROUTE/${arguments?.getLong("playlistId") ?: return null}"
         "$GENRE_ROUTE/{genre}" -> "$GENRE_ROUTE/${Uri.encode(arguments?.getString("genre") ?: return null)}"
         "$ARTIST_ROUTE/{artistName}" -> "$ARTIST_ROUTE/${Uri.encode(arguments?.getString("artistName") ?: return null)}"
@@ -468,6 +472,7 @@ internal fun androidx.navigation.NavBackStackEntry.concreteNavigationRoute(): St
     val args = arguments
     return when (route) {
         "$ALBUM_ROUTE/{albumId}" -> args?.getLong("albumId")?.takeIf { it > 0L }?.let { "$ALBUM_ROUTE/$it" }
+        "$ALBUM_TAG_EDITOR_ROUTE/{albumId}" -> args?.getLong("albumId")?.takeIf { it > 0L }?.let { "$ALBUM_TAG_EDITOR_ROUTE/$it" }
         "$PLAYLIST_ROUTE/{playlistId}" -> args?.getLong("playlistId")?.takeIf { it > 0L }?.let { "$PLAYLIST_ROUTE/$it" }
         "$LIBRARY_COLLECTION_ROUTE/{kind}" -> args?.getString("kind")?.let { "$LIBRARY_COLLECTION_ROUTE/$it" }
         "$GENRE_ROUTE/{genre}" -> args?.getString("genre")?.let { "$GENRE_ROUTE/${Uri.encode(it)}" }
@@ -490,6 +495,7 @@ internal fun topLevelOwnerRoute(
         "$GENRE_ROUTE/{genre}",
         "$ARTIST_ROUTE/{artistName}",
         "$ALBUM_ROUTE/{albumId}",
+        "$ALBUM_TAG_EDITOR_ROUTE/{albumId}",
         -> browsingOriginRoute.takeIf { it in TopLevelRoutes } ?: ALBUMS_ROUTE
 
         else -> browsingOriginRoute.takeIf { it in TopLevelRoutes }
@@ -512,6 +518,7 @@ internal fun transitionTopLevelOwnerRoute(
 
         "$PLAYLIST_ROUTE/{playlistId}" -> PLAYLISTS_ROUTE
         "$ALBUM_ROUTE/{albumId}" -> fallbackTopLevelRoute.takeIf { it in TopLevelRoutes } ?: ALBUMS_ROUTE
+        "$ALBUM_TAG_EDITOR_ROUTE/{albumId}" -> fallbackTopLevelRoute.takeIf { it in TopLevelRoutes } ?: ALBUMS_ROUTE
         else -> fallbackTopLevelRoute.takeIf { it in TopLevelRoutes }
     }
 }

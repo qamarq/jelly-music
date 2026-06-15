@@ -140,6 +140,7 @@ dependencies {
     implementation(libs.androidx.media3.ui)
     implementation(libs.androidx.media3.session)
     implementation(libs.haze)
+    implementation(libs.jaudiotagger)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
 
