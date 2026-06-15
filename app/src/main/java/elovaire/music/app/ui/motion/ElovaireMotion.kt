@@ -47,22 +47,28 @@ import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
 object ElovaireMotion {
-    private const val QuickBase = 120
-    private const val FastBase = 160
-    private const val StandardBase = 200
-    private const val MediumBase = 240
-    private const val SpaciousBase = 280
-    private const val ScreenBase = 260
-    private const val ScreenFadeBase = 180
-    private const val ScreenSlideBase = 240
-    private const val ScreenExpandBase = 320
-    private const val PlayerScreenBase = 360
-    private const val PlayerFadeBase = 180
-    private const val ControlsBase = 140
-    private const val ChromeResizeBase = 180
-    private const val MicroBase = 110
-    private const val ComponentBase = 180
-    private const val EmphasizedBase = 320
+    private const val QuickBase = 20
+    private const val FastBase = 60
+    private const val StandardBase = 100
+    private const val MediumBase = 140
+    private const val SpaciousBase = 180
+    private const val ScreenBase = 160
+    private const val ScreenFadeBase = 80
+    private const val ScreenSlideBase = 140
+    private const val ScreenExpandBase = 220
+    private const val PlayerScreenBase = 260
+    private const val PlayerFadeBase = 80
+    private const val ControlsBase = 40
+    private const val ChromeResizeBase = 80
+    private const val MicroBase = 10
+    private const val ComponentBase = 80
+    private const val EmphasizedBase = 220
+    private const val TopLevelEnterBase = 70
+    private const val TopLevelExitBase = 1
+    private const val DetailEnterBase = 105
+    private const val DetailExitBase = 15
+    private const val FullScreenEnterBase = 120
+    private const val FullScreenExitBase = 25
 
     val Quick: Int get() = scaledDurationMillis(QuickBase)
     val Fast: Int get() = scaledDurationMillis(FastBase)
@@ -206,7 +212,7 @@ object ElovaireMotion {
     )
 
     fun <T> pressDownSpec(): FiniteAnimationSpec<T> = scaledTween(
-        durationMillis = 90,
+        durationMillis = 1,
         easing = SoftOut,
     )
 
@@ -235,7 +241,7 @@ object ElovaireMotion {
     )
 
     fun <T> iconSwapOutSpec(): FiniteAnimationSpec<T> = scaledTween(
-        durationMillis = 110,
+        durationMillis = 10,
         easing = FadeOut,
     )
 
@@ -404,7 +410,7 @@ object ElovaireMotion {
         initialOffsetY: (fullHeight: Int) -> Int = { it / 8 },
     ): EnterTransition = fadeIn(animationSpec = fadeMedium(delayMillis)) +
         slideInVertically(
-            animationSpec = offsetSoft(durationMillis = ScreenSlide, delayMillis = delayMillis),
+            animationSpec = offsetSoft(durationMillis = ScreenSlideBase, delayMillis = delayMillis),
             initialOffsetY = initialOffsetY,
         )
 
@@ -412,7 +418,7 @@ object ElovaireMotion {
         targetOffsetY: (fullHeight: Int) -> Int = { it / 10 },
     ): ExitTransition = fadeOut(animationSpec = fadeFast()) +
         slideOutVertically(
-            animationSpec = offsetSoft(durationMillis = Fast),
+            animationSpec = offsetSoft(durationMillis = FastBase),
             targetOffsetY = targetOffsetY,
         )
 
@@ -433,14 +439,14 @@ object ElovaireMotion {
     fun softContentTransform(): ContentTransform =
         (fadeIn(animationSpec = contentFadeInSpec()) +
             slideInVertically(
-                animationSpec = offsetSoft(durationMillis = Standard),
+                animationSpec = offsetSoft(durationMillis = StandardBase),
                 initialOffsetY = { -it / 10 },
             )) togetherWith fadeOut(animationSpec = contentFadeOutSpec())
 
     fun sharedTopBarTransform(): ContentTransform =
         (fadeIn(animationSpec = fadeMedium()) +
             slideInVertically(
-                animationSpec = offsetSoft(durationMillis = ScreenFade),
+                animationSpec = offsetSoft(durationMillis = ScreenFadeBase),
                 initialOffsetY = { -it / 5 },
             )) togetherWith fadeOut(animationSpec = fadeFast())
 
@@ -449,13 +455,13 @@ object ElovaireMotion {
             animationSpec = fadeMedium(),
             initialAlpha = 0.9f,
         ) + slideInHorizontally(
-            animationSpec = offsetSoft(durationMillis = ScreenFade),
+            animationSpec = offsetSoft(durationMillis = ScreenFadeBase),
             initialOffsetX = { it / 8 },
         )) togetherWith (fadeOut(
             animationSpec = fadeFast(),
             targetAlpha = 0.92f,
         ) + slideOutHorizontally(
-            animationSpec = offsetSoft(durationMillis = ScreenFade),
+            animationSpec = offsetSoft(durationMillis = ScreenFadeBase),
             targetOffsetX = { -(it / 10) },
         ))
 
@@ -464,79 +470,107 @@ object ElovaireMotion {
             animationSpec = fadeMedium(),
             initialAlpha = 0.94f,
         ) + slideInHorizontally(
-            animationSpec = offsetSoft(durationMillis = ScreenFade),
+            animationSpec = offsetSoft(durationMillis = ScreenFadeBase),
             initialOffsetX = { -(it / 10) },
         )) togetherWith (fadeOut(
             animationSpec = fadeFast(),
             targetAlpha = 0.96f,
         ) + slideOutHorizontally(
-            animationSpec = offsetSoft(durationMillis = ScreenFade),
+            animationSpec = offsetSoft(durationMillis = ScreenFadeBase),
             targetOffsetX = { it / 8 },
         ))
 
     fun fullScreenForwardEnter(
-        initialOffsetX: (fullWidth: Int) -> Int = { it / 6 },
+        initialOffsetX: (fullWidth: Int) -> Int = { it / 80 },
     ): EnterTransition = fadeIn(
         animationSpec = scaledTween(
-            durationMillis = Standard,
+            durationMillis = FullScreenEnterBase,
             easing = FadeIn,
         ),
-        initialAlpha = 0.82f,
+        initialAlpha = 0.04f,
     ) +
+        scaleIn(
+            animationSpec = scaledTween(
+                durationMillis = FullScreenEnterBase,
+                easing = GentleDecelerate,
+            ),
+            initialScale = 0.992f,
+        ) +
         slideInHorizontally(
             animationSpec = scaledTween(
-                durationMillis = ScreenExpand,
+                durationMillis = FullScreenEnterBase,
                 easing = GentleDecelerate,
             ),
             initialOffsetX = initialOffsetX,
         )
 
     fun fullScreenForwardExit(
-        targetOffsetX: (fullWidth: Int) -> Int = { -(it / 12) },
+        targetOffsetX: (fullWidth: Int) -> Int = { -(it / 96) },
     ): ExitTransition = fadeOut(
         animationSpec = scaledTween(
-            durationMillis = Fast,
+            durationMillis = FullScreenExitBase,
             easing = FadeOut,
         ),
-        targetAlpha = 0.9f,
+        targetAlpha = 0f,
     ) +
+        scaleOut(
+            animationSpec = scaledTween(
+                durationMillis = FullScreenExitBase,
+                easing = GentleAccelerate,
+            ),
+            targetScale = 0.997f,
+        ) +
         slideOutHorizontally(
             animationSpec = scaledTween(
-                durationMillis = Standard,
+                durationMillis = FullScreenExitBase,
                 easing = GentleAccelerate,
             ),
             targetOffsetX = targetOffsetX,
         )
 
     fun fullScreenBackEnter(
-        initialOffsetX: (fullWidth: Int) -> Int = { -(it / 12) },
+        initialOffsetX: (fullWidth: Int) -> Int = { -(it / 96) },
     ): EnterTransition = fadeIn(
         animationSpec = scaledTween(
-            durationMillis = Component,
+            durationMillis = FullScreenEnterBase,
             easing = FadeIn,
         ),
-        initialAlpha = 0.9f,
+        initialAlpha = 0.08f,
     ) +
+        scaleIn(
+            animationSpec = scaledTween(
+                durationMillis = FullScreenEnterBase,
+                easing = GentleDecelerate,
+            ),
+            initialScale = 0.997f,
+        ) +
         slideInHorizontally(
             animationSpec = scaledTween(
-                durationMillis = Screen,
+                durationMillis = FullScreenEnterBase,
                 easing = GentleDecelerate,
             ),
             initialOffsetX = initialOffsetX,
         )
 
     fun fullScreenBackExit(
-        targetOffsetX: (fullWidth: Int) -> Int = { it / 5 },
+        targetOffsetX: (fullWidth: Int) -> Int = { it / 72 },
     ): ExitTransition = fadeOut(
         animationSpec = scaledTween(
-            durationMillis = Fast,
+            durationMillis = FullScreenExitBase,
             easing = FadeOut,
         ),
-        targetAlpha = 0.84f,
+        targetAlpha = 0f,
     ) +
+        scaleOut(
+            animationSpec = scaledTween(
+                durationMillis = FullScreenExitBase,
+                easing = GentleAccelerate,
+            ),
+            targetScale = 0.992f,
+        ) +
         slideOutHorizontally(
             animationSpec = scaledTween(
-                durationMillis = Screen,
+                durationMillis = FullScreenExitBase,
                 easing = GentleAccelerate,
             ),
             targetOffsetX = targetOffsetX,
@@ -546,40 +580,108 @@ object ElovaireMotion {
         forward: Boolean = true,
     ): EnterTransition = fadeIn(
         animationSpec = scaledTween(
-            durationMillis = Component,
+            durationMillis = TopLevelEnterBase,
             easing = FadeIn,
         ),
-        initialAlpha = 0.84f,
+        initialAlpha = 0f,
     ) +
-        slideInHorizontally(
+        scaleIn(
             animationSpec = scaledTween(
-                durationMillis = Screen,
+                durationMillis = TopLevelEnterBase,
                 easing = GentleDecelerate,
             ),
-            initialOffsetX = { fullWidth ->
-                val offset = (fullWidth / 16f).roundToLong().toInt()
-                if (forward) offset else -offset
-            },
+            initialScale = 0.988f,
         )
 
     fun topLevelExit(
         forward: Boolean = true,
     ): ExitTransition = fadeOut(
         animationSpec = scaledTween(
-            durationMillis = Fast,
+            durationMillis = TopLevelExitBase,
             easing = FadeOut,
         ),
-        targetAlpha = 0.9f,
+        targetAlpha = 0f,
     ) +
-        slideOutHorizontally(
+        scaleOut(
             animationSpec = scaledTween(
-                durationMillis = Standard,
+                durationMillis = TopLevelExitBase,
                 easing = GentleAccelerate,
             ),
-            targetOffsetX = { fullWidth ->
-                val offset = (fullWidth / 20f).roundToLong().toInt()
-                if (forward) -offset else offset
-            },
+            targetScale = 0.996f,
+        )
+
+    fun detailForwardEnter(): EnterTransition = fadeIn(
+        animationSpec = scaledTween(
+            durationMillis = DetailEnterBase,
+            easing = FadeIn,
+        ),
+        initialAlpha = 0.08f,
+    ) +
+        scaleIn(
+            animationSpec = scaledTween(
+                durationMillis = DetailEnterBase,
+                easing = GentleDecelerate,
+            ),
+            initialScale = 0.99f,
+        ) +
+        slideInVertically(
+            animationSpec = scaledTween(
+                durationMillis = DetailEnterBase,
+                easing = GentleDecelerate,
+            ),
+            initialOffsetY = { it / 96 },
+        )
+
+    fun detailForwardExit(): ExitTransition = fadeOut(
+        animationSpec = scaledTween(
+            durationMillis = DetailExitBase,
+            easing = FadeOut,
+        ),
+        targetAlpha = 0f,
+    ) +
+        scaleOut(
+            animationSpec = scaledTween(
+                durationMillis = DetailExitBase,
+                easing = GentleAccelerate,
+            ),
+            targetScale = 0.998f,
+        )
+
+    fun detailBackEnter(): EnterTransition = fadeIn(
+        animationSpec = scaledTween(
+            durationMillis = DetailEnterBase,
+            easing = FadeIn,
+        ),
+        initialAlpha = 0.1f,
+    ) +
+        scaleIn(
+            animationSpec = scaledTween(
+                durationMillis = DetailEnterBase,
+                easing = GentleDecelerate,
+            ),
+            initialScale = 0.998f,
+        )
+
+    fun detailBackExit(): ExitTransition = fadeOut(
+        animationSpec = scaledTween(
+            durationMillis = DetailExitBase,
+            easing = FadeOut,
+        ),
+        targetAlpha = 0f,
+    ) +
+        scaleOut(
+            animationSpec = scaledTween(
+                durationMillis = DetailExitBase,
+                easing = GentleAccelerate,
+            ),
+            targetScale = 0.99f,
+        ) +
+        slideOutVertically(
+            animationSpec = scaledTween(
+                durationMillis = DetailExitBase,
+                easing = GentleAccelerate,
+            ),
+            targetOffsetY = { it / 96 },
         )
 
     fun scaleDurationMillis(

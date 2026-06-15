@@ -98,10 +98,10 @@ class MainActivity : ComponentActivity() {
                             animationSpec = ElovaireMotion.fadeMedium(),
                         ),
                         exit = fadeOut(
-                            animationSpec = ElovaireMotion.offsetSoft(durationMillis = 420),
+                            animationSpec = ElovaireMotion.offsetSoft(durationMillis = 320),
                         ) + scaleOut(
                             targetScale = 1.02f,
-                            animationSpec = ElovaireMotion.offsetSoft(durationMillis = 420),
+                            animationSpec = ElovaireMotion.offsetSoft(durationMillis = 320),
                         ),
                         label = "ColdStartSplashVisibility",
                     ) {

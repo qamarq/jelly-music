@@ -7,8 +7,10 @@
       3. Add newer releases above older ones.
     -->
     <release version="2.0">
-        <item>Tweaks to on-device music scanning method</item>
-        <item>Improved animation smoothness</item>
+        <item>Rebuilt core of the app to improve performance</item>
+        <item>UI refinements in search tab</item>
+        <item>Tweaks to on-device music scanning method for even faster library sync</item>
+        <item>Improved overall animation smoothness</item>
         <item>General code clean-up</item>
     </release>
 </changelog>

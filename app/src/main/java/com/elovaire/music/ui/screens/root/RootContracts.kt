@@ -125,6 +125,19 @@ internal object ElovaireNavigationTransitions {
         return mode == DetailRouteTransitionMode.TileExpand && route.normalizedNavigationRoute().isExpandFromTileRoute()
     }
 
+    fun usesDetailTransition(route: String?): Boolean {
+        return when (route.normalizedNavigationRoute()) {
+            "$ALBUM_ROUTE/{albumId}",
+            "$PLAYLIST_ROUTE/{playlistId}",
+            "$LIBRARY_COLLECTION_ROUTE/{kind}",
+            "$GENRE_ROUTE/{genre}",
+            "$ARTIST_ROUTE/{artistName}",
+            -> true
+
+            else -> false
+        }
+    }
+
     fun isTopLevelRouteTransition(
         initialRoute: String?,
         targetRoute: String?,

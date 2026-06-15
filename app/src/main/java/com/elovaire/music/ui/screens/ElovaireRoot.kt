@@ -248,6 +248,7 @@ import elovaire.music.droidbeauty.app.data.lyrics.LyricsResult
 import elovaire.music.droidbeauty.app.data.lyrics.LyricsService
 import elovaire.music.droidbeauty.app.data.playback.EqualizerDspConfig
 import elovaire.music.droidbeauty.app.data.playback.EqualizerDspModel
+import elovaire.music.droidbeauty.app.data.playback.PlaybackCollectionKind
 import elovaire.music.droidbeauty.app.data.playback.PlaybackManager
 import elovaire.music.droidbeauty.app.data.playback.PlaybackProgressState
 import elovaire.music.droidbeauty.app.data.playback.PlaybackRepeatMode
@@ -911,6 +912,30 @@ fun ElovaireRoot(
     val recentAlbums = remember(libraryState.albums, playbackState.recentAlbumIds) {
         recentAlbumsFor(libraryState, playbackState)
     }
+    val playlistsById = remember(playlists) { playlists.associateBy { it.id } }
+    val lastPlayedPlaylist = remember(
+        playlistsById,
+        playbackState.lastPlayedCollectionKind,
+        playbackState.lastPlayedCollectionId,
+    ) {
+        if (playbackState.lastPlayedCollectionKind == PlaybackCollectionKind.Playlist) {
+            playbackState.lastPlayedCollectionId?.let(playlistsById::get)
+        } else {
+            null
+        }
+    }
+    val lastPlayedAlbum = remember(
+        albumsById,
+        recentAlbums,
+        playbackState.lastPlayedCollectionKind,
+        playbackState.lastPlayedCollectionId,
+    ) {
+        when (playbackState.lastPlayedCollectionKind) {
+            PlaybackCollectionKind.Album -> playbackState.lastPlayedCollectionId?.let(albumsById::get)
+            PlaybackCollectionKind.Playlist -> null
+            null -> recentAlbums.firstOrNull()
+        } ?: recentAlbums.firstOrNull()
+    }
     val favoriteAlbums = remember(libraryState.albums, songPlayCounts, recentAlbums, recentlyAddedAlbums) {
         favoriteAlbumsFor(
             libraryState = libraryState,
@@ -1476,6 +1501,8 @@ fun ElovaireRoot(
                                     )
                             } else if (topLevelTransition.isTopLevelTransition) {
                                 ElovaireMotion.topLevelEnter(forward = topLevelTransition.isForward)
+                            } else if (ElovaireNavigationTransitions.usesDetailTransition(targetRoute)) {
+                                ElovaireMotion.detailForwardEnter()
                             } else {
                                 ElovaireMotion.fullScreenForwardEnter()
                             }
@@ -1507,6 +1534,8 @@ fun ElovaireRoot(
                                 )
                             } else if (topLevelTransition.isTopLevelTransition) {
                                 ElovaireMotion.topLevelExit(forward = topLevelTransition.isForward)
+                            } else if (ElovaireNavigationTransitions.usesDetailTransition(targetRoute)) {
+                                ElovaireMotion.detailForwardExit()
                             } else {
                                 ElovaireMotion.fullScreenForwardExit()
                             }
@@ -1539,6 +1568,8 @@ fun ElovaireRoot(
                                 )
                             } else if (topLevelTransition.isTopLevelTransition) {
                                 ElovaireMotion.topLevelEnter(forward = topLevelTransition.isForward)
+                            } else if (ElovaireNavigationTransitions.usesDetailTransition(targetRoute)) {
+                                ElovaireMotion.detailBackEnter()
                             } else {
                                 ElovaireMotion.fullScreenBackEnter()
                             }
@@ -1588,6 +1619,8 @@ fun ElovaireRoot(
                                     )
                             } else if (topLevelTransition.isTopLevelTransition) {
                                 ElovaireMotion.topLevelExit(forward = topLevelTransition.isForward)
+                            } else if (ElovaireNavigationTransitions.usesDetailTransition(initialRoute)) {
+                                ElovaireMotion.detailBackExit()
                             } else {
                                 ElovaireMotion.fullScreenBackExit()
                             }
@@ -1598,7 +1631,9 @@ fun ElovaireRoot(
                             playbackState.recentSongIds.mapNotNull(songsById::get).take(5)
                         }
                         HomeScreen(
-                            lastPlayedAlbum = recentAlbums.firstOrNull(),
+                            lastPlayedAlbum = lastPlayedAlbum,
+                            lastPlayedPlaylist = lastPlayedPlaylist,
+                            songsById = songsById,
                             recentlyAddedAlbums = recentlyAddedAlbums,
                             recentSongs = recentSongs,
                             favoriteAlbums = favoriteAlbums,
@@ -1616,11 +1651,27 @@ fun ElovaireRoot(
                             },
                             onAlbumSelected = { album, origin ->
                                 detailExpandOrigin = origin
-                                detailRouteTransitionMode = DetailRouteTransitionMode.TileExpand
+                                detailRouteTransitionMode = DetailRouteTransitionMode.Standard
                                 navController.navigate("$ALBUM_ROUTE/${album.id}")
+                            },
+                            onPlaylistSelected = { playlist ->
+                                detailExpandOrigin = ExpandOrigin()
+                                detailRouteTransitionMode = DetailRouteTransitionMode.Standard
+                                navController.navigate("$PLAYLIST_ROUTE/${playlist.id}")
                             },
                             onPlayAlbum = { album ->
                                 container.playbackManager.playAlbum(album)
+                            },
+                            onPlayPlaylist = { playlist, songs ->
+                                songs.firstOrNull()?.let { firstSong ->
+                                    container.playbackManager.playSong(
+                                        song = firstSong,
+                                        collection = songs,
+                                        sourceLabel = playlist.name,
+                                        sourcePlaylistId = playlist.id,
+                                    )
+                                    openPlayerIfAllowed(null)
+                                }
                             },
                             onSongSelected = { song ->
                                 val sourceAlbum = albumsById[song.albumId]
@@ -1712,7 +1763,7 @@ fun ElovaireRoot(
                             },
                             onAlbumSelected = { album, origin ->
                                 detailExpandOrigin = origin
-                                detailRouteTransitionMode = DetailRouteTransitionMode.TileExpand
+                                detailRouteTransitionMode = DetailRouteTransitionMode.Standard
                                 navController.navigate("$ALBUM_ROUTE/${album.id}")
                             },
                             onArtistSelected = { artistName ->
@@ -1751,6 +1802,7 @@ fun ElovaireRoot(
                                         song = firstSong,
                                         collection = songs,
                                         sourceLabel = sourceLabel,
+                                        sourcePlaylistId = playlist?.id,
                                     )
                                     openPlayerIfAllowed(null)
                                 }
@@ -1760,6 +1812,7 @@ fun ElovaireRoot(
                                     song = song,
                                     collection = queue,
                                     sourceLabel = playlist?.name ?: queue.playbackSourceLabel(fallbackAlbum = song.album),
+                                    sourcePlaylistId = playlist?.id,
                                 )
                                 openPlayerIfAllowed(null)
                             },
@@ -1849,7 +1902,7 @@ fun ElovaireRoot(
                             onBack = navController::navigateUp,
                             onAlbumSelected = { album, origin ->
                                 detailExpandOrigin = origin
-                                detailRouteTransitionMode = DetailRouteTransitionMode.TileExpand
+                                detailRouteTransitionMode = DetailRouteTransitionMode.Standard
                                 navController.navigate("$ALBUM_ROUTE/${album.id}")
                             },
                             onSongSelected = { song, queue ->
@@ -1919,7 +1972,7 @@ fun ElovaireRoot(
                             },
                             onAlbumSelected = { album, origin ->
                                 detailExpandOrigin = origin
-                                detailRouteTransitionMode = DetailRouteTransitionMode.TileExpand
+                                detailRouteTransitionMode = DetailRouteTransitionMode.Standard
                                 navController.navigate("$ALBUM_ROUTE/${album.id}")
                             },
                             onAddAlbumToPlaylist = { playlistId, album ->
@@ -1955,7 +2008,7 @@ fun ElovaireRoot(
                             },
                             onAlbumSelected = { album, origin ->
                                 detailExpandOrigin = origin
-                                detailRouteTransitionMode = DetailRouteTransitionMode.TileExpand
+                                detailRouteTransitionMode = DetailRouteTransitionMode.Standard
                                 navController.navigate("$ALBUM_ROUTE/${album.id}")
                             },
                             onToggleFavorite = container.preferenceStore::toggleFavoriteSong,
@@ -3481,6 +3534,8 @@ private fun FirstLaunchPermissionLoadingScreen(
 @Composable
 private fun HomeScreen(
     lastPlayedAlbum: Album?,
+    lastPlayedPlaylist: Playlist?,
+    songsById: Map<Long, Song>,
     recentlyAddedAlbums: List<Album>,
     recentSongs: List<Song>,
     favoriteAlbums: List<Album>,
@@ -3494,11 +3549,15 @@ private fun HomeScreen(
     playInitialReveal: Boolean,
     onInitialRevealFinished: () -> Unit,
     onAlbumSelected: (Album, ExpandOrigin) -> Unit,
+    onPlaylistSelected: (Playlist) -> Unit,
     onPlayAlbum: (Album) -> Unit,
+    onPlayPlaylist: (Playlist, List<Song>) -> Unit,
     onSongSelected: (Song) -> Unit,
     onToggleFavorite: (Long) -> Unit,
 ) {
     val listState = rememberElovaireLazyListState("home_screen")
+    val language = LocalAppLanguage.current
+    val homeCopy = remember(language) { homeCopy(language) }
     val motionDurationScale = rememberSystemAnimationScale()
     var revealModules by rememberSaveable(playInitialReveal) { mutableStateOf(!playInitialReveal) }
     LaunchedEffect(scrollToTopRequestVersion) {
@@ -3525,6 +3584,9 @@ private fun HomeScreen(
         recentlyAddedAlbums.isEmpty() &&
         favoriteAlbums.isEmpty() &&
         recentSongs.isEmpty()
+    val lastPlayedPlaylistSongs = remember(lastPlayedPlaylist, songsById) {
+        lastPlayedPlaylist?.songIds?.mapNotNull(songsById::get).orEmpty()
+    }
     Box(modifier = Modifier.fillMaxSize()) {
         ElovaireAnimatedContent(
             targetState = when {
@@ -3563,13 +3625,13 @@ private fun HomeScreen(
                     )
                     Spacer(modifier = Modifier.height(14.dp))
                     Text(
-                        text = "Indexing library",
+                        text = homeCopy.indexingTitle,
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium),
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "Songs and albums will show when indexing is done",
+                        text = homeCopy.indexingMessage,
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                         textAlign = TextAlign.Center,
@@ -3601,13 +3663,13 @@ private fun HomeScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             Text(
-                                text = "No music was found",
+                                text = homeCopy.emptyLibraryTitle,
                                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
                                 color = MaterialTheme.colorScheme.onSurface,
                                 textAlign = TextAlign.Center,
                             )
                             Text(
-                                text = "Songs and albums will show here as you add music to your device's default music folder",
+                                text = homeCopy.emptyLibraryMessage,
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                                 textAlign = TextAlign.Center,
@@ -3621,7 +3683,7 @@ private fun HomeScreen(
                     visible = revealModules,
                     enter = fadeIn(animationSpec = ElovaireMotion.fadeSlow()) +
                         slideInVertically(
-                            animationSpec = ElovaireMotion.offsetSoft(durationMillis = 420),
+                            animationSpec = ElovaireMotion.offsetSoft(durationMillis = 320),
                             initialOffsetY = { -it / 18 },
                         ),
                     exit = fadeOut(animationSpec = ElovaireMotion.fadeFast()),
@@ -3641,8 +3703,17 @@ private fun HomeScreen(
                         ),
                         verticalArrangement = Arrangement.spacedBy(20.dp),
                     ) {
-                        lastPlayedAlbum?.let { album ->
-                            item {
+                        when {
+                            lastPlayedPlaylist != null && lastPlayedPlaylistSongs.isNotEmpty() -> item {
+                                LastPlayedPlaylistModule(
+                                    playlist = lastPlayedPlaylist,
+                                    songs = lastPlayedPlaylistSongs,
+                                    onOpen = { onPlaylistSelected(lastPlayedPlaylist) },
+                                    onPlay = { onPlayPlaylist(lastPlayedPlaylist, lastPlayedPlaylistSongs) },
+                                )
+                            }
+                            lastPlayedAlbum != null -> item {
+                                val album = lastPlayedAlbum
                                 LastPlayedAlbumModule(
                                     album = album,
                                     onOpen = { origin -> onAlbumSelected(album, origin) },
@@ -3679,8 +3750,8 @@ private fun HomeScreen(
                         } else if (!isLibraryLoading) {
                             item {
                                 EmptyStateCard(
-                                    title = "No recent additions yet",
-                                    message = "Add albums to the device Music folder and the newest ones will appear here automatically",
+                                    title = homeCopy.noRecentAdditionsTitle,
+                                    message = homeCopy.noRecentAdditionsMessage,
                                 )
                             }
                         }
@@ -3698,14 +3769,14 @@ private fun HomeScreen(
                                     modifier = Modifier.size(15.dp),
                                 )
                                 Text(
-                                    text = "Recently played songs",
+                                    text = homeCopy.recentlyPlayedSongsTitle,
                                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium),
                                     color = MaterialTheme.colorScheme.onSurface,
                                 )
                             }
                             if (recentSongs.isEmpty()) {
                                 Text(
-                                    text = "Songs will show up here soon",
+                                    text = homeCopy.recentlyPlayedSongsEmpty,
                                     style = MaterialTheme.typography.bodyLarge,
                                     color = readableSecondaryTextColor(),
                                 )
@@ -3729,14 +3800,16 @@ private fun HomeScreen(
                         item {
                             FavoriteAlbumsModule(
                                 albums = favoriteAlbums.take(6),
+                                title = homeCopy.favoriteAlbumsTitle,
+                                subtitle = homeCopy.favoriteAlbumsSubtitle,
                                 onAlbumSelected = onAlbumSelected,
                             )
                         }
                     } else if (!isLibraryLoading) {
                         item {
                             EmptyStateCard(
-                                title = "No albums have been opened yet",
-                                message = "Open or play any album and it will appear here with its artwork front and center",
+                                title = homeCopy.noFavoriteAlbumsTitle,
+                                message = homeCopy.noFavoriteAlbumsMessage,
                             )
                         }
                     }
@@ -3874,6 +3947,132 @@ private fun LastPlayedAlbumModule(
                     Icon(
                         painter = painterResource(id = R.drawable.ic_lucide_play),
                         contentDescription = "Play album",
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LastPlayedPlaylistModule(
+    playlist: Playlist,
+    songs: List<Song>,
+    onOpen: () -> Unit,
+    onPlay: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val artworkSong = songs.firstOrNull()
+    val artwork = rememberArtworkBitmap(artworkSong?.artUri, size = 512)
+    val gradient = rememberArtworkGradient(artworkSong?.artUri).value
+    val totalDurationMs = remember(songs) { songs.sumOf { it.durationMs } }
+    val language = LocalAppLanguage.current
+    val metaItems = remember(songs, totalDurationMs, language) {
+        listOf(
+            localizedCountLabel(songs.size, "track", language),
+            formatPlaylistDuration(totalDurationMs),
+        )
+    }
+    val playBackground = gradient.first()
+        .copy(alpha = 0.24f)
+        .compositeOver(MaterialTheme.colorScheme.surface.copy(alpha = 0.78f))
+    val playTint = if (playBackground.luminance() > 0.56f) InkText else Color.White
+    val darkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val baseTint = if (darkTheme) Color(0xFF141414).copy(alpha = 0.82f) else Color.White.copy(alpha = 0.82f)
+    val playlistTint = gradient.first().copy(alpha = 0.46f)
+    val controlBaseTint = if (darkTheme) {
+        gradient.last().copy(alpha = 0.28f).compositeOver(Color.Black.copy(alpha = 0.16f))
+    } else {
+        gradient.last().copy(alpha = 0.22f).compositeOver(Color.White.copy(alpha = 0.16f))
+    }
+    val contentColor = if (controlBaseTint.luminance() > 0.42f) InkText else Color.White
+    val secondaryContentColor = contentColor.copy(alpha = 0.72f)
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(ElovaireRadii.module))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onOpen,
+            )
+            .background(baseTint)
+            .border(
+                width = 1.dp,
+                color = Color.White.copy(alpha = if (darkTheme) 0.05f else 0.04f),
+                shape = RoundedCornerShape(ElovaireRadii.module),
+            ),
+    ) {
+        artwork.value?.let { artworkBitmap ->
+            Image(
+                bitmap = artworkBitmap,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .matchParentSize()
+                    .blur(40.dp),
+                alpha = 0.88f,
+            )
+        }
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(playlistTint),
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ArtworkImage(
+                uri = artworkSong?.artUri,
+                title = playlist.name,
+                modifier = Modifier.size(88.dp),
+                cornerRadius = ElovaireRadii.artwork,
+                showArtworkGlow = true,
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = playlist.name,
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = contentColor,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = artworkSong?.artist.orEmpty(),
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                    color = secondaryContentColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = metaItems.joinToString("  •  "),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = secondaryContentColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Surface(
+                onClick = onPlay,
+                shape = CircleShape,
+                color = playBackground,
+                contentColor = playTint,
+            ) {
+                Box(
+                    modifier = Modifier.size(46.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_lucide_play),
+                        contentDescription = playLabel(language),
                         modifier = Modifier.size(20.dp),
                     )
                 }
@@ -5701,7 +5900,7 @@ private fun PlaylistNameInputField(
     val contentColor = MaterialTheme.colorScheme.onSurface
     val leadingIconAlpha by animateFloatAsState(
         targetValue = 0.5f,
-        animationSpec = ElovaireMotion.standardTween(durationMillis = 180),
+        animationSpec = ElovaireMotion.standardTween(durationMillis = 80),
         label = "playlist_name_icon_alpha",
     )
     OutlinedTextField(
@@ -6209,6 +6408,7 @@ private fun SearchScreen(
     onClearSearchHistory: () -> Unit,
 ) {
     val language = LocalAppLanguage.current
+    val copy = searchCopy(language)
     val listState = rememberElovaireLazyListState("search_screen")
     LaunchedEffect(scrollToTopRequestVersion) {
         if (scrollToTopRequestVersion > 0L) {
@@ -6218,6 +6418,7 @@ private fun SearchScreen(
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val trimmedQuery = query.trim()
+    val allSongsListState = rememberElovaireLazyListState("search_all_songs", trimmedQuery, searchSongSortMode)
     val isSearchUiActive = trimmedQuery.isNotBlank() || isSearchFieldFocused || showAllSongResults
     val collapseAllSongResults: () -> Unit = {
         onShowAllSongResultsChange(false)
@@ -6260,6 +6461,11 @@ private fun SearchScreen(
         showAllSongResults && trimmedQuery.isNotBlank() -> SearchContentMode.AllSongs
         trimmedQuery.isBlank() -> SearchContentMode.Discover
         else -> SearchContentMode.Results
+    }
+    LaunchedEffect(scrollToTopRequestVersion, contentMode) {
+        if (scrollToTopRequestVersion > 0L && contentMode == SearchContentMode.AllSongs) {
+            allSongsListState.animateScrollToItem(0)
+        }
     }
     val allMatchingSongs = remember(trimmedQuery, libraryState.songs, searchSongSortMode) {
         if (trimmedQuery.isBlank()) {
@@ -6333,99 +6539,168 @@ private fun SearchScreen(
         )
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        LazyColumn(
-            state = listState,
-            overscrollEffect = null,
+    val searchBar: @Composable () -> Unit = {
+        val searchBarContentColor = MaterialTheme.colorScheme.onSurface
+        OutlinedTextField(
+            value = query,
+            onValueChange = {
+                onQueryChange(it)
+                if (it.trim().isBlank()) {
+                    onShowAllSongResultsChange(false)
+                    onShowSearchSongSortOptionsChange(false)
+                }
+            },
             modifier = Modifier
-                .fillMaxSize()
-                .ensureSingleItemRubberBand(listState),
-            contentPadding = PaddingValues(
-                start = 20.dp,
-                top = topPadding + 8.dp,
-                end = 20.dp,
-                bottom = bottomPadding + if (isSearchUiActive) 84.dp else 12.dp,
-            ),
-            verticalArrangement = Arrangement.spacedBy(18.dp),
-        ) {
-            item {
-                val searchBarContentColor = MaterialTheme.colorScheme.onSurface
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = {
-                        onQueryChange(it)
-                        if (it.trim().isBlank()) {
-                            onShowAllSongResultsChange(false)
-                            onShowSearchSongSortOptionsChange(false)
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .onFocusChanged { focusState ->
-                            onSearchFieldFocusedChange(focusState.isFocused)
-                        },
-                    shape = RoundedCornerShape(ElovaireRadii.input),
-                    singleLine = true,
-                    placeholder = { Text(searchCopy(language).placeholder) },
-                    leadingIcon = {
+                .fillMaxWidth()
+                .onFocusChanged { focusState ->
+                    onSearchFieldFocusedChange(focusState.isFocused)
+                },
+            shape = RoundedCornerShape(ElovaireRadii.input),
+            singleLine = true,
+            placeholder = { Text(copy.placeholder) },
+            leadingIcon = {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_lucide_search),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp),
+                )
+            },
+            trailingIcon = {
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = isSearchUiActive,
+                    enter = fadeIn(animationSpec = ElovaireMotion.fadeMedium()) +
+                        scaleIn(
+                            animationSpec = ElovaireMotion.scaleSoft(),
+                            initialScale = 0.92f,
+                        ),
+                    exit = fadeOut(animationSpec = ElovaireMotion.fadeFast()) +
+                        scaleOut(
+                            animationSpec = ElovaireMotion.fadeFast(),
+                            targetScale = 0.92f,
+                        ),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(searchBarContentColor.copy(alpha = 0.1f))
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = resetSearchToMain,
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
                         Icon(
-                            painter = painterResource(id = R.drawable.ic_lucide_search),
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp),
+                            painter = painterResource(id = R.drawable.ic_lucide_x),
+                            contentDescription = copy.clearSearch,
+                            tint = searchBarContentColor.copy(alpha = 0.86f),
+                            modifier = Modifier.size(14.dp),
                         )
+                    }
+                }
+            },
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Color.Transparent,
+                unfocusedBorderColor = Color.Transparent,
+                focusedContainerColor = MaterialTheme.colorScheme.surface,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                cursorColor = MaterialTheme.colorScheme.onSurface,
+                focusedPlaceholderColor = searchBarContentColor.copy(alpha = 0.5f),
+                unfocusedPlaceholderColor = searchBarContentColor.copy(alpha = 0.5f),
+            ),
+        )
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (contentMode == SearchContentMode.AllSongs) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(
+                        start = 20.dp,
+                        top = topPadding + 8.dp,
+                        end = 20.dp,
+                    ),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                searchBar()
+                SearchSongsResultsHeader(
+                    resultCount = allMatchingSongs.size,
+                    selected = searchSongSortMode,
+                    expanded = showSearchSongSortOptions,
+                    onToggleExpanded = {
+                        onShowSearchSongSortOptionsChange(!showSearchSongSortOptions)
                     },
-                    trailingIcon = {
-                        androidx.compose.animation.AnimatedVisibility(
-                            visible = isSearchUiActive,
-                            enter = fadeIn(animationSpec = ElovaireMotion.fadeMedium()) +
-                                scaleIn(
-                                    animationSpec = ElovaireMotion.scaleSoft(),
-                                    initialScale = 0.92f,
-                                ),
-                            exit = fadeOut(animationSpec = ElovaireMotion.fadeFast()) +
-                                scaleOut(
-                                    animationSpec = ElovaireMotion.fadeFast(),
-                                    targetScale = 0.92f,
-                                ),
+                    onSelect = { selectedMode ->
+                        onSearchSongSortModeChange(selectedMode)
+                        onShowSearchSongSortOptionsChange(false)
+                    },
+                )
+                Box(modifier = Modifier.weight(1f)) {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        shape = RoundedCornerShape(ElovaireRadii.card),
+                        color = MaterialTheme.colorScheme.surface,
+                    ) {
+                        LazyColumn(
+                            state = allSongsListState,
+                            overscrollEffect = null,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .ensureSingleItemRubberBand(allSongsListState),
+                            contentPadding = PaddingValues(bottom = bottomPadding + 84.dp),
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(28.dp)
-                                    .clip(CircleShape)
-                                    .background(searchBarContentColor.copy(alpha = 0.1f))
-                                    .clickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = null,
-                                        onClick = resetSearchToMain,
-                                    ),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(
-                                    painter = painterResource(id = R.drawable.ic_lucide_x),
-                                    contentDescription = searchCopy(language).clearSearch,
-                                    tint = searchBarContentColor.copy(alpha = 0.86f),
-                                    modifier = Modifier.size(14.dp),
+                            itemsIndexed(
+                                items = allMatchingSongs,
+                                key = { _, song -> song.id },
+                            ) { index, song ->
+                                PlaylistSongRow(
+                                    song = song,
+                                    isFavorite = song.id in favoriteSongIds,
+                                    isCurrentSong = song.id == playbackState.currentSong?.id,
+                                    isPlaybackActive = playbackState.isPlaying,
+                                    onClick = {
+                                        onRememberArtistSearch(song)
+                                        onSongSelected(song, allMatchingSongs)
+                                    },
+                                    onToggleFavorite = { onToggleFavorite(song.id) },
+                                    showDivider = index != allMatchingSongs.lastIndex,
                                 )
                             }
                         }
-                    },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Color.Transparent,
-                        unfocusedBorderColor = Color.Transparent,
-                        focusedContainerColor = MaterialTheme.colorScheme.surface,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                        cursorColor = MaterialTheme.colorScheme.onSurface,
-                        focusedPlaceholderColor = searchBarContentColor.copy(alpha = 0.5f),
-                        unfocusedPlaceholderColor = searchBarContentColor.copy(alpha = 0.5f),
-                    ),
-                )
+                    }
+                    FastScrollbar(
+                        state = allSongsListState,
+                        topInset = 8.dp,
+                        bottomInset = bottomPadding + 48.dp,
+                    )
+                }
             }
-            item {
-                ElovaireAnimatedContent(
-                    targetState = contentMode,
-                    modifier = Modifier.fillMaxWidth(),
-                    transitionSpec = {
+        } else {
+            LazyColumn(
+                state = listState,
+                overscrollEffect = null,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .ensureSingleItemRubberBand(listState),
+                contentPadding = PaddingValues(
+                    start = 20.dp,
+                    top = topPadding + 8.dp,
+                    end = 20.dp,
+                    bottom = bottomPadding + if (isSearchUiActive) 84.dp else 12.dp,
+                ),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                item {
+                    searchBar()
+                }
+                item {
+                    ElovaireAnimatedContent(
+                        targetState = contentMode,
+                        modifier = Modifier.fillMaxWidth(),
+                        transitionSpec = {
                         when {
                             targetState == SearchContentMode.Discover -> {
                                 (fadeIn(
@@ -6465,176 +6740,141 @@ private fun SearchScreen(
 
                             else -> ElovaireMotion.softContentTransform()
                         }
-                    },
-                    label = "SearchScreenContent",
-                ) { mode ->
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(18.dp),
-                    ) {
-                        when (mode) {
-                            SearchContentMode.AllSongs -> {
-                                SearchSongsResultsHeader(
-                                    resultCount = allMatchingSongs.size,
-                                    selected = searchSongSortMode,
-                                    expanded = showSearchSongSortOptions,
-                                    onToggleExpanded = {
-                                        onShowSearchSongSortOptionsChange(!showSearchSongSortOptions)
-                                    },
-                                    onSelect = { selectedMode ->
-                                        onSearchSongSortModeChange(selectedMode)
-                                        onShowSearchSongSortOptionsChange(false)
-                                    },
-                                )
-                                Surface(
-                                    shape = RoundedCornerShape(ElovaireRadii.card),
-                                    color = MaterialTheme.colorScheme.surface,
-                                ) {
-                                    Column {
-                                        allMatchingSongs.forEachIndexed { index, song ->
-                                            PlaylistSongRow(
-                                                song = song,
-                                                isFavorite = song.id in favoriteSongIds,
-                                                isCurrentSong = song.id == playbackState.currentSong?.id,
-                                                isPlaybackActive = playbackState.isPlaying,
-                                                onClick = {
-                                                    onRememberArtistSearch(song)
-                                                    onSongSelected(song, allMatchingSongs)
-                                                },
-                                                onToggleFavorite = { onToggleFavorite(song.id) },
-                                                showDivider = index != allMatchingSongs.lastIndex,
-                                            )
-                                        }
-                                    }
+                        },
+                        label = "SearchScreenContent",
+                    ) { mode ->
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(18.dp),
+                        ) {
+                            when (mode) {
+                                SearchContentMode.AllSongs -> {
+                                    Spacer(modifier = Modifier)
                                 }
-                            }
 
-                            SearchContentMode.Discover -> {
-                                if (recentSearches.isNotEmpty()) {
-                                    SearchHistorySectionHeader(
-                                        showClearAction = true,
-                                        onClearHistory = onClearSearchHistory,
-                                    )
-                                    SearchHistoryListCard(
-                                        entries = recentSearches.take(6),
-                                        onAlbumSelected = { albumId ->
-                                            libraryState.albums.firstOrNull { it.id == albumId }?.let { album ->
-                                                onAlbumSelected(album, ExpandOrigin())
-                                            }
-                                        },
-                                        onArtistSelected = onArtistSelected,
-                                    )
-                                } else {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(top = 14.dp, bottom = 10.dp),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                                SearchContentMode.Discover -> {
+                                    if (recentSearches.isNotEmpty()) {
+                                        SearchHistorySectionHeader(
+                                            showClearAction = true,
+                                            onClearHistory = onClearSearchHistory,
+                                        )
+                                        SearchHistoryListCard(
+                                            entries = recentSearches.take(6),
+                                            onAlbumSelected = { albumId ->
+                                                libraryState.albums.firstOrNull { it.id == albumId }?.let { album ->
+                                                    onAlbumSelected(album, ExpandOrigin())
+                                                }
+                                            },
+                                            onArtistSelected = onArtistSelected,
+                                        )
+                                    } else {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(top = 14.dp, bottom = 10.dp),
+                                            contentAlignment = Alignment.Center,
                                         ) {
-                                            Text(
-                                                text = searchCopy(language).nothingSearchedTitle,
-                                                style = MaterialTheme.typography.titleLarge,
-                                                color = MaterialTheme.colorScheme.onSurface,
-                                            )
-                                            Text(
-                                                text = searchCopy(language).nothingSearchedMessage,
-                                                style = secondaryBodyTextStyle(),
-                                                color = readableSecondaryTextColor(),
-                                                textAlign = TextAlign.Center,
-                                                modifier = Modifier.fillMaxWidth(0.74f),
-                                            )
-                                        }
-                                    }
-                                }
-                                if (suggestedAlbums.isNotEmpty()) {
-                                    FavoriteAlbumsModule(
-                                        albums = suggestedAlbums,
-                                        title = searchCopy(language).suggestedAlbumsTitle,
-                                        subtitle = searchCopy(language).suggestedAlbumsSubtitle,
-                                        iconResId = R.drawable.ic_lucide_eye,
-                                        onAlbumSelected = { album, origin ->
-                                            onAlbumSelected(album, origin)
-                                        },
-                                    )
-                                }
-                            }
-
-                            SearchContentMode.Results -> {
-                                if (matchingArtists.isNotEmpty()) {
-                                    SectionTitleRow(
-                                        title = commonUiCopy(language).artists,
-                                        subtitle = searchCopy(language).matchingArtists(matchingArtists.size),
-                                    )
-                                    SearchHistoryListCard(
-                                        entries = matchingArtists,
-                                        onAlbumSelected = { albumId ->
-                                            libraryState.albums.firstOrNull { it.id == albumId }?.let { album ->
-                                                onAlbumSelected(album, ExpandOrigin())
+                                            Column(
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                            ) {
+                                                Text(
+                                                    text = searchCopy(language).nothingSearchedTitle,
+                                                    style = MaterialTheme.typography.titleLarge,
+                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                )
+                                                Text(
+                                                    text = searchCopy(language).nothingSearchedMessage,
+                                                    style = secondaryBodyTextStyle(),
+                                                    color = readableSecondaryTextColor(),
+                                                    textAlign = TextAlign.Center,
+                                                    modifier = Modifier.fillMaxWidth(0.74f),
+                                                )
                                             }
-                                        },
-                                        onArtistSelected = onArtistSelected,
-                                    )
-                                }
-
-                                if (matchingAlbums.isNotEmpty()) {
-                                    SectionTitleRow(
-                                        title = commonUiCopy(language).albums,
-                                        subtitle = searchCopy(language).matchingAlbums(matchingAlbums.size),
-                                    )
-                                    LazyRow(
-                                        overscrollEffect = null,
-                                        modifier = Modifier.horizontalGestureSafe(),
-                                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                                    ) {
-                                        items(matchingAlbums, key = { it.id }) { album ->
-                                            AlbumGridCard(
-                                                album = album,
-                                                modifier = Modifier.width(168.dp),
-                                                onOpen = { origin ->
-                                                    onRememberAlbumSearch(album)
-                                                    onAlbumSelected(album, origin)
-                                                },
-                                            )
                                         }
+                                    }
+                                    if (suggestedAlbums.isNotEmpty()) {
+                                        FavoriteAlbumsModule(
+                                            albums = suggestedAlbums,
+                                            title = searchCopy(language).suggestedAlbumsTitle,
+                                            subtitle = searchCopy(language).suggestedAlbumsSubtitle,
+                                            iconResId = R.drawable.ic_lucide_eye,
+                                            onAlbumSelected = { album, origin ->
+                                                onAlbumSelected(album, origin)
+                                            },
+                                        )
                                     }
                                 }
 
-                                if (matchingSongs.isNotEmpty()) {
-                                    SearchSongsPreviewHeader(
-                                        resultCount = allMatchingSongs.size,
-                                        showSeeAll = allMatchingSongs.size > matchingSongs.size,
-                                        onShowAll = {
-                                            focusManager.clearFocus(force = true)
-                                            keyboardController?.hide()
-                                            onSearchFieldFocusedChange(false)
-                                            onShowAllSongResultsChange(true)
-                                        },
-                                    )
-                                    Column {
-                                        matchingSongs.forEachIndexed { index, song ->
-                                            HomeRecentSongRow(
-                                                song = song,
-                                                isFavorite = song.id in favoriteSongIds,
-                                                onClick = {
-                                                    onRememberArtistSearch(song)
-                                                    onSongSelected(song, matchingSongs)
-                                                },
-                                                onToggleFavorite = { onToggleFavorite(song.id) },
-                                                showDivider = index != matchingSongs.lastIndex,
-                                            )
+                                SearchContentMode.Results -> {
+                                    if (matchingArtists.isNotEmpty()) {
+                                        SectionTitleRow(
+                                            title = commonUiCopy(language).artists,
+                                            subtitle = searchCopy(language).matchingArtists(matchingArtists.size),
+                                        )
+                                        SearchHistoryListCard(
+                                            entries = matchingArtists,
+                                            onAlbumSelected = { albumId ->
+                                                libraryState.albums.firstOrNull { it.id == albumId }?.let { album ->
+                                                    onAlbumSelected(album, ExpandOrigin())
+                                                }
+                                            },
+                                            onArtistSelected = onArtistSelected,
+                                        )
+                                    }
+
+                                    if (matchingAlbums.isNotEmpty()) {
+                                        ModuleCard {
+                                            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                                                SectionTitleRow(
+                                                    title = commonUiCopy(language).albums,
+                                                    subtitle = copy.matchingAlbums(matchingAlbums.size),
+                                                    compact = true,
+                                                )
+                                                ArtistAlbumGallery(
+                                                    albums = matchingAlbums,
+                                                    onAlbumSelected = { album, origin ->
+                                                        onRememberAlbumSearch(album)
+                                                        onAlbumSelected(album, origin)
+                                                    },
+                                                )
+                                            }
                                         }
                                     }
-                                }
 
-                                if (matchingAlbums.isEmpty() && matchingSongs.isEmpty() && matchingArtists.isEmpty()) {
-                                    EmptyStateCard(
-                                        title = searchCopy(language).noResultsTitle,
-                                        message = searchCopy(language).noResultsMessage(trimmedQuery),
-                                    )
+                                    if (matchingSongs.isNotEmpty()) {
+                                        SearchSongsPreviewHeader(
+                                            resultCount = allMatchingSongs.size,
+                                            showSeeAll = allMatchingSongs.size > matchingSongs.size,
+                                            onShowAll = {
+                                                focusManager.clearFocus(force = true)
+                                                keyboardController?.hide()
+                                                onSearchFieldFocusedChange(false)
+                                                onShowAllSongResultsChange(true)
+                                            },
+                                        )
+                                        Column {
+                                            matchingSongs.forEachIndexed { index, song ->
+                                                HomeRecentSongRow(
+                                                    song = song,
+                                                    isFavorite = song.id in favoriteSongIds,
+                                                    onClick = {
+                                                        onRememberArtistSearch(song)
+                                                        onSongSelected(song, matchingSongs)
+                                                    },
+                                                    onToggleFavorite = { onToggleFavorite(song.id) },
+                                                    showDivider = index != matchingSongs.lastIndex,
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    if (matchingAlbums.isEmpty() && matchingSongs.isEmpty() && matchingArtists.isEmpty()) {
+                                        EmptyStateCard(
+                                            title = searchCopy(language).noResultsTitle,
+                                            message = searchCopy(language).noResultsMessage(trimmedQuery),
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -6802,11 +7042,16 @@ private fun SearchSongsResultsHeader(
     val language = LocalAppLanguage.current
     val copy = searchCopy(language)
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        SectionTitleRow(
-            title = commonUiCopy(language).songs,
-            subtitle = copy.matchingSongs(resultCount),
-        )
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SectionTitleRow(
+                title = commonUiCopy(language).songs,
+                subtitle = copy.matchingSongs(resultCount),
+                modifier = Modifier.weight(1f),
+            )
             Surface(
                 onClick = onToggleExpanded,
                 shape = RoundedCornerShape(ElovaireRadii.pill),
@@ -6829,38 +7074,38 @@ private fun SearchSongsResultsHeader(
                     )
                 }
             }
-            AnimatedVisibility(visible = expanded) {
-                Surface(
-                    shape = RoundedCornerShape(ElovaireRadii.card),
-                    color = MaterialTheme.colorScheme.surface,
-                ) {
-                    Column {
-                        SearchSongSortMode.entries.forEachIndexed { index, mode ->
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = null,
-                                        onClick = { onSelect(mode) },
-                                    )
-                                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                            ) {
-                                Text(
-                                    text = searchSortModeLabel(mode, language),
-                                    style = MaterialTheme.typography.bodyLarge.copy(
-                                        fontWeight = if (mode == selected) FontWeight.SemiBold else FontWeight.Normal,
-                                    ),
-                                    color = if (mode == selected) {
-                                        MaterialTheme.colorScheme.onSurface
-                                    } else {
-                                        readableSecondaryTextColor()
-                                    },
+        }
+        AnimatedVisibility(visible = expanded) {
+            Surface(
+                shape = RoundedCornerShape(ElovaireRadii.card),
+                color = MaterialTheme.colorScheme.surface,
+            ) {
+                Column {
+                    SearchSongSortMode.entries.forEachIndexed { index, mode ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = { onSelect(mode) },
                                 )
-                            }
-                            if (index != SearchSongSortMode.entries.lastIndex) {
-                                DividerLine()
-                            }
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                        ) {
+                            Text(
+                                text = searchSortModeLabel(mode, language),
+                                style = MaterialTheme.typography.bodyLarge.copy(
+                                    fontWeight = if (mode == selected) FontWeight.SemiBold else FontWeight.Normal,
+                                ),
+                                color = if (mode == selected) {
+                                    MaterialTheme.colorScheme.onSurface
+                                } else {
+                                    readableSecondaryTextColor()
+                                },
+                            )
+                        }
+                        if (index != SearchSongSortMode.entries.lastIndex) {
+                            DividerLine()
                         }
                     }
                 }
@@ -7112,8 +7357,12 @@ private fun SectionTitleRow(
     title: String,
     subtitle: String? = null,
     compact: Boolean = false,
+    modifier: Modifier = Modifier,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 6.dp)) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 6.dp),
+    ) {
         Text(
             text = title,
             style = if (compact) {
@@ -7767,8 +8016,8 @@ private fun HomeRecentSongRow(
                 )
                 androidx.compose.animation.AnimatedVisibility(
                     visible = isCurrentSong && isPlaybackActive,
-                    enter = fadeIn(animationSpec = tween(160)),
-                    exit = fadeOut(animationSpec = tween(160)),
+                    enter = fadeIn(animationSpec = tween(60)),
+                    exit = fadeOut(animationSpec = tween(60)),
                 ) {
                     PlaybackActiveArtworkOverlay(
                         uri = song.artUri,
@@ -8291,7 +8540,7 @@ private fun AlbumScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
     ) {
-        val listState = rememberElovaireLazyListState(album.id, "album_detail")
+        val listState = rememberLazyListState()
         LazyColumn(
             state = listState,
             overscrollEffect = null,
@@ -9322,7 +9571,7 @@ private fun PlaylistSongRow(
                 exit = fadeOut(animationSpec = ElovaireMotion.fadeFast()) +
                     slideOutHorizontally(
                         targetOffsetX = { -it / 3 },
-                        animationSpec = ElovaireMotion.offsetSoft(durationMillis = 180),
+                        animationSpec = ElovaireMotion.offsetSoft(durationMillis = 80),
                     ),
                 label = "playlist_song_reorder_handle",
             ) {
@@ -9387,8 +9636,8 @@ private fun PlaylistSongRow(
                 )
                 androidx.compose.animation.AnimatedVisibility(
                     visible = isCurrentSong && isPlaybackActive,
-                    enter = fadeIn(animationSpec = tween(160)),
-                    exit = fadeOut(animationSpec = tween(160)),
+                    enter = fadeIn(animationSpec = tween(60)),
+                    exit = fadeOut(animationSpec = tween(60)),
                 ) {
                     PlaybackActiveArtworkOverlay(
                         uri = song.artUri,
@@ -9792,13 +10041,13 @@ private fun AddSongsToPlaylistOverlay(
                         val forward = targetState > initialState
                         (fadeIn(
                             animationSpec = tween(
-                                durationMillis = 220,
+                                durationMillis = 120,
                                 easing = LinearOutSlowInEasing,
                             ),
                             initialAlpha = 0.86f,
                         ) + slideInHorizontally(
                             animationSpec = tween(
-                                durationMillis = 260,
+                                durationMillis = 160,
                                 easing = FastOutSlowInEasing,
                             ),
                             initialOffsetX = { fullWidth ->
@@ -9807,13 +10056,13 @@ private fun AddSongsToPlaylistOverlay(
                             },
                         )) togetherWith (fadeOut(
                             animationSpec = tween(
-                                durationMillis = 150,
+                                durationMillis = 50,
                                 easing = FastOutLinearInEasing,
                             ),
                             targetAlpha = 0.9f,
                         ) + slideOutHorizontally(
                             animationSpec = tween(
-                                durationMillis = 210,
+                                durationMillis = 110,
                                 easing = FastOutSlowInEasing,
                             ),
                             targetOffsetX = { fullWidth ->
@@ -10504,13 +10753,13 @@ private fun NowPlayingScreen(
     }
     val expandSettleAnimationSpec = remember {
         tween<Float>(
-            durationMillis = 460,
+            durationMillis = 360,
             easing = LinearOutSlowInEasing,
         )
     }
     val collapseSettleAnimationSpec = remember {
         tween<Float>(
-            durationMillis = 360,
+            durationMillis = 260,
             easing = FastOutSlowInEasing,
         )
     }
@@ -10534,22 +10783,22 @@ private fun NowPlayingScreen(
     }
     val tintColor by animateColorAsState(
         targetValue = adaptivePalette.tintColor,
-        animationSpec = tween(420, easing = LinearOutSlowInEasing),
+        animationSpec = tween(320, easing = LinearOutSlowInEasing),
         label = "player_tint_color",
     )
     val baseSurface by animateColorAsState(
         targetValue = adaptivePalette.backdropBase,
-        animationSpec = tween(420, easing = LinearOutSlowInEasing),
+        animationSpec = tween(320, easing = LinearOutSlowInEasing),
         label = "player_backdrop_base",
     )
     val contentColor by animateColorAsState(
         targetValue = adaptivePalette.contentColor,
-        animationSpec = tween(360, easing = LinearOutSlowInEasing),
+        animationSpec = tween(260, easing = LinearOutSlowInEasing),
         label = "player_content_color",
     )
     val secondaryContentColor by animateColorAsState(
         targetValue = adaptivePalette.secondaryContentColor,
-        animationSpec = tween(360, easing = LinearOutSlowInEasing),
+        animationSpec = tween(260, easing = LinearOutSlowInEasing),
         label = "player_secondary_content_color",
     )
     val currentSong = liveCurrentSong
@@ -10899,12 +11148,12 @@ private fun NowPlayingScreen(
             val spaciousnessEnabled = eqSettings.spaciousness > 0.02f
             val favoriteAlpha by animateFloatAsState(
                 targetValue = if (showQueueSheet) 0f else 1f,
-                animationSpec = tween(180),
+                animationSpec = tween(80),
                 label = "queue_favorite_alpha",
             )
             val transportAlpha by animateFloatAsState(
                 targetValue = if (showQueueSheet) 0f else 1f,
-                animationSpec = tween(180),
+                animationSpec = tween(80),
                 label = "queue_transport_alpha",
             )
             val animatedArtworkCornerRadius by animateDpAsState(
@@ -11702,7 +11951,7 @@ private fun QueueSheet(
     val footerExpanded = showSpaciousnessSlider || statusText != null
     val footerHeight by animateDpAsState(
         targetValue = if (footerExpanded) 90.dp else 60.dp,
-        animationSpec = tween(220, easing = FastOutSlowInEasing),
+        animationSpec = tween(120, easing = FastOutSlowInEasing),
         label = "queue_footer_height",
     )
     LaunchedEffect(spaciousnessEnabled) {
@@ -12023,8 +12272,8 @@ private fun QueueSongRow(
                 )
                 androidx.compose.animation.AnimatedVisibility(
                     visible = active && isPlaying,
-                    enter = fadeIn(animationSpec = tween(160)),
-                    exit = fadeOut(animationSpec = tween(160)),
+                    enter = fadeIn(animationSpec = tween(60)),
+                    exit = fadeOut(animationSpec = tween(60)),
                 ) {
                     PlaybackActiveArtworkOverlay(
                         uri = song.artUri,
@@ -12127,7 +12376,7 @@ private fun QueueSongOverflowMenuButton(
                 painter = painterResource(id = R.drawable.ic_lucide_ellipsis_vertical),
                 contentDescription = "Queue song options",
                 tint = tint.copy(alpha = 0.82f),
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(OverflowMenuIconSize),
             )
         }
 
@@ -12135,7 +12384,7 @@ private fun QueueSongOverflowMenuButton(
             DropdownMenu(
                 expanded = true,
                 onDismissRequest = { expanded = false },
-                offset = DpOffset(x = 0.dp, y = (-10).dp),
+                offset = OverflowMenuAnchorOffset,
                 containerColor = Color.Transparent,
                 shadowElevation = 0.dp,
                 tonalElevation = 0.dp,
@@ -12472,6 +12721,7 @@ private fun AlbumHeaderPlayButton(
     backgroundColor: Color,
     onClick: () -> Unit,
 ) {
+    val language = LocalAppLanguage.current
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
@@ -12499,8 +12749,11 @@ private fun AlbumHeaderPlayButton(
                 modifier = Modifier.size(18.dp),
             )
             Text(
-                text = "Play",
-                style = MaterialTheme.typography.titleLarge.copy(fontSize = elovaireScaledSp(16f)),
+                text = playLabel(language),
+                style = MaterialTheme.typography.titleLarge.copy(
+                    fontSize = elovaireScaledSp(16f),
+                    fontWeight = FontWeight.SemiBold,
+                ),
                 color = tint,
             )
         }
@@ -12605,6 +12858,9 @@ private fun InlineFavoriteSongButton(
     }
 }
 
+private val OverflowMenuIconSize = 21.6.dp
+private val OverflowMenuAnchorOffset = DpOffset(x = 4.dp, y = (-8).dp)
+
 @Composable
 private fun SongOverflowMenuButton(
     song: Song,
@@ -12653,7 +12909,7 @@ private fun SongOverflowMenuButton(
                 painter = painterResource(id = R.drawable.ic_lucide_ellipsis_vertical),
                 contentDescription = "Song options",
                 tint = tint.copy(alpha = 0.82f),
-                modifier = Modifier.size(21.6.dp),
+                modifier = Modifier.size(OverflowMenuIconSize),
             )
         }
 
@@ -12661,7 +12917,7 @@ private fun SongOverflowMenuButton(
             DropdownMenu(
                 expanded = true,
                 onDismissRequest = { expanded = false },
-                offset = DpOffset(x = 0.dp, y = (-10).dp),
+                offset = OverflowMenuAnchorOffset,
                 containerColor = Color.Transparent,
                 shadowElevation = 0.dp,
                 tonalElevation = 0.dp,
@@ -13955,6 +14211,447 @@ private fun queueTitle(language: AppLanguage): String = when (language) {
     AppLanguage.Serbian -> "Ред"
     AppLanguage.Thai -> "คิว"
     AppLanguage.English -> "Queue"
+}
+
+private fun playLabel(language: AppLanguage): String = when (language) {
+    AppLanguage.Polish -> "Odtwórz"
+    AppLanguage.ChineseSimplified -> "播放"
+    AppLanguage.Croatian -> "Reproduciraj"
+    AppLanguage.Czech -> "Přehrát"
+    AppLanguage.Danish -> "Afspil"
+    AppLanguage.Dutch -> "Afspelen"
+    AppLanguage.Estonian -> "Esita"
+    AppLanguage.French -> "Lire"
+    AppLanguage.German -> "Abspielen"
+    AppLanguage.Greek -> "Αναπαραγωγή"
+    AppLanguage.Hindi -> "चलाएँ"
+    AppLanguage.Hungarian -> "Lejátszás"
+    AppLanguage.Italian -> "Riproduci"
+    AppLanguage.Japanese -> "再生"
+    AppLanguage.Latin -> "Cane"
+    AppLanguage.Latvian -> "Atskaņot"
+    AppLanguage.Lithuanian -> "Leisti"
+    AppLanguage.Macedonian -> "Пушти"
+    AppLanguage.Norwegian -> "Spill av"
+    AppLanguage.Portuguese -> "Reproduzir"
+    AppLanguage.Russian -> "Играть"
+    AppLanguage.Serbian -> "Пусти"
+    AppLanguage.Spanish -> "Reproducir"
+    AppLanguage.Swedish -> "Spela"
+    AppLanguage.Thai -> "เล่น"
+    AppLanguage.Ukrainian -> "Відтворити"
+    AppLanguage.Albanian -> "Luaj"
+    AppLanguage.English -> "Play"
+}
+
+private data class HomeUiCopy(
+    val indexingTitle: String,
+    val indexingMessage: String,
+    val emptyLibraryTitle: String,
+    val emptyLibraryMessage: String,
+    val noRecentAdditionsTitle: String,
+    val noRecentAdditionsMessage: String,
+    val recentlyPlayedSongsTitle: String,
+    val recentlyPlayedSongsEmpty: String,
+    val favoriteAlbumsTitle: String,
+    val favoriteAlbumsSubtitle: String,
+    val noFavoriteAlbumsTitle: String,
+    val noFavoriteAlbumsMessage: String,
+)
+
+private fun homeCopy(language: AppLanguage): HomeUiCopy = when (language) {
+    AppLanguage.Polish -> HomeUiCopy(
+        indexingTitle = "Trwa indeksowanie biblioteki",
+        indexingMessage = "Utwory i albumy pojawią się po zakończeniu indeksowania",
+        emptyLibraryTitle = "Nie znaleziono muzyki",
+        emptyLibraryMessage = "Utwory i albumy pojawią się tutaj, gdy dodasz muzykę do domyślnego folderu Muzyka na urządzeniu",
+        noRecentAdditionsTitle = "Brak ostatnio dodanych",
+        noRecentAdditionsMessage = "Dodaj albumy do folderu Muzyka na urządzeniu, a najnowsze pojawią się tutaj automatycznie",
+        recentlyPlayedSongsTitle = "Ostatnio odtwarzane utwory",
+        recentlyPlayedSongsEmpty = "Utwory pojawią się tutaj wkrótce",
+        favoriteAlbumsTitle = "Twoje ulubione albumy",
+        favoriteAlbumsSubtitle = "Muzyka, do której często wracasz",
+        noFavoriteAlbumsTitle = "Nie otwarto jeszcze żadnych albumów",
+        noFavoriteAlbumsMessage = "Otwórz lub odtwórz dowolny album, a pojawi się tutaj z okładką na pierwszym planie",
+    )
+    AppLanguage.ChineseSimplified -> HomeUiCopy(
+        indexingTitle = "正在索引媒体库",
+        indexingMessage = "索引完成后，这里会显示歌曲和专辑",
+        emptyLibraryTitle = "未找到音乐",
+        emptyLibraryMessage = "当你将音乐添加到设备默认的 Music 文件夹后，这里会显示歌曲和专辑",
+        noRecentAdditionsTitle = "还没有最近添加内容",
+        noRecentAdditionsMessage = "将专辑添加到设备的 Music 文件夹后，最新内容会自动显示在这里",
+        recentlyPlayedSongsTitle = "最近播放的歌曲",
+        recentlyPlayedSongsEmpty = "歌曲很快就会显示在这里",
+        favoriteAlbumsTitle = "你喜爱的专辑",
+        favoriteAlbumsSubtitle = "你会经常回听的音乐",
+        noFavoriteAlbumsTitle = "还没有打开过任何专辑",
+        noFavoriteAlbumsMessage = "打开或播放任意专辑后，它就会带着封面显示在这里",
+    )
+    AppLanguage.Croatian -> HomeUiCopy(
+        indexingTitle = "Indeksiranje biblioteke",
+        indexingMessage = "Pjesme i albumi pojavit će se kada indeksiranje završi",
+        emptyLibraryTitle = "Nije pronađena glazba",
+        emptyLibraryMessage = "Pjesme i albumi pojavit će se ovdje kada dodate glazbu u zadanu mapu Music na uređaju",
+        noRecentAdditionsTitle = "Nema nedavnih dodataka",
+        noRecentAdditionsMessage = "Dodajte albume u mapu Music na uređaju i najnoviji će se ovdje automatski pojaviti",
+        recentlyPlayedSongsTitle = "Nedavno reproducirane pjesme",
+        recentlyPlayedSongsEmpty = "Pjesme će se ovdje uskoro pojaviti",
+        favoriteAlbumsTitle = "Vaši omiljeni albumi",
+        favoriteAlbumsSubtitle = "Glazba kojoj se često vraćate",
+        noFavoriteAlbumsTitle = "Još nijedan album nije otvoren",
+        noFavoriteAlbumsMessage = "Otvorite ili reproducirajte bilo koji album i ovdje će se pojaviti s naslovnicom u prvom planu",
+    )
+    AppLanguage.Czech -> HomeUiCopy(
+        indexingTitle = "Indexuje se knihovna",
+        indexingMessage = "Skladby a alba se zobrazí po dokončení indexace",
+        emptyLibraryTitle = "Nebyla nalezena žádná hudba",
+        emptyLibraryMessage = "Skladby a alba se zde zobrazí, jakmile přidáte hudbu do výchozí složky Music v zařízení",
+        noRecentAdditionsTitle = "Zatím nic nového",
+        noRecentAdditionsMessage = "Přidejte alba do složky Music v zařízení a nejnovější se zde objeví automaticky",
+        recentlyPlayedSongsTitle = "Nedávno přehrávané skladby",
+        recentlyPlayedSongsEmpty = "Skladby se zde brzy objeví",
+        favoriteAlbumsTitle = "Vaše oblíbená alba",
+        favoriteAlbumsSubtitle = "Hudba, ke které se často vracíte",
+        noFavoriteAlbumsTitle = "Zatím nebyla otevřena žádná alba",
+        noFavoriteAlbumsMessage = "Otevřete nebo přehrajte libovolné album a zobrazí se zde s obalem v popředí",
+    )
+    AppLanguage.Danish -> HomeUiCopy(
+        indexingTitle = "Indekserer bibliotek",
+        indexingMessage = "Sange og album vises, når indekseringen er færdig",
+        emptyLibraryTitle = "Ingen musik fundet",
+        emptyLibraryMessage = "Sange og album vises her, når du føjer musik til enhedens standardmappe Music",
+        noRecentAdditionsTitle = "Ingen nylige tilføjelser endnu",
+        noRecentAdditionsMessage = "Tilføj album til enhedens Music-mappe, så vises de nyeste automatisk her",
+        recentlyPlayedSongsTitle = "Nyligt afspillede sange",
+        recentlyPlayedSongsEmpty = "Sange vises snart her",
+        favoriteAlbumsTitle = "Dine favoritalbum",
+        favoriteAlbumsSubtitle = "Musik du ofte vender tilbage til",
+        noFavoriteAlbumsTitle = "Ingen album er åbnet endnu",
+        noFavoriteAlbumsMessage = "Åbn eller afspil et album, så vises det her med omslaget i centrum",
+    )
+    AppLanguage.Dutch -> HomeUiCopy(
+        indexingTitle = "Bibliotheek wordt geïndexeerd",
+        indexingMessage = "Nummers en albums verschijnen zodra het indexeren klaar is",
+        emptyLibraryTitle = "Geen muziek gevonden",
+        emptyLibraryMessage = "Nummers en albums verschijnen hier zodra je muziek toevoegt aan de standaardmap Music op je apparaat",
+        noRecentAdditionsTitle = "Nog geen recente toevoegingen",
+        noRecentAdditionsMessage = "Voeg albums toe aan de Music-map van je apparaat en de nieuwste verschijnen hier automatisch",
+        recentlyPlayedSongsTitle = "Recent afgespeelde nummers",
+        recentlyPlayedSongsEmpty = "Nummers verschijnen hier binnenkort",
+        favoriteAlbumsTitle = "Je favoriete albums",
+        favoriteAlbumsSubtitle = "Muziek waar je vaak naar terugkeert",
+        noFavoriteAlbumsTitle = "Er zijn nog geen albums geopend",
+        noFavoriteAlbumsMessage = "Open of speel een album af en het verschijnt hier met de hoes prominent in beeld",
+    )
+    AppLanguage.Estonian -> HomeUiCopy(
+        indexingTitle = "Teeki indekseeritakse",
+        indexingMessage = "Lood ja albumid kuvatakse pärast indekseerimise lõppu",
+        emptyLibraryTitle = "Muusikat ei leitud",
+        emptyLibraryMessage = "Lood ja albumid ilmuvad siia, kui lisate muusikat seadme vaikimisi Music kausta",
+        noRecentAdditionsTitle = "Hiljutisi lisamisi veel pole",
+        noRecentAdditionsMessage = "Lisage albumid seadme Music kausta ja uusimad ilmuvad siia automaatselt",
+        recentlyPlayedSongsTitle = "Hiljuti esitatud lood",
+        recentlyPlayedSongsEmpty = "Lood ilmuvad siia varsti",
+        favoriteAlbumsTitle = "Sinu lemmikalbumid",
+        favoriteAlbumsSubtitle = "Muusika, mille juurde tihti tagasi pöördud",
+        noFavoriteAlbumsTitle = "Ühtegi albumit pole veel avatud",
+        noFavoriteAlbumsMessage = "Ava või esita mõni album ning see ilmub siia koos esikaanega",
+    )
+    AppLanguage.French -> HomeUiCopy(
+        indexingTitle = "Indexation de la bibliothèque",
+        indexingMessage = "Les morceaux et les albums apparaîtront une fois l’indexation terminée",
+        emptyLibraryTitle = "Aucune musique trouvée",
+        emptyLibraryMessage = "Les morceaux et les albums apparaîtront ici dès que vous ajouterez de la musique au dossier Music par défaut de l’appareil",
+        noRecentAdditionsTitle = "Aucun ajout récent",
+        noRecentAdditionsMessage = "Ajoutez des albums au dossier Music de l’appareil et les plus récents apparaîtront ici automatiquement",
+        recentlyPlayedSongsTitle = "Morceaux récemment lus",
+        recentlyPlayedSongsEmpty = "Les morceaux apparaîtront bientôt ici",
+        favoriteAlbumsTitle = "Vos albums favoris",
+        favoriteAlbumsSubtitle = "La musique vers laquelle vous revenez souvent",
+        noFavoriteAlbumsTitle = "Aucun album n’a encore été ouvert",
+        noFavoriteAlbumsMessage = "Ouvrez ou lisez un album et il apparaîtra ici avec sa pochette bien en évidence",
+    )
+    AppLanguage.German -> HomeUiCopy(
+        indexingTitle = "Bibliothek wird indiziert",
+        indexingMessage = "Songs und Alben erscheinen nach Abschluss der Indizierung",
+        emptyLibraryTitle = "Keine Musik gefunden",
+        emptyLibraryMessage = "Songs und Alben erscheinen hier, sobald du Musik zum Standardordner Music auf deinem Gerät hinzufügst",
+        noRecentAdditionsTitle = "Noch keine Neuheiten",
+        noRecentAdditionsMessage = "Füge Alben zum Music-Ordner deines Geräts hinzu, dann erscheinen die neuesten hier automatisch",
+        recentlyPlayedSongsTitle = "Zuletzt gespielte Songs",
+        recentlyPlayedSongsEmpty = "Songs werden hier bald angezeigt",
+        favoriteAlbumsTitle = "Deine Lieblingsalben",
+        favoriteAlbumsSubtitle = "Musik, zu der du oft zurückkehrst",
+        noFavoriteAlbumsTitle = "Noch keine Alben geöffnet",
+        noFavoriteAlbumsMessage = "Öffne oder spiele ein Album ab und es erscheint hier mit dem Cover im Mittelpunkt",
+    )
+    AppLanguage.Greek -> HomeUiCopy(
+        indexingTitle = "Γίνεται ευρετηρίαση της βιβλιοθήκης",
+        indexingMessage = "Τα τραγούδια και τα άλμπουμ θα εμφανιστούν όταν ολοκληρωθεί η ευρετηρίαση",
+        emptyLibraryTitle = "Δεν βρέθηκε μουσική",
+        emptyLibraryMessage = "Τα τραγούδια και τα άλμπουμ θα εμφανιστούν εδώ όταν προσθέσετε μουσική στον προεπιλεγμένο φάκελο Music της συσκευής",
+        noRecentAdditionsTitle = "Δεν υπάρχουν πρόσφατες προσθήκες",
+        noRecentAdditionsMessage = "Προσθέστε άλμπουμ στον φάκελο Music της συσκευής και τα νεότερα θα εμφανίζονται εδώ αυτόματα",
+        recentlyPlayedSongsTitle = "Τραγούδια που παίχτηκαν πρόσφατα",
+        recentlyPlayedSongsEmpty = "Τα τραγούδια θα εμφανιστούν εδώ σύντομα",
+        favoriteAlbumsTitle = "Τα αγαπημένα σας άλμπουμ",
+        favoriteAlbumsSubtitle = "Μουσική στην οποία επιστρέφετε συχνά",
+        noFavoriteAlbumsTitle = "Δεν έχει ανοίξει ακόμη κανένα άλμπουμ",
+        noFavoriteAlbumsMessage = "Ανοίξτε ή αναπαράγετε οποιοδήποτε άλμπουμ και θα εμφανιστεί εδώ με το εξώφυλλό του μπροστά",
+    )
+    AppLanguage.Hindi -> HomeUiCopy(
+        indexingTitle = "लाइब्रेरी इंडेक्स की जा रही है",
+        indexingMessage = "इंडेक्स पूरा होने पर गाने और एल्बम यहाँ दिखेंगे",
+        emptyLibraryTitle = "कोई संगीत नहीं मिला",
+        emptyLibraryMessage = "जब आप अपने डिवाइस के डिफ़ॉल्ट Music फ़ोल्डर में संगीत जोड़ेंगे, तब गाने और एल्बम यहाँ दिखेंगे",
+        noRecentAdditionsTitle = "अभी तक कोई हालिया जोड़ नहीं",
+        noRecentAdditionsMessage = "डिवाइस के Music फ़ोल्डर में एल्बम जोड़ें और नए एल्बम यहाँ अपने आप दिखेंगे",
+        recentlyPlayedSongsTitle = "हाल ही में चलाए गए गाने",
+        recentlyPlayedSongsEmpty = "गाने यहाँ जल्द दिखाई देंगे",
+        favoriteAlbumsTitle = "आपके पसंदीदा एल्बम",
+        favoriteAlbumsSubtitle = "वह संगीत जिसे आप बार-बार सुनते हैं",
+        noFavoriteAlbumsTitle = "अभी तक कोई एल्बम नहीं खोला गया",
+        noFavoriteAlbumsMessage = "कोई भी एल्बम खोलें या चलाएँ, वह यहाँ अपने कवर के साथ दिखाई देगा",
+    )
+    AppLanguage.Hungarian -> HomeUiCopy(
+        indexingTitle = "A könyvtár indexelése folyamatban",
+        indexingMessage = "A dalok és albumok az indexelés befejezése után jelennek meg",
+        emptyLibraryTitle = "Nem található zene",
+        emptyLibraryMessage = "A dalok és albumok itt jelennek meg, amikor zenét ad hozzá az eszköz alapértelmezett Music mappájához",
+        noRecentAdditionsTitle = "Még nincsenek friss hozzáadások",
+        noRecentAdditionsMessage = "Adjon albumokat az eszköz Music mappájához, és a legújabbak automatikusan itt jelennek meg",
+        recentlyPlayedSongsTitle = "Nemrég lejátszott dalok",
+        recentlyPlayedSongsEmpty = "A dalok hamarosan itt jelennek meg",
+        favoriteAlbumsTitle = "Kedvenc albumai",
+        favoriteAlbumsSubtitle = "Zene, amelyhez gyakran visszatér",
+        noFavoriteAlbumsTitle = "Még nem nyitott meg albumot",
+        noFavoriteAlbumsMessage = "Nyisson meg vagy játsszon le egy albumot, és az itt jelenik meg a borítójával középpontban",
+    )
+    AppLanguage.Italian -> HomeUiCopy(
+        indexingTitle = "Indicizzazione libreria in corso",
+        indexingMessage = "Brani e album appariranno quando l’indicizzazione sarà completata",
+        emptyLibraryTitle = "Nessuna musica trovata",
+        emptyLibraryMessage = "Brani e album appariranno qui quando aggiungerai musica alla cartella Music predefinita del dispositivo",
+        noRecentAdditionsTitle = "Nessuna aggiunta recente",
+        noRecentAdditionsMessage = "Aggiungi album alla cartella Music del dispositivo e i più recenti appariranno qui automaticamente",
+        recentlyPlayedSongsTitle = "Brani ascoltati di recente",
+        recentlyPlayedSongsEmpty = "I brani appariranno qui presto",
+        favoriteAlbumsTitle = "I tuoi album preferiti",
+        favoriteAlbumsSubtitle = "La musica a cui torni spesso",
+        noFavoriteAlbumsTitle = "Nessun album è stato ancora aperto",
+        noFavoriteAlbumsMessage = "Apri o riproduci un album e apparirà qui con la copertina in primo piano",
+    )
+    AppLanguage.Japanese -> HomeUiCopy(
+        indexingTitle = "ライブラリを索引中です",
+        indexingMessage = "索引が完了すると、曲とアルバムがここに表示されます",
+        emptyLibraryTitle = "音楽が見つかりませんでした",
+        emptyLibraryMessage = "デバイスの既定の Music フォルダに音楽を追加すると、曲とアルバムがここに表示されます",
+        noRecentAdditionsTitle = "最近追加された項目はまだありません",
+        noRecentAdditionsMessage = "デバイスの Music フォルダにアルバムを追加すると、最新のものがここに自動で表示されます",
+        recentlyPlayedSongsTitle = "最近再生した曲",
+        recentlyPlayedSongsEmpty = "曲はまもなくここに表示されます",
+        favoriteAlbumsTitle = "お気に入りのアルバム",
+        favoriteAlbumsSubtitle = "何度も聴きたくなる音楽",
+        noFavoriteAlbumsTitle = "まだアルバムは開かれていません",
+        noFavoriteAlbumsMessage = "アルバムを開くか再生すると、そのアートワークとともにここに表示されます",
+    )
+    AppLanguage.Latin -> HomeUiCopy(
+        indexingTitle = "Bibliotheca indicatur",
+        indexingMessage = "Cantus et albumina hic apparebunt post indicem confectum",
+        emptyLibraryTitle = "Nulla musica inventa est",
+        emptyLibraryMessage = "Cantus et albumina hic apparebunt cum musicam in folder Music praeordinatum addideris",
+        noRecentAdditionsTitle = "Nullae recentes additiones",
+        noRecentAdditionsMessage = "Albumina ad folder Music adde et novissima hic sponte apparebunt",
+        recentlyPlayedSongsTitle = "Cantus nuper acti",
+        recentlyPlayedSongsEmpty = "Cantus hic mox apparebunt",
+        favoriteAlbumsTitle = "Albumina tua dilecta",
+        favoriteAlbumsSubtitle = "Musica ad quam saepe redis",
+        noFavoriteAlbumsTitle = "Nullum album adhuc apertum est",
+        noFavoriteAlbumsMessage = "Aperi vel cane quodlibet album et hic apparebit cum imagine principali",
+    )
+    AppLanguage.Latvian -> HomeUiCopy(
+        indexingTitle = "Bibliotēka tiek indeksēta",
+        indexingMessage = "Dziesmas un albumi parādīsies, kad indeksēšana būs pabeigta",
+        emptyLibraryTitle = "Mūzika netika atrasta",
+        emptyLibraryMessage = "Dziesmas un albumi parādīsies šeit, kad pievienosiet mūziku ierīces noklusējuma Music mapei",
+        noRecentAdditionsTitle = "Vēl nav nesenu papildinājumu",
+        noRecentAdditionsMessage = "Pievienojiet albumus ierīces Music mapei, un jaunākie šeit parādīsies automātiski",
+        recentlyPlayedSongsTitle = "Nesen atskaņotās dziesmas",
+        recentlyPlayedSongsEmpty = "Dziesmas drīz parādīsies šeit",
+        favoriteAlbumsTitle = "Jūsu iecienītie albumi",
+        favoriteAlbumsSubtitle = "Mūzika, pie kuras bieži atgriežaties",
+        noFavoriteAlbumsTitle = "Vēl nav atvērts neviens albums",
+        noFavoriteAlbumsMessage = "Atveriet vai atskaņojiet jebkuru albumu, un tas šeit parādīsies ar vāciņu priekšplānā",
+    )
+    AppLanguage.Lithuanian -> HomeUiCopy(
+        indexingTitle = "Indeksuojama biblioteka",
+        indexingMessage = "Dainos ir albumai čia pasirodys, kai indeksavimas bus baigtas",
+        emptyLibraryTitle = "Muzikos nerasta",
+        emptyLibraryMessage = "Dainos ir albumai čia pasirodys, kai pridėsite muziką į numatytąjį įrenginio Music aplanką",
+        noRecentAdditionsTitle = "Neseniai pridėtų dar nėra",
+        noRecentAdditionsMessage = "Pridėkite albumų į įrenginio Music aplanką, ir naujausi čia pasirodys automatiškai",
+        recentlyPlayedSongsTitle = "Neseniai grotos dainos",
+        recentlyPlayedSongsEmpty = "Dainos netrukus pasirodys čia",
+        favoriteAlbumsTitle = "Jūsų mėgstami albumai",
+        favoriteAlbumsSubtitle = "Muzika, prie kurios dažnai grįžtate",
+        noFavoriteAlbumsTitle = "Dar neatidarytas nė vienas albumas",
+        noFavoriteAlbumsMessage = "Atidarykite arba paleiskite bet kurį albumą, ir jis čia pasirodys su viršeliu priekyje",
+    )
+    AppLanguage.Macedonian -> HomeUiCopy(
+        indexingTitle = "Библиотеката се индексира",
+        indexingMessage = "Песните и албумите ќе се појават кога индексирањето ќе заврши",
+        emptyLibraryTitle = "Не е пронајдена музика",
+        emptyLibraryMessage = "Песните и албумите ќе се појават тука кога ќе додадете музика во стандардната папка Music на уредот",
+        noRecentAdditionsTitle = "Сѐ уште нема неодамнешни додатоци",
+        noRecentAdditionsMessage = "Додајте албуми во папката Music на уредот и најновите автоматски ќе се појават тука",
+        recentlyPlayedSongsTitle = "Неодамна пуштени песни",
+        recentlyPlayedSongsEmpty = "Песните наскоро ќе се појават тука",
+        favoriteAlbumsTitle = "Вашите омилени албуми",
+        favoriteAlbumsSubtitle = "Музика на која често ѝ се враќате",
+        noFavoriteAlbumsTitle = "Сѐ уште не е отворен ниту еден албум",
+        noFavoriteAlbumsMessage = "Отворете или пуштете кој било албум и ќе се појави тука со корицата во преден план",
+    )
+    AppLanguage.Norwegian -> HomeUiCopy(
+        indexingTitle = "Biblioteket indekseres",
+        indexingMessage = "Sanger og album vises når indekseringen er ferdig",
+        emptyLibraryTitle = "Ingen musikk funnet",
+        emptyLibraryMessage = "Sanger og album vises her når du legger til musikk i enhetens standardmappe Music",
+        noRecentAdditionsTitle = "Ingen nylige tillegg ennå",
+        noRecentAdditionsMessage = "Legg til album i enhetens Music-mappe, så vises de nyeste automatisk her",
+        recentlyPlayedSongsTitle = "Nylig spilte sanger",
+        recentlyPlayedSongsEmpty = "Sanger vises her snart",
+        favoriteAlbumsTitle = "Dine favorittalbum",
+        favoriteAlbumsSubtitle = "Musikk du ofte vender tilbake til",
+        noFavoriteAlbumsTitle = "Ingen album er åpnet ennå",
+        noFavoriteAlbumsMessage = "Åpne eller spill av et album, så vises det her med omslaget i sentrum",
+    )
+    AppLanguage.Portuguese -> HomeUiCopy(
+        indexingTitle = "A indexar biblioteca",
+        indexingMessage = "As músicas e os álbuns aparecerão quando a indexação terminar",
+        emptyLibraryTitle = "Nenhuma música encontrada",
+        emptyLibraryMessage = "As músicas e os álbuns aparecerão aqui quando adicionar música à pasta Music predefinida do dispositivo",
+        noRecentAdditionsTitle = "Ainda não há adições recentes",
+        noRecentAdditionsMessage = "Adicione álbuns à pasta Music do dispositivo e os mais recentes aparecerão aqui automaticamente",
+        recentlyPlayedSongsTitle = "Músicas reproduzidas recentemente",
+        recentlyPlayedSongsEmpty = "As músicas aparecerão aqui em breve",
+        favoriteAlbumsTitle = "Os seus álbuns favoritos",
+        favoriteAlbumsSubtitle = "Música à qual volta com frequência",
+        noFavoriteAlbumsTitle = "Ainda não foi aberto nenhum álbum",
+        noFavoriteAlbumsMessage = "Abra ou reproduza qualquer álbum e ele aparecerá aqui com a capa em destaque",
+    )
+    AppLanguage.Russian -> HomeUiCopy(
+        indexingTitle = "Идёт индексирование библиотеки",
+        indexingMessage = "Песни и альбомы появятся после завершения индексирования",
+        emptyLibraryTitle = "Музыка не найдена",
+        emptyLibraryMessage = "Песни и альбомы появятся здесь, когда вы добавите музыку в стандартную папку Music на устройстве",
+        noRecentAdditionsTitle = "Пока нет недавних добавлений",
+        noRecentAdditionsMessage = "Добавьте альбомы в папку Music на устройстве, и новейшие автоматически появятся здесь",
+        recentlyPlayedSongsTitle = "Недавно воспроизведённые песни",
+        recentlyPlayedSongsEmpty = "Песни скоро появятся здесь",
+        favoriteAlbumsTitle = "Ваши любимые альбомы",
+        favoriteAlbumsSubtitle = "Музыка, к которой вы часто возвращаетесь",
+        noFavoriteAlbumsTitle = "Пока не был открыт ни один альбом",
+        noFavoriteAlbumsMessage = "Откройте или включите любой альбом, и он появится здесь с обложкой на первом плане",
+    )
+    AppLanguage.Serbian -> HomeUiCopy(
+        indexingTitle = "Библиотека се индексира",
+        indexingMessage = "Песме и албуми ће се појавити када се индексирање заврши",
+        emptyLibraryTitle = "Музика није пронађена",
+        emptyLibraryMessage = "Песме и албуми ће се појавити овде када додате музику у подразумевани Music фолдер на уређају",
+        noRecentAdditionsTitle = "Још нема недавних додавања",
+        noRecentAdditionsMessage = "Додајте албуме у Music фолдер уређаја и најновији ће се овде појавити аутоматски",
+        recentlyPlayedSongsTitle = "Недавно пуштане песме",
+        recentlyPlayedSongsEmpty = "Песме ће се овде ускоро појавити",
+        favoriteAlbumsTitle = "Ваши омиљени албуми",
+        favoriteAlbumsSubtitle = "Музика којој се често враћате",
+        noFavoriteAlbumsTitle = "Још није отворен ниједан албум",
+        noFavoriteAlbumsMessage = "Отворите или пустите било који албум и појавиће се овде са омотом у првом плану",
+    )
+    AppLanguage.Spanish -> HomeUiCopy(
+        indexingTitle = "Indexando la biblioteca",
+        indexingMessage = "Las canciones y los álbumes aparecerán cuando termine la indexación",
+        emptyLibraryTitle = "No se encontró música",
+        emptyLibraryMessage = "Las canciones y los álbumes aparecerán aquí cuando añadas música a la carpeta Music predeterminada del dispositivo",
+        noRecentAdditionsTitle = "Aún no hay añadidos recientes",
+        noRecentAdditionsMessage = "Añade álbumes a la carpeta Music del dispositivo y los más recientes aparecerán aquí automáticamente",
+        recentlyPlayedSongsTitle = "Canciones reproducidas recientemente",
+        recentlyPlayedSongsEmpty = "Las canciones aparecerán aquí pronto",
+        favoriteAlbumsTitle = "Tus álbumes favoritos",
+        favoriteAlbumsSubtitle = "La música a la que vuelves con frecuencia",
+        noFavoriteAlbumsTitle = "Aún no se ha abierto ningún álbum",
+        noFavoriteAlbumsMessage = "Abre o reproduce cualquier álbum y aparecerá aquí con su portada en primer plano",
+    )
+    AppLanguage.Swedish -> HomeUiCopy(
+        indexingTitle = "Biblioteket indexeras",
+        indexingMessage = "Låtar och album visas när indexeringen är klar",
+        emptyLibraryTitle = "Ingen musik hittades",
+        emptyLibraryMessage = "Låtar och album visas här när du lägger till musik i enhetens standardmapp Music",
+        noRecentAdditionsTitle = "Inga nyliga tillägg ännu",
+        noRecentAdditionsMessage = "Lägg till album i enhetens Music-mapp så visas de senaste här automatiskt",
+        recentlyPlayedSongsTitle = "Nyligen spelade låtar",
+        recentlyPlayedSongsEmpty = "Låtar visas här snart",
+        favoriteAlbumsTitle = "Dina favoritalbum",
+        favoriteAlbumsSubtitle = "Musik du ofta återvänder till",
+        noFavoriteAlbumsTitle = "Inga album har öppnats ännu",
+        noFavoriteAlbumsMessage = "Öppna eller spela ett album så visas det här med omslaget i fokus",
+    )
+    AppLanguage.Thai -> HomeUiCopy(
+        indexingTitle = "กำลังจัดทำดัชนีคลังเพลง",
+        indexingMessage = "เพลงและอัลบั้มจะปรากฏเมื่อการจัดทำดัชนีเสร็จสิ้น",
+        emptyLibraryTitle = "ไม่พบเพลง",
+        emptyLibraryMessage = "เพลงและอัลบั้มจะปรากฏที่นี่เมื่อคุณเพิ่มเพลงลงในโฟลเดอร์ Music เริ่มต้นของอุปกรณ์",
+        noRecentAdditionsTitle = "ยังไม่มีสิ่งที่เพิ่มล่าสุด",
+        noRecentAdditionsMessage = "เพิ่มอัลบั้มลงในโฟลเดอร์ Music ของอุปกรณ์ แล้วรายการล่าสุดจะปรากฏที่นี่โดยอัตโนมัติ",
+        recentlyPlayedSongsTitle = "เพลงที่เล่นล่าสุด",
+        recentlyPlayedSongsEmpty = "เพลงจะปรากฏที่นี่ในไม่ช้า",
+        favoriteAlbumsTitle = "อัลบั้มโปรดของคุณ",
+        favoriteAlbumsSubtitle = "เพลงที่คุณกลับมาฟังบ่อย ๆ",
+        noFavoriteAlbumsTitle = "ยังไม่มีการเปิดอัลบั้ม",
+        noFavoriteAlbumsMessage = "เปิดหรือเล่นอัลบั้มใดก็ได้ แล้วมันจะปรากฏที่นี่พร้อมปกอยู่ด้านหน้า",
+    )
+    AppLanguage.Ukrainian -> HomeUiCopy(
+        indexingTitle = "Бібліотека індексується",
+        indexingMessage = "Пісні та альбоми з’являться після завершення індексації",
+        emptyLibraryTitle = "Музику не знайдено",
+        emptyLibraryMessage = "Пісні та альбоми з’являться тут, коли ви додасте музику до стандартної папки Music на пристрої",
+        noRecentAdditionsTitle = "Поки немає нещодавніх додавань",
+        noRecentAdditionsMessage = "Додайте альбоми до папки Music на пристрої, і найновіші автоматично з’являться тут",
+        recentlyPlayedSongsTitle = "Нещодавно відтворені пісні",
+        recentlyPlayedSongsEmpty = "Пісні скоро з’являться тут",
+        favoriteAlbumsTitle = "Ваші улюблені альбоми",
+        favoriteAlbumsSubtitle = "Музика, до якої ви часто повертаєтесь",
+        noFavoriteAlbumsTitle = "Ще не було відкрито жодного альбому",
+        noFavoriteAlbumsMessage = "Відкрийте або відтворіть будь-який альбом, і він з’явиться тут зі своєю обкладинкою в центрі уваги",
+    )
+    AppLanguage.Albanian -> HomeUiCopy(
+        indexingTitle = "Biblioteka po indeksohet",
+        indexingMessage = "Këngët dhe albumet do të shfaqen pasi të përfundojë indeksimi",
+        emptyLibraryTitle = "Nuk u gjet muzikë",
+        emptyLibraryMessage = "Këngët dhe albumet do të shfaqen këtu pasi të shtoni muzikë në dosjen e parazgjedhur Music të pajisjes",
+        noRecentAdditionsTitle = "Ende s’ka shtesa të fundit",
+        noRecentAdditionsMessage = "Shtoni albume në dosjen Music të pajisjes dhe më të rejat do të shfaqen këtu automatikisht",
+        recentlyPlayedSongsTitle = "Këngë të luajtura së fundi",
+        recentlyPlayedSongsEmpty = "Këngët do të shfaqen këtu së shpejti",
+        favoriteAlbumsTitle = "Albumet tuaja të preferuara",
+        favoriteAlbumsSubtitle = "Muzikë tek e cila ktheheni shpesh",
+        noFavoriteAlbumsTitle = "Ende nuk është hapur asnjë album",
+        noFavoriteAlbumsMessage = "Hapni ose luani cilindo album dhe ai do të shfaqet këtu me kopertinën në qendër",
+    )
+    AppLanguage.English -> HomeUiCopy(
+        indexingTitle = "Indexing library",
+        indexingMessage = "Songs and albums will show when indexing is done",
+        emptyLibraryTitle = "No music was found",
+        emptyLibraryMessage = "Songs and albums will show here as you add music to your device's default Music folder",
+        noRecentAdditionsTitle = "No recent additions yet",
+        noRecentAdditionsMessage = "Add albums to the device Music folder and the newest ones will appear here automatically",
+        recentlyPlayedSongsTitle = "Recently played songs",
+        recentlyPlayedSongsEmpty = "Songs will show up here soon",
+        favoriteAlbumsTitle = "Your favorite albums",
+        favoriteAlbumsSubtitle = "Music you come back to frequently",
+        noFavoriteAlbumsTitle = "No albums have been opened yet",
+        noFavoriteAlbumsMessage = "Open or play any album and it will appear here with its artwork front and center",
+    )
 }
 
 private fun formatCountLabel(
@@ -15485,13 +16182,13 @@ private fun LanguagePickerOptionRow(
                 )
                 androidx.compose.animation.AnimatedVisibility(
                     visible = selected,
-                    enter = fadeIn(animationSpec = tween(140)) + scaleIn(
+                    enter = fadeIn(animationSpec = tween(40)) + scaleIn(
                         initialScale = 0.8f,
                         animationSpec = ElovaireMotion.releaseSpringSpec(),
                     ),
-                    exit = fadeOut(animationSpec = tween(120)) + scaleOut(
+                    exit = fadeOut(animationSpec = tween(20)) + scaleOut(
                         targetScale = 0.8f,
-                        animationSpec = tween(120),
+                        animationSpec = tween(20),
                     ),
                     label = "language_picker_check",
                 ) {
@@ -16066,7 +16763,7 @@ private fun MonoPlaybackToggle(
         } else {
             MaterialTheme.colorScheme.onSurface.copy(alpha = if (MaterialTheme.colorScheme.background.luminance() > 0.5f) 0.16f else 0.2f)
         },
-        animationSpec = tween(160),
+        animationSpec = tween(60),
         label = "mono_toggle_track",
     )
     val thumbOffset by animateDpAsState(
@@ -16934,7 +17631,7 @@ private fun EqResponseGraph(
         val target = settings.bands.getOrElse(index) { 0f }.coerceIn(-1f, 1f)
         val animated by animateFloatAsState(
             targetValue = target,
-            animationSpec = tween(220, easing = FastOutSlowInEasing),
+            animationSpec = tween(120, easing = FastOutSlowInEasing),
             label = "eq_band_$index",
         )
         animated
@@ -17078,7 +17775,7 @@ private fun EqMiniResponseGraph(
         val target = settings.bands.getOrElse(index) { 0f }.coerceIn(-1f, 1f)
         val animated by animateFloatAsState(
             targetValue = target,
-            animationSpec = tween(260, easing = FastOutSlowInEasing),
+            animationSpec = tween(160, easing = FastOutSlowInEasing),
             label = "eq_mini_band_$index",
         )
         animated

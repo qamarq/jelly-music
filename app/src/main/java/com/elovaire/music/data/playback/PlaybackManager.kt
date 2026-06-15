@@ -46,6 +46,11 @@ enum class PlaybackRepeatMode {
     All,
 }
 
+enum class PlaybackCollectionKind {
+    Album,
+    Playlist,
+}
+
 data class PlaybackUiState(
     val queue: List<Song> = emptyList(),
     val currentIndex: Int = -1,
@@ -58,6 +63,9 @@ data class PlaybackUiState(
     val audioSessionId: Int = 0,
     val recentSongIds: List<Long> = emptyList(),
     val recentAlbumIds: List<Long> = emptyList(),
+    val sourcePlaylistId: Long? = null,
+    val lastPlayedCollectionKind: PlaybackCollectionKind? = null,
+    val lastPlayedCollectionId: Long? = null,
 ) {
     val currentSong: Song?
         get() = queue.getOrNull(currentIndex)
@@ -71,7 +79,14 @@ class PlaybackManager(
     hasSignalAlteringEffects: () -> Boolean = { false },
     initialRecentSongIds: List<Long> = emptyList(),
     initialRecentAlbumIds: List<Long> = emptyList(),
-    onRecentPlaybackChanged: (songIds: List<Long>, albumIds: List<Long>) -> Unit = { _, _ -> },
+    initialLastPlayedCollectionKind: PlaybackCollectionKind? = null,
+    initialLastPlayedCollectionId: Long? = null,
+    onRecentPlaybackChanged: (
+        songIds: List<Long>,
+        albumIds: List<Long>,
+        lastPlayedCollectionKind: PlaybackCollectionKind?,
+        lastPlayedCollectionId: Long?,
+    ) -> Unit = { _, _, _, _ -> },
 ) {
     private val scope = scope
     private val appContext = context.applicationContext
@@ -236,6 +251,8 @@ class PlaybackManager(
             volume = userVolume,
             recentSongIds = initialRecentSongIds.distinct(),
             recentAlbumIds = initialRecentAlbumIds.distinct(),
+            lastPlayedCollectionKind = initialLastPlayedCollectionKind,
+            lastPlayedCollectionId = initialLastPlayedCollectionId,
         ),
     )
     val state: StateFlow<PlaybackUiState> = _state.asStateFlow()
@@ -296,10 +313,11 @@ class PlaybackManager(
         collection: List<Song>,
         sourceLabel: String? = song.album,
         shuffleEnabled: Boolean = false,
+        sourcePlaylistId: Long? = null,
     ) {
         recordManualPlaybackStart()
         val startIndex = collection.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
-        setQueue(collection, startIndex, sourceLabel, shuffleEnabled)
+        setQueue(collection, startIndex, sourceLabel, shuffleEnabled, sourcePlaylistId)
     }
 
     private fun createPlayer(enableSignalProcessing: Boolean): ExoPlayer {
@@ -342,6 +360,7 @@ class PlaybackManager(
         startSongId: Long? = null,
         sourceLabel: String? = album.title,
         shuffleEnabled: Boolean = false,
+        sourcePlaylistId: Long? = null,
     ) {
         recordManualPlaybackStart()
         val startIndex = if (startSongId == null) {
@@ -349,7 +368,7 @@ class PlaybackManager(
         } else {
             album.songs.indexOfFirst { it.id == startSongId }.coerceAtLeast(0)
         }
-        setQueue(album.songs, startIndex, sourceLabel, shuffleEnabled)
+        setQueue(album.songs, startIndex, sourceLabel, shuffleEnabled, sourcePlaylistId)
     }
 
     fun togglePlayback() {
@@ -593,6 +612,7 @@ class PlaybackManager(
         startIndex: Int,
         sourceLabel: String?,
         shuffleEnabled: Boolean,
+        sourcePlaylistId: Long?,
     ) {
         if (songs.isEmpty()) return
         cancelPauseFade()
@@ -623,6 +643,7 @@ class PlaybackManager(
             currentIndex = startIndex.coerceIn(songs.indices),
             sourceLabel = sourceLabel,
             transportShowsPause = shouldAutoPlay,
+            sourcePlaylistId = sourcePlaylistId,
         )
         updateState()
     }
@@ -648,6 +669,7 @@ class PlaybackManager(
             transportShowsPause = false,
             sourceLabel = null,
             audioSessionId = 0,
+            sourcePlaylistId = null,
         )
         _progressState.value = playbackProgressController.clear()
         syncProgressUpdateLoop()
@@ -674,6 +696,20 @@ class PlaybackManager(
         } else {
             existingState.recentAlbumIds
         }
+        val lastPlayedCollectionKind = if (hasNewSong) {
+            if (existingState.sourcePlaylistId != null) {
+                PlaybackCollectionKind.Playlist
+            } else {
+                PlaybackCollectionKind.Album
+            }
+        } else {
+            existingState.lastPlayedCollectionKind
+        }
+        val lastPlayedCollectionId = if (hasNewSong) {
+            existingState.sourcePlaylistId ?: currentSong.albumId
+        } else {
+            existingState.lastPlayedCollectionId
+        }
 
         if (currentSong == null) {
             lastRecordedSongId = null
@@ -693,16 +729,22 @@ class PlaybackManager(
             audioSessionId = player.audioSessionId.takeIf { it > 0 } ?: 0,
             recentSongIds = recentSongIds,
             recentAlbumIds = recentAlbumIds,
+            lastPlayedCollectionKind = lastPlayedCollectionKind,
+            lastPlayedCollectionId = lastPlayedCollectionId,
         )
         if (updatedState != existingState) {
             _state.value = updatedState
             if (
                 updatedState.recentSongIds != existingState.recentSongIds ||
-                updatedState.recentAlbumIds != existingState.recentAlbumIds
+                updatedState.recentAlbumIds != existingState.recentAlbumIds ||
+                updatedState.lastPlayedCollectionKind != existingState.lastPlayedCollectionKind ||
+                updatedState.lastPlayedCollectionId != existingState.lastPlayedCollectionId
             ) {
                 onRecentPlaybackChanged(
                     updatedState.recentSongIds,
                     updatedState.recentAlbumIds,
+                    updatedState.lastPlayedCollectionKind,
+                    updatedState.lastPlayedCollectionId,
                 )
             }
         }

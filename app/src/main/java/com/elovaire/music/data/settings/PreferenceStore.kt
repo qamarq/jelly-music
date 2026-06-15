@@ -13,6 +13,7 @@ import elovaire.music.droidbeauty.app.domain.model.SearchHistoryKind
 import elovaire.music.droidbeauty.app.domain.model.SpaciousnessMode
 import elovaire.music.droidbeauty.app.domain.model.TextSizePreset
 import elovaire.music.droidbeauty.app.domain.model.ThemeMode
+import elovaire.music.droidbeauty.app.data.playback.PlaybackCollectionKind
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -66,6 +67,10 @@ class PreferenceStore(context: Context) {
     val recentSongIds: StateFlow<List<Long>> = _recentSongIds.asStateFlow()
     private val _recentAlbumIds = MutableStateFlow(loadRecentAlbumIds())
     val recentAlbumIds: StateFlow<List<Long>> = _recentAlbumIds.asStateFlow()
+    private val _lastPlayedCollectionKind = MutableStateFlow(loadLastPlayedCollectionKind())
+    val lastPlayedCollectionKind: StateFlow<PlaybackCollectionKind?> = _lastPlayedCollectionKind.asStateFlow()
+    private val _lastPlayedCollectionId = MutableStateFlow(loadLastPlayedCollectionId())
+    val lastPlayedCollectionId: StateFlow<Long?> = _lastPlayedCollectionId.asStateFlow()
 
     private val _userPlaylists = MutableStateFlow(loadPlaylists())
     private val _favoriteSongIds = MutableStateFlow(loadFavoriteSongIds())
@@ -135,6 +140,8 @@ class PreferenceStore(context: Context) {
     fun setRecentPlaybackIds(
         songIds: List<Long>,
         albumIds: List<Long>,
+        lastPlayedCollectionKind: PlaybackCollectionKind?,
+        lastPlayedCollectionId: Long?,
     ) {
         val normalizedSongIds = songIds
             .filter { it > 0L }
@@ -147,9 +154,17 @@ class PreferenceStore(context: Context) {
         preferences.edit {
             putString(KEY_RECENT_SONG_IDS, normalizedSongIds.joinToString(","))
             putString(KEY_RECENT_ALBUM_IDS, normalizedAlbumIds.joinToString(","))
+            putString(KEY_LAST_PLAYED_COLLECTION_KIND, lastPlayedCollectionKind?.name)
+            if (lastPlayedCollectionId != null && lastPlayedCollectionId > 0L) {
+                putLong(KEY_LAST_PLAYED_COLLECTION_ID, lastPlayedCollectionId)
+            } else {
+                remove(KEY_LAST_PLAYED_COLLECTION_ID)
+            }
         }
         _recentSongIds.value = normalizedSongIds
         _recentAlbumIds.value = normalizedAlbumIds
+        _lastPlayedCollectionKind.value = lastPlayedCollectionKind
+        _lastPlayedCollectionId.value = lastPlayedCollectionId?.takeIf { it > 0L }
     }
 
     fun createPlaylist(name: String): Long {
@@ -611,6 +626,17 @@ class PreferenceStore(context: Context) {
             .orEmpty()
     }
 
+    private fun loadLastPlayedCollectionKind(): PlaybackCollectionKind? {
+        val stored = preferences.getString(KEY_LAST_PLAYED_COLLECTION_KIND, null) ?: return null
+        return PlaybackCollectionKind.entries.firstOrNull { it.name == stored }
+    }
+
+    private fun loadLastPlayedCollectionId(): Long? {
+        return preferences.takeIf { it.contains(KEY_LAST_PLAYED_COLLECTION_ID) }
+            ?.getLong(KEY_LAST_PLAYED_COLLECTION_ID, -1L)
+            ?.takeIf { it > 0L }
+    }
+
     private fun SearchHistoryEntry.serialize(): String {
         return listOf(
             key,
@@ -733,6 +759,8 @@ class PreferenceStore(context: Context) {
         const val KEY_SONG_PLAY_COUNTS = "song_play_counts"
         const val KEY_RECENT_SONG_IDS = "recent_song_ids"
         const val KEY_RECENT_ALBUM_IDS = "recent_album_ids"
+        const val KEY_LAST_PLAYED_COLLECTION_KIND = "last_played_collection_kind"
+        const val KEY_LAST_PLAYED_COLLECTION_ID = "last_played_collection_id"
         const val KEY_PLAYBACK_VOLUME = "playback_volume"
         const val KEY_ALBUM_COLLECTION_GRID_ENABLED = "album_collection_grid_enabled"
         const val KEY_ALBUM_COLLECTION_LAYOUT_MODE = "album_collection_layout_mode"
