@@ -278,6 +278,38 @@ class LibraryRepository(
         }
     }
 
+    fun refreshChangedFiles(
+        filePaths: List<String>,
+        enrichMetadata: Boolean = true,
+    ) {
+        if (!_scanState.value.permissionGranted) return
+        val normalizedPaths = filePaths
+            .map(String::trim)
+            .filter(String::isNotBlank)
+            .distinct()
+        if (normalizedPaths.isEmpty()) {
+            refresh(
+                forceMediaIndex = true,
+                enrichMetadata = enrichMetadata,
+                showLoadingIndicator = false,
+            )
+            return
+        }
+        pendingTargetedIndexRefreshPaths.addAll(normalizedPaths)
+        pendingMetadataEnrichment = pendingMetadataEnrichment || enrichMetadata
+        if (scanJob?.isActive == true) {
+            pendingRefresh = true
+            return
+        }
+        refreshDebounceJob?.cancel()
+        refreshDebounceJob = null
+        refresh(
+            forceMediaIndex = false,
+            enrichMetadata = enrichMetadata,
+            showLoadingIndicator = false,
+        )
+    }
+
     fun albumById(albumId: Long): Album? = _contentState.value.albums.firstOrNull { it.id == albumId }
 
     fun defaultMediaFolderPath(): String = scanner.musicDirectory().absolutePath

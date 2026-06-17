@@ -53,8 +53,11 @@ internal class AlbumTagEditorService(
         val bestCandidate = searchBestCandidate(album) ?: return@withContext null
         delay(MUSIC_BRAINZ_RATE_LIMIT_MS)
         val release = fetchRelease(bestCandidate.id) ?: return@withContext null
-        val coverBytes = fetchCoverArt(bestCandidate.id)
         val albumArtist = release.albumArtist.ifBlank { bestCandidate.albumArtist.ifBlank { album.artist } }
+        val coverBytes = fetchTidalCoverArt(
+            albumTitle = release.title.ifBlank { album.title },
+            albumArtist = albumArtist,
+        ) ?: fetchCoverArt(bestCandidate.id)
         val mappedTracks = mapTracks(
             albumSongs = album.songs,
             matchedTracks = release.tracks,
@@ -150,7 +153,7 @@ internal class AlbumTagEditorService(
         songUri: Uri,
         tempFile: File,
     ) {
-        contentResolver.openOutputStream(songUri, "wt")?.use { output ->
+        contentResolver.openOutputStream(songUri, "rwt")?.use { output ->
             tempFile.inputStream().use { input ->
                 input.copyTo(output)
             }
@@ -281,6 +284,48 @@ internal class AlbumTagEditorService(
         return getBytes(url)
     }
 
+    private fun fetchTidalCoverArt(
+        albumTitle: String,
+        albumArtist: String,
+    ): ByteArray? {
+        val queries = buildList {
+            listOf(albumArtist, albumTitle, "tidal")
+                .filter { it.isNotBlank() }
+                .joinToString(" ")
+                .takeIf { it.isNotBlank() }
+                ?.let(::add)
+            listOf(albumArtist, albumTitle)
+                .filter { it.isNotBlank() }
+                .joinToString(" ")
+                .takeIf { it.isNotBlank() }
+                ?.let(::add)
+        }.distinct()
+        queries.forEach { query ->
+            val artworkUrl = extractTidalArtworkUrl(query) ?: return@forEach
+            getBytes(artworkUrl)?.let { return it }
+        }
+        return null
+    }
+
+    private fun extractTidalArtworkUrl(query: String): String? {
+        val encodedQuery = URLEncoder.encode(query, Charsets.UTF_8.name())
+        val urls = listOf(
+            "https://listen.tidal.com/search/albums?q=$encodedQuery",
+            "https://tidal.com/browse/search?query=$encodedQuery",
+        )
+        urls.forEach { url ->
+            val html = getText(url, accept = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                ?: return@forEach
+            TIDAL_ARTWORK_REGEX.find(html)?.groupValues?.getOrNull(1)?.let { match ->
+                return match
+                    .replace("\\/", "/")
+                    .replace("&amp;", "&")
+                    .replace(Regex("""/\d{2,4}x\d{2,4}(?=\.jpg)"""), "/1280x1280")
+            }
+        }
+        return null
+    }
+
     private fun mapTracks(
         albumSongs: List<Song>,
         matchedTracks: List<EditableAlbumTrack>,
@@ -328,26 +373,33 @@ internal class AlbumTagEditorService(
         return getText(url)?.let(::JSONObject)
     }
 
-    private fun getText(url: String): String? {
+    private fun getText(
+        url: String,
+        accept: String = "application/json",
+    ): String? {
         val connection = (URL(url).openConnection() as? HttpURLConnection) ?: return null
-        return connection.useRequest { input ->
+        return connection.useRequest(accept = accept) { input ->
             input.bufferedReader().use { reader -> reader.readText() }
         }
     }
 
     private fun getBytes(url: String): ByteArray? {
         val connection = (URL(url).openConnection() as? HttpURLConnection) ?: return null
-        return connection.useRequest { input ->
+        return connection.useRequest(accept = "*/*") { input ->
             input.readBytes()
         }
     }
 
-    private inline fun <T> HttpURLConnection.useRequest(block: (java.io.InputStream) -> T): T? {
+    private inline fun <T> HttpURLConnection.useRequest(
+        accept: String = "application/json",
+        block: (java.io.InputStream) -> T,
+    ): T? {
         connectTimeout = NETWORK_TIMEOUT_MS
         readTimeout = NETWORK_TIMEOUT_MS
         requestMethod = "GET"
-        setRequestProperty("Accept", "application/json")
+        setRequestProperty("Accept", accept)
         setRequestProperty("User-Agent", USER_AGENT)
+        instanceFollowRedirects = true
         return runCatching {
             inputStream.use(block)
         }.getOrNull().also {
@@ -415,5 +467,9 @@ internal class AlbumTagEditorService(
         const val MUSIC_BRAINZ_BASE = "https://musicbrainz.org/ws/2"
         const val COVER_ART_BASE = "https://coverartarchive.org"
         const val TEMP_TAG_EDIT_DIR_NAME = "album-tag-edits"
+        val TIDAL_ARTWORK_REGEX = Regex(
+            """(https:\\?/\\?/resources\.tidal\.com/images/[a-z0-9/]+/1280x1280\.jpg)""",
+            RegexOption.IGNORE_CASE,
+        )
     }
 }

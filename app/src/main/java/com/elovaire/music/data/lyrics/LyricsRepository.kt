@@ -25,8 +25,10 @@ internal class LyricsRepository(
     private val applicationContext = appContext.applicationContext
     private val cache = LyricsCache(applicationContext)
     private val localLyricsResolver = LocalLyricsResolver(applicationContext)
+    private val lrcLibLyricsProvider = LrcLibLyricsProvider()
     private val geniusMetadataProvider = GeniusMetadataProvider()
     private val geniusLyricsProvider = GeniusLyricsProvider()
+    private val lyricsOvhProvider = LyricsOvhProvider()
     private val serviceScope = CoroutineScope(SupervisorJob() + ioDispatcher)
     private val inFlightRequests = ConcurrentHashMap<String, Deferred<LyricsLookupOutcome>>()
 
@@ -39,6 +41,10 @@ internal class LyricsRepository(
 
     fun isLookupInFlight(song: Song): Boolean {
         return inFlightRequests.containsKey(song.toLyricsIdentity().normalizedLookupKey)
+    }
+
+    fun clearCacheFor(song: Song) {
+        cache.remove(song.toLyricsIdentity())
     }
 
     fun prefetchLyrics(song: Song) {
@@ -268,39 +274,59 @@ internal class LyricsRepository(
                 geniusMetadataProvider.bestCanonicalVariant(identity, baseVariants)
             }
         }
-        if (canonicalVariant != null) {
+        canonicalVariant?.let { variant ->
             logDebug(
                 "genius canonical variant selected for ${identity.normalizedLookupKey}: " +
-                    "${canonicalVariant.artist} - ${canonicalVariant.title}",
+                    "${variant.artist} - ${variant.title}",
             )
         }
-        val fastVariants = buildList {
+        val variants = buildList {
             canonicalVariant?.let(::add)
             addAll(baseVariants)
         }
             .distinct()
             .take(lookupMode.maxRemoteQueryVariants())
-        if (fastVariants.isEmpty()) return@coroutineScope null
+        if (variants.isEmpty()) return@coroutineScope null
         logDebug(
-            "remote query variants for ${identity.normalizedLookupKey}: ${fastVariants.size}",
+            "remote query variants for ${identity.normalizedLookupKey}: ${variants.size}",
         )
 
-        val geniusQuery = LyricsSearchQuery(
-            identity = identity,
-            variants = fastVariants.take(MAX_GENIUS_QUERY_VARIANTS),
-        )
-        val geniusCandidates = runCatching {
-            geniusLyricsProvider.search(geniusQuery)
-        }.getOrElse { throwable ->
-            logDebug("genius lyrics search failed for ${identity.normalizedLookupKey}", throwable)
-            emptyList()
+        val minimumScore = if (lookupMode == LyricsLookupMode.FastPresenceCheck) {
+            FAST_MODE_MIN_SCORE
+        } else {
+            FULL_MODE_MIN_SCORE
         }
-        return@coroutineScope selectBestCandidateMatch(
-            provider = geniusLyricsProvider,
-            identity = identity,
-            candidates = geniusCandidates,
-            minimumScore = if (lookupMode == LyricsLookupMode.FastPresenceCheck) FAST_MODE_MIN_SCORE else FULL_MODE_MIN_SCORE,
-        )
+
+        suspend fun query(
+            provider: LyricsProvider,
+            limit: Int = variants.size,
+        ): ProviderLyricsMatch? {
+            val candidates = runCatching {
+                provider.search(
+                    LyricsSearchQuery(
+                        identity = identity,
+                        variants = variants.take(limit),
+                    ),
+                )
+            }.getOrElse { throwable ->
+                logDebug("${provider.providerName} lyrics search failed for ${identity.normalizedLookupKey}", throwable)
+                emptyList()
+            }
+            return selectBestCandidateMatch(
+                provider = provider,
+                identity = identity,
+                candidates = candidates,
+                minimumScore = minimumScore,
+            )
+        }
+
+        query(lrcLibLyricsProvider)?.let { return@coroutineScope it }
+
+        if (geniusLyricsProvider.isConfigured()) {
+            query(geniusLyricsProvider, MAX_GENIUS_QUERY_VARIANTS)?.let { return@coroutineScope it }
+        }
+
+        query(lyricsOvhProvider, 2)
     }
 
     private suspend fun selectBestCandidateMatch(
@@ -395,15 +421,15 @@ internal class LyricsRepository(
         const val TAG = "LyricsRepository"
         const val LOCAL_LOOKUP_TIMEOUT_MS = 250L
         const val FAST_NOT_FOUND_BUDGET_MS = 1_100L
-        const val FULL_REMOTE_LOOKUP_BUDGET_MS = 1_800L
-        const val GENIUS_LOOKUP_TIMEOUT_MS = 250L
+        const val FULL_REMOTE_LOOKUP_BUDGET_MS = 4_500L
+        const val GENIUS_LOOKUP_TIMEOUT_MS = 500L
         const val MAX_FAST_REMOTE_QUERY_VARIANTS = 4
         const val POSITIVE_CACHE_TTL_MS = 30L * 24L * 60L * 60L * 1000L
         const val CACHE_TTL_NOT_FOUND_MS = 30_000L
         const val CACHE_TTL_TIMEOUT_MS = 15_000L
         const val CACHE_TTL_OFFLINE_MS = 90_000L
-        const val FULL_MODE_MIN_SCORE = 78
-        const val FAST_MODE_MIN_SCORE = 82
+        const val FULL_MODE_MIN_SCORE = 70
+        const val FAST_MODE_MIN_SCORE = 76
         const val GENIUS_MIN_SCORE = 62
         const val HIGH_CONFIDENCE_SYNC_SCORE = 88
         const val MAX_GENIUS_QUERY_VARIANTS = 4

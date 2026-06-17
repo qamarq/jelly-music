@@ -688,6 +688,15 @@ private fun querySongParentDirectories(
     context: Context,
     songs: List<Song>,
 ): Set<String> {
+    return querySongFilePaths(context, songs)
+        .mapNotNull { path -> File(path).parentFile?.absolutePath }
+        .toSet()
+}
+
+private fun querySongFilePaths(
+    context: Context,
+    songs: List<Song>,
+): Set<String> {
     val contentResolver = context.contentResolver
     return songs.asSequence()
         .mapNotNull { song ->
@@ -710,7 +719,6 @@ private fun querySongParentDirectories(
                 }.getOrNull()
             }
         }
-        .mapNotNull { path -> File(path).parentFile?.absolutePath }
         .toSet()
 }
 
@@ -1895,10 +1903,9 @@ fun ElovaireRoot(
                             runCatching {
                                 tagEditorService.applyEdits(request)
                             }.onSuccess {
-                                container.libraryRepository.refresh(
-                                    forceMediaIndex = true,
+                                container.libraryRepository.refreshChangedFiles(
+                                    filePaths = querySongFilePaths(context, request.album.songs).toList(),
                                     enrichMetadata = true,
-                                    showLoadingIndicator = false,
                                 )
                                 navController.navigateUp()
                             }.onFailure { throwable ->

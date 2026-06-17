@@ -163,115 +163,117 @@ internal fun AlbumTagEditorScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item {
-                Surface(
-                    shape = RoundedCornerShape(ElovaireRadii.module),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.42f),
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    Surface(
+                        shape = RoundedCornerShape(ElovaireRadii.module),
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.42f),
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            verticalAlignment = Alignment.Top,
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(18.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
                         ) {
-                            EditableArtworkCard(
-                                artworkUri = selectedCoverArtUri,
-                                fallbackArtworkUri = album.artUri,
-                                title = albumTitle,
-                                onClick = onPickCoverArt,
-                            )
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                verticalAlignment = Alignment.Top,
                             ) {
-                                Text(
-                                    text = copy.albumSection,
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = copy.changeCoverHint,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.76f),
-                                )
-                                AccentPillButton(
-                                    label = copy.changeCover,
-                                    iconResId = R.drawable.ic_lucide_disc_album,
+                                EditableArtworkCard(
+                                    artworkUri = selectedCoverArtUri,
+                                    fallbackArtworkUri = album.artUri,
+                                    title = albumTitle,
                                     onClick = onPickCoverArt,
                                 )
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                                ) {
+                                    Text(
+                                        text = copy.albumSection,
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    Text(
+                                        text = copy.changeCoverHint,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.76f),
+                                    )
+                                    AccentPillButton(
+                                        label = copy.changeCover,
+                                        iconResId = R.drawable.ic_lucide_disc_album,
+                                        onClick = onPickCoverArt,
+                                    )
+                                }
                             }
-                        }
 
-                        OutlinedTextField(
-                            value = albumTitle,
-                            onValueChange = { albumTitle = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text(copy.albumTitle) },
-                            singleLine = true,
-                        )
-                        OutlinedTextField(
-                            value = albumArtist,
-                            onValueChange = { albumArtist = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text(copy.albumArtist) },
-                            singleLine = true,
-                        )
-                        OutlinedTextField(
-                            value = releaseYear,
-                            onValueChange = { input ->
-                                releaseYear = input.filter(Char::isDigit).take(4)
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text(copy.releaseYear) },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        )
-                    }
-                }
-            }
-
-            item {
-                Surface(
-                    shape = RoundedCornerShape(ElovaireRadii.module),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.36f),
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 18.dp, vertical = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp),
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
-                            ) {
-                                Text(
-                                    text = copy.autoMatchTitle,
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = copy.autoMatchSubtitle,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.76f),
-                                )
-                            }
-                            AccentPillButton(
-                                label = copy.findOnline,
-                                iconResId = R.drawable.ic_lucide_search,
-                                enabled = !isMatching && !isSaving,
-                                loading = isMatching,
-                                onClick = onAutoMatch,
+                            OutlinedTextField(
+                                value = albumTitle,
+                                onValueChange = { albumTitle = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text(copy.albumTitle) },
+                                singleLine = true,
                             )
+                            OutlinedTextField(
+                                value = albumArtist,
+                                onValueChange = { albumArtist = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text(copy.albumArtist) },
+                                singleLine = true,
+                            )
+                            OutlinedTextField(
+                                value = releaseYear,
+                                onValueChange = { input ->
+                                    releaseYear = input.filter(Char::isDigit).take(4)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text(copy.releaseYear) },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            )
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(ElovaireRadii.module),
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.36f),
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 18.dp, vertical = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
+                                    Text(
+                                        text = copy.autoMatchTitle,
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    Text(
+                                        text = copy.autoMatchSubtitle,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.76f),
+                                    )
+                                }
+                                AccentPillButton(
+                                    label = copy.findOnline,
+                                    iconResId = R.drawable.ic_lucide_search,
+                                    enabled = !isMatching && !isSaving,
+                                    loading = isMatching,
+                                    onClick = onAutoMatch,
+                                )
+                            }
                         }
                     }
                 }
@@ -307,13 +309,19 @@ internal fun AlbumTagEditorScreen(
                                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                                 color = MaterialTheme.colorScheme.onSurface,
                             )
-                            Text(
-                                text = album.songs.getOrNull(index)?.fileName.orEmpty(),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
+                            ) {
+                                Text(
+                                    text = album.songs.getOrNull(index)?.fileName.orEmpty(),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                )
+                            }
                         }
 
                         OutlinedTextField(

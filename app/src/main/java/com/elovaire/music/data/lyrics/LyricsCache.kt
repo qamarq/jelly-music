@@ -58,6 +58,17 @@ internal class LyricsCache(
         }
     }
 
+    fun remove(identity: LyricsIdentity) = synchronized(cacheLock) {
+        ensureLoadedLocked()
+        var removed = false
+        identity.cacheKeys.forEach { key ->
+            removed = cacheEntries.remove(key) != null || removed
+        }
+        if (removed) {
+            persistLocked()
+        }
+    }
+
     private fun ensureLoadedLocked() {
         if (cacheLoaded) return
         cacheLoaded = true
