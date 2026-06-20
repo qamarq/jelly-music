@@ -73,6 +73,7 @@ class LibraryRepository(
             scanProgress = scan.scanProgress,
             songs = content.songs,
             albums = content.albums,
+            artists = content.artists,
             errorMessage = scan.errorMessage,
         )
     }.stateIn(
@@ -150,6 +151,7 @@ class LibraryRepository(
                 val cachedContent = LibraryContentState(
                     songs = cachedSnapshot.snapshot.songs,
                     albums = cachedSnapshot.snapshot.albums,
+                    artists = artistsFromSongs(cachedSnapshot.snapshot.songs),
                 )
                 if (_contentState.value != cachedContent) {
                     _contentState.value = cachedContent
@@ -246,6 +248,7 @@ class LibraryRepository(
                     val nextContentState = LibraryContentState(
                         songs = snapshot.songs,
                         albums = snapshot.albums,
+                        artists = artistsFromSongs(snapshot.songs),
                     )
                     if (_contentState.value != nextContentState) {
                         _contentState.value = nextContentState
@@ -335,6 +338,14 @@ class LibraryRepository(
     }
 
     fun albumById(albumId: Long): Album? = _contentState.value.albums.firstOrNull { it.id == albumId }
+
+    // Local files have no real artist id/image (those only exist for Jellyfin-backed artists),
+    // so the artist name doubles as a stable id here.
+    private fun artistsFromSongs(songs: List<Song>): List<Artist> =
+        songs.groupBy { it.artist.trim() }
+            .filter { (name, _) -> name.isNotEmpty() }
+            .map { (name, _) -> Artist(id = name, name = name, image = null) }
+            .sortedBy { it.name.lowercase() }
 
     fun defaultMediaFolderPath(): String = scanner.musicDirectory().absolutePath
 

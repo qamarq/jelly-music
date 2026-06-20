@@ -222,7 +222,7 @@ class PreferenceStore(context: Context) {
         playlistId: Long,
         songIds: List<Long>,
     ) {
-        val normalizedIds = songIds.filter { it > 0L }
+        val normalizedIds = songIds.filter { it != 0L }
         val updated = _userPlaylists.value.map { playlist ->
             if (playlist.id != playlistId) playlist else playlist.copy(songIds = normalizedIds)
         }

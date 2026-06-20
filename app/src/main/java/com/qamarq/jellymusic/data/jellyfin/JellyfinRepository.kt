@@ -61,13 +61,16 @@ class JellyfinRepository(
         Log.d("JellyItems", "Fetched $items items from Jellyfin")
         
         val jellyfinSongs = items.map { dto ->
+            // Album artist (e.g. "Coldplay") is the correct main performer to display/group by,
+            // not the track-level ArtistItems which can list songwriters/featured artists.
+            val mainArtist = dto.AlbumArtists?.firstOrNull() ?: dto.ArtistItems?.firstOrNull()
             Song(
-                id = dto.Id.hashCode().toLong(),
+                id = stableIdFrom(dto.Id),
                 title = dto.Name,
                 isExplicit = false,
-                artist = dto.ArtistItems?.firstOrNull()?.Name ?: "Unknown Artist",
-                artistId = dto.ArtistItems?.firstOrNull()?.Id ?: "unknown",
-                artistImage = dto.ArtistItems?.firstOrNull()?.Id?.let { id ->
+                artist = mainArtist?.Name ?: "Unknown Artist",
+                artistId = mainArtist?.Id ?: "unknown",
+                artistImage = mainArtist?.Id?.let { id ->
                     client.getImageUrl(id, "").toUri()
                 },
                 album = dto.Album ?: "Unknown Album",
@@ -76,7 +79,7 @@ class JellyfinRepository(
                 audioFormat = dto.Container?.uppercase() ?: "STREAM",
                 audioQuality = dto.Bitrate?.let { "${it / 1000}kbps" },
                 fileName = dto.Name,
-                albumId = dto.AlbumId?.hashCode()?.toLong() ?: 0L,
+                albumId = dto.AlbumId?.let(::stableIdFrom) ?: 0L,
                 durationMs = (dto.RunTimeTicks ?: 0L) / 10000,
                 trackNumber = dto.IndexNumber ?: 0,
                 discNumber = dto.ParentIndexNumber ?: 1,
@@ -104,10 +107,10 @@ class JellyfinRepository(
             )
         }
 
-        val jellyfinArtists = jellyfinSongs.groupBy { it.artist }.mapNotNull { (artistId, songs) ->
+        val jellyfinArtists = jellyfinSongs.groupBy { it.artistId ?: it.artist }.mapNotNull { (artistId, songs) ->
             val firstSong = songs.firstOrNull() ?: return@mapNotNull null
             Artist(
-                id = artistId,
+                id = artistId ?: firstSong.artist,
                 name = firstSong.artist,
                 image = firstSong.artistImage
             )
@@ -117,4 +120,8 @@ class JellyfinRepository(
         _albums.value = jellyfinAlbums
         _artists.value = jellyfinArtists
     }
+
+    // Long.hashCode() can be negative, but song/playlist storage treats ids <= 0 as invalid,
+    // so mask down to the unsigned 32-bit range to keep ids stable and always positive.
+    private fun stableIdFrom(jellyfinId: String): Long = jellyfinId.hashCode().toLong() and 0xFFFFFFFFL
 }

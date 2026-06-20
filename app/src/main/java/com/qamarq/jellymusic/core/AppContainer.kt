@@ -69,10 +69,12 @@ class AppContainer(
         jellyfinRepository.albums,
         jellyfinRepository.artists
     ) { local, jSongs, jAlbums, jArtists ->
+        val jArtistNames = jArtists.mapTo(mutableSetOf()) { it.name.trim().lowercase() }
+        val localOnlyArtists = local.artists.filterNot { it.name.trim().lowercase() in jArtistNames }
         LibraryContentState(
             songs = local.songs + jSongs,
             albums = local.albums + jAlbums,
-            artists = jArtists
+            artists = jArtists + localOnlyArtists,
         )
     }.stateIn(appScope, SharingStarted.Eagerly, LibraryContentState())
 

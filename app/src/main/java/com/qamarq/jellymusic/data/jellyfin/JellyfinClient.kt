@@ -28,6 +28,7 @@ data class BaseItemDto(
     val Id: String,
     val Type: String,
     val ArtistItems: List<ArtistDto>? = null,
+    val AlbumArtists: List<ArtistDto>? = null,
     val Album: String? = null,
     val AlbumId: String? = null,
     val ProductionYear: Int? = null,
@@ -96,7 +97,7 @@ class JellyfinClient(
 
     suspend fun getMusicItems(userId: String): List<BaseItemDto> = withContext(Dispatchers.IO) {
         val request = Request.Builder()
-            .url(buildUrl("Users/$userId/Items?IncludeItemTypes=Audio&Recursive=true&Fields=ArtistItems,Album,ProductionYear,Genres,RunTimeTicks,IndexNumber,ParentIndexNumber,ImageTags"))
+            .url(buildUrl("Users/$userId/Items?IncludeItemTypes=Audio&Recursive=true&Fields=ArtistItems,AlbumArtists,Album,ProductionYear,Genres,RunTimeTicks,IndexNumber,ParentIndexNumber,ImageTags"))
             .addAuth()
             .build()
 
