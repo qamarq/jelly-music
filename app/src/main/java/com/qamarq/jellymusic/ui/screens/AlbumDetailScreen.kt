@@ -628,7 +628,9 @@ internal fun AlbumScreen(
                                         maxLines = 1,
                                     )
                                     Text(
-                                        text = albumTechnicalReferenceSong?.audioQuality ?: "--",
+                                        text = albumTechnicalReferenceSong?.audioQuality
+                                            ?: if (albumTechnicalReferenceSong?.audioFormat == "STREAM") "Stream"
+                                            else "--",
                                         style = MaterialTheme.typography.labelLarge.copy(fontSize = elovaireScaledSp(11f)),
                                         color = albumInfoPillTint.copy(alpha = 0.74f),
                                         maxLines = 1,
