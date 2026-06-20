@@ -49,6 +49,7 @@ class AppContainer(
         hasSignalAlteringEffects = playbackEffectsController::hasSignalAlteringEffects,
         initialRecentSongIds = preferenceStore.recentSongIds.value,
         initialRecentAlbumIds = preferenceStore.recentAlbumIds.value,
+        initialRecentPlaylistIds = preferenceStore.recentPlaylistIds.value,
         initialLastPlayedCollectionKind = preferenceStore.lastPlayedCollectionKind.value,
         initialLastPlayedCollectionId = preferenceStore.lastPlayedCollectionId.value,
         onRecentPlaybackChanged = preferenceStore::setRecentPlaybackIds,

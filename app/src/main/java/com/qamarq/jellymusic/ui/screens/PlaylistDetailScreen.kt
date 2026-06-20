@@ -350,6 +350,7 @@ internal fun PlaylistDetailScreen(
     bottomPadding: Dp,
     onBack: () -> Unit,
     onPlayPlaylist: (List<Song>, String) -> Unit,
+    onShufflePlaylist: (List<Song>, String) -> Unit,
     onSongSelected: (Song, List<Song>) -> Unit,
     onAddSongs: (List<Long>) -> Unit,
     onUpdateSongOrder: (List<Long>) -> Unit,
@@ -525,11 +526,26 @@ internal fun PlaylistDetailScreen(
                                 overflow = TextOverflow.Ellipsis,
                             )
                         }
-                        AlbumHeaderPlayButton(
-                            tint = Color.White,
-                            backgroundColor = RoseAccent,
-                            onClick = { onPlayPlaylist(playlistSongs, playlist.name) },
-                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            AlbumHeaderPlayButton(
+                                tint = Color.White,
+                                backgroundColor = RoseAccent,
+                                onClick = { onPlayPlaylist(playlistSongs, playlist.name) },
+                            )
+                            if (playlistSongs.isNotEmpty()) {
+                                AlbumHeaderActionButton(
+                                    iconResId = R.drawable.ic_lucide_shuffle,
+                                    contentDescription = "Shuffle playlist",
+                                    tint = Color.White,
+                                    backgroundColor = RoseAccent.copy(alpha = 0.7f),
+                                    iconSize = 18.dp,
+                                    onClick = { onShufflePlaylist(playlistSongs, playlist.name) },
+                                )
+                            }
+                        }
                     }
                 }
             }

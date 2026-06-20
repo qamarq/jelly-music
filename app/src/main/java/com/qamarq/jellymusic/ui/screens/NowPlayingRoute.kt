@@ -398,6 +398,8 @@ internal fun NowPlayingRoute(
         onSpaciousnessChanged = onSpaciousnessChanged,
         onVolumeChanged = viewModel::setVolume,
         transitionSnapshot = transitionSnapshot,
+        onTransitionProgress = onTransitionProgress,
+        onClearTransitionSnapshot = onClearTransitionSnapshot,
         modifier = modifier,
     )
 }

@@ -16,6 +16,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
+import java.util.concurrent.Executor
 import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.AudioAttributes
@@ -74,6 +75,7 @@ data class PlaybackUiState(
     val audioSessionId: Int = 0,
     val recentSongIds: List<Long> = emptyList(),
     val recentAlbumIds: List<Long> = emptyList(),
+    val recentPlaylistIds: List<Long> = emptyList(),
     val sourcePlaylistId: Long? = null,
     val lastPlayedCollectionKind: PlaybackCollectionKind? = null,
     val lastPlayedCollectionId: Long? = null,
@@ -108,6 +110,7 @@ data class PlaybackVolumeState(
 data class RecentPlaybackState(
     val recentSongIds: List<Long> = emptyList(),
     val recentAlbumIds: List<Long> = emptyList(),
+    val recentPlaylistIds: List<Long> = emptyList(),
     val lastPlayedCollectionKind: PlaybackCollectionKind? = null,
     val lastPlayedCollectionId: Long? = null,
 )
@@ -120,14 +123,16 @@ class PlaybackManager(
     hasSignalAlteringEffects: () -> Boolean = { false },
     initialRecentSongIds: List<Long> = emptyList(),
     initialRecentAlbumIds: List<Long> = emptyList(),
+    initialRecentPlaylistIds: List<Long> = emptyList(),
     initialLastPlayedCollectionKind: PlaybackCollectionKind? = null,
     initialLastPlayedCollectionId: Long? = null,
     onRecentPlaybackChanged: (
         songIds: List<Long>,
         albumIds: List<Long>,
+        playlistIds: List<Long>,
         lastPlayedCollectionKind: PlaybackCollectionKind?,
         lastPlayedCollectionId: Long?,
-    ) -> Unit = { _, _, _, _ -> },
+    ) -> Unit = { _, _, _, _, _ -> },
 ) {
     private val scope = scope
     private val appContext = context.applicationContext
@@ -315,6 +320,7 @@ class PlaybackManager(
             volume = userVolume,
             recentSongIds = initialRecentSongIds.distinct(),
             recentAlbumIds = initialRecentAlbumIds.distinct(),
+            recentPlaylistIds = initialRecentPlaylistIds.distinct(),
             lastPlayedCollectionKind = initialLastPlayedCollectionKind,
             lastPlayedCollectionId = initialLastPlayedCollectionId,
         ),
@@ -389,6 +395,7 @@ class PlaybackManager(
             RecentPlaybackState(
                 recentSongIds = snapshot.recentSongIds,
                 recentAlbumIds = snapshot.recentAlbumIds,
+                recentPlaylistIds = snapshot.recentPlaylistIds,
                 lastPlayedCollectionKind = snapshot.lastPlayedCollectionKind,
                 lastPlayedCollectionId = snapshot.lastPlayedCollectionId,
             )
@@ -400,6 +407,7 @@ class PlaybackManager(
             initialValue = RecentPlaybackState(
                 recentSongIds = _state.value.recentSongIds,
                 recentAlbumIds = _state.value.recentAlbumIds,
+                recentPlaylistIds = _state.value.recentPlaylistIds,
                 lastPlayedCollectionKind = _state.value.lastPlayedCollectionKind,
                 lastPlayedCollectionId = _state.value.lastPlayedCollectionId,
             ),
@@ -429,13 +437,20 @@ class PlaybackManager(
         .build()
 
     init {
-        try {
-            val castContext = CastContext.getSharedInstance(appContext)
-            castPlayer = CastPlayer(castContext)
-            castPlayer?.setSessionAvailabilityListener(castSessionAvailabilityListener)
-        } catch (e: Exception) {
-            // Cast not available
-        }
+        // The synchronous CastContext.getSharedInstance(Context) overload is deprecated and can
+        // silently fail to finish device discovery setup on newer Play Services; the async
+        // overload is what Google's integration guide recommends.
+        Log.d("PlaybackManager", "Requesting CastContext...")
+        CastContext.getSharedInstance(appContext, Executor { it.run() })
+            .addOnSuccessListener { castContext ->
+                Log.d("PlaybackManager", "CastContext ready, merged selector=${castContext.mergedSelector}")
+                castPlayer = CastPlayer(castContext)
+                castPlayer?.setSessionAvailabilityListener(castSessionAvailabilityListener)
+                logCastDiscovery(appContext)
+            }
+            .addOnFailureListener { error ->
+                Log.e("PlaybackManager", "Cast unavailable: ${error.message}", error)
+            }
 
         bitPerfectUsbManager.updateEffectsActive(hasSignalAlteringEffects())
         refreshUsbAudioOutputState()
@@ -594,8 +609,19 @@ class PlaybackManager(
         syncProgressUpdateLoop()
     }
 
+    private fun isRemotePlaybackActive(): Boolean =
+        player.deviceInfo.playbackType == androidx.media3.common.DeviceInfo.PLAYBACK_TYPE_REMOTE
+
     fun setVolume(volume: Float) {
         val requestedVolume = volume.quantizedVolume()
+        if (isRemotePlaybackActive()) {
+            // While casting, volume is the connected device's (TV/speaker) own volume, not the
+            // phone's local stream volume.
+            val maxVolume = player.deviceInfo.maxVolume.coerceAtLeast(1)
+            player.setDeviceVolume((requestedVolume * maxVolume).roundToInt().coerceIn(0, maxVolume), 0)
+            updateState()
+            return
+        }
         if (usbDacHardwareVolumeManager.shouldOwnVolumeControls()) {
             val handled = usbDacHardwareVolumeManager.setHardwareVolume(requestedVolume)
             if (handled || usbDacHardwareVolumeManager.shouldOwnVolumeControls()) {
@@ -742,6 +768,37 @@ class PlaybackManager(
         player.release()
     }
 
+    private fun logCastDiscovery(context: Context) {
+        val mediaRouter = androidx.mediarouter.media.MediaRouter.getInstance(context)
+        val selector = androidx.mediarouter.media.MediaRouteSelector.Builder()
+            .addControlCategory(
+                com.google.android.gms.cast.CastMediaControlIntent.categoryForCast(
+                    com.google.android.gms.cast.CastMediaControlIntent.DEFAULT_MEDIA_RECEIVER_APPLICATION_ID,
+                ),
+            )
+            .build()
+        mediaRouter.addCallback(
+            selector,
+            object : androidx.mediarouter.media.MediaRouter.Callback() {
+                override fun onRouteAdded(
+                    router: androidx.mediarouter.media.MediaRouter,
+                    route: androidx.mediarouter.media.MediaRouter.RouteInfo,
+                ) {
+                    Log.d("PlaybackManager", "Cast route added: ${route.name} (${route.id})")
+                }
+
+                override fun onRouteRemoved(
+                    router: androidx.mediarouter.media.MediaRouter,
+                    route: androidx.mediarouter.media.MediaRouter.RouteInfo,
+                ) {
+                    Log.d("PlaybackManager", "Cast route removed: ${route.name}")
+                }
+            },
+            androidx.mediarouter.media.MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY,
+        )
+        Log.d("PlaybackManager", "Cast discovery active, current route count=${mediaRouter.routes.size}")
+    }
+
     private fun switchToCastPlayer() {
         val cp = castPlayer ?: return
         if (player === cp) return
@@ -763,10 +820,13 @@ class PlaybackManager(
                 playbackSnapshot.currentIndex.coerceIn(0, queueSnapshot.lastIndex),
                 playbackSnapshot.positionMs
             )
-            cp.prepare()
+            // CastPlayer bundles playWhenReady into the load request it sends to the receiver,
+            // so it must be set before prepare() dispatches that request, or the receiver loads
+            // paused and resuming needs an explicit tap.
             cp.playWhenReady = playbackSnapshot.playWhenReady
+            cp.prepare()
         }
-        
+
         cp.addListener(playerListener)
         _playerInstanceVersion.value += 1L
         updateState()
@@ -1020,6 +1080,11 @@ class PlaybackManager(
         } else {
             existingState.recentAlbumIds
         }
+        val recentPlaylistIds = if (hasNewSong && existingState.sourcePlaylistId != null) {
+            pushRecentId(existingState.sourcePlaylistId, existingState.recentPlaylistIds)
+        } else {
+            existingState.recentPlaylistIds
+        }
         val lastPlayedCollectionKind = if (hasNewSong) {
             if (existingState.sourcePlaylistId != null) {
                 PlaybackCollectionKind.Playlist
@@ -1053,6 +1118,7 @@ class PlaybackManager(
             audioSessionId = player.audioSessionId.takeIf { it > 0 } ?: 0,
             recentSongIds = recentSongIds,
             recentAlbumIds = recentAlbumIds,
+            recentPlaylistIds = recentPlaylistIds,
             lastPlayedCollectionKind = lastPlayedCollectionKind,
             lastPlayedCollectionId = lastPlayedCollectionId,
         )
@@ -1061,12 +1127,14 @@ class PlaybackManager(
             if (
                 updatedState.recentSongIds != existingState.recentSongIds ||
                 updatedState.recentAlbumIds != existingState.recentAlbumIds ||
+                updatedState.recentPlaylistIds != existingState.recentPlaylistIds ||
                 updatedState.lastPlayedCollectionKind != existingState.lastPlayedCollectionKind ||
                 updatedState.lastPlayedCollectionId != existingState.lastPlayedCollectionId
             ) {
                 onRecentPlaybackChanged(
                     updatedState.recentSongIds,
                     updatedState.recentAlbumIds,
+                    updatedState.recentPlaylistIds,
                     updatedState.lastPlayedCollectionKind,
                     updatedState.lastPlayedCollectionId,
                 )
@@ -1468,7 +1536,10 @@ class PlaybackManager(
     }
 
     private fun currentDisplayedVolumeFraction(): Float {
-        return if (hasUsbOutputRoute) {
+        return if (isRemotePlaybackActive()) {
+            val maxVolume = player.deviceInfo.maxVolume.coerceAtLeast(1)
+            (player.deviceVolume.toFloat() / maxVolume.toFloat()).coerceIn(0f, 1f)
+        } else if (hasUsbOutputRoute) {
             currentSystemVolumeFraction().quantizedVolume()
         } else {
             currentEffectiveVolumeFraction()

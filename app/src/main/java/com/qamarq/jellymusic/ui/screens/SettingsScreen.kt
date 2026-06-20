@@ -647,7 +647,7 @@ internal fun SettingsScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
-                            Text("Elovaire", style = MaterialTheme.typography.titleLarge)
+                            Text("JellyMusic", style = MaterialTheme.typography.titleLarge)
                             Surface(
                                 shape = RoundedCornerShape(ElovaireRadii.pill),
                                 color = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) {

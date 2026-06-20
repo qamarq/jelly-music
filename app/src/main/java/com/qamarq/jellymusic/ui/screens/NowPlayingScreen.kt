@@ -367,6 +367,8 @@ internal fun NowPlayingScreen(
     onSpaciousnessChanged: (Float) -> Unit,
     onVolumeChanged: (Float) -> Unit,
     transitionSnapshot: NowPlayingTransitionSnapshot?,
+    onTransitionProgress: (Float, PlayerOverlayTransitionState) -> Unit = { _, _ -> },
+    onClearTransitionSnapshot: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val liveCurrentSong = playerUiState.currentSong
@@ -388,17 +390,25 @@ internal fun NowPlayingScreen(
     val appBackground = MaterialTheme.colorScheme.background
     val gradient = rememberArtworkGradient(liveCurrentSong?.artUri).value
     val artwork = rememberArtworkBitmap(liveCurrentSong?.artUri, size = 768)
-    val activeTransitionSnapshot = remember(transitionSnapshot, liveCurrentSong?.id) {
-        transitionSnapshot?.takeIf {
-            it.songId == liveCurrentSong?.id &&
-                it.barBounds.isValidTransitionBounds &&
-                it.artworkBounds.isValidTransitionBounds
+    // The shared-element expand-from-mini-player snapshot must only ever drive the very first
+    // expand of this screen instance, not re-trigger every time prev/next happens to land back
+    // on the song that snapshot was originally captured for.
+    var snapshotConsumed by remember { mutableStateOf(false) }
+    val activeTransitionSnapshot = remember(transitionSnapshot, liveCurrentSong?.id, snapshotConsumed) {
+        if (snapshotConsumed) {
+            null
+        } else {
+            transitionSnapshot?.takeIf {
+                it.songId == liveCurrentSong?.id &&
+                    it.barBounds.isValidTransitionBounds &&
+                    it.artworkBounds.isValidTransitionBounds
+            }
         }
     }
-    val transitionProgress = remember(liveCurrentSong?.id, activeTransitionSnapshot?.songId) {
+    val transitionProgress = remember {
         Animatable(if (activeTransitionSnapshot != null) 0f else 1f)
     }
-    var transitionState by remember(liveCurrentSong?.id, activeTransitionSnapshot?.songId) {
+    var transitionState by remember {
         mutableStateOf(
             if (activeTransitionSnapshot != null) {
                 PlayerOverlayTransitionState.Expanding
@@ -406,6 +416,11 @@ internal fun NowPlayingScreen(
                 PlayerOverlayTransitionState.Expanded
             },
         )
+    }
+    LaunchedEffect(transitionState) {
+        snapshotFlow { transitionProgress.value }.collect { value ->
+            onTransitionProgress(value, transitionState)
+        }
     }
     val expandSettleAnimationSpec = remember {
         tween<Float>(
@@ -507,6 +522,8 @@ internal fun NowPlayingScreen(
                 animationSpec = expandSettleAnimationSpec,
                 targetState = PlayerOverlayTransitionState.Expanded,
             )
+            snapshotConsumed = true
+            onClearTransitionSnapshot()
         } else if (activeTransitionSnapshot == null && transitionProgress.value != 1f) {
             transitionProgress.stop()
             transitionProgress.snapTo(1f)
@@ -826,6 +843,7 @@ internal fun NowPlayingScreen(
                                 overflow = TextOverflow.Ellipsis,
                             )
                         }
+                        CastButton(modifier = Modifier.align(Alignment.CenterEnd))
                     }
                     BoxWithConstraints(
                         modifier = Modifier
@@ -843,7 +861,11 @@ internal fun NowPlayingScreen(
                         if (!useSharedArtworkOverlay) {
                             AnimatedContent(
                                 targetState = currentSong.id,
-                                transitionSpec = { ElovaireMotion.quickContentSwapTransform() },
+                                transitionSpec = {
+                                    val fromIndex = playerUiState.queue.indexOfFirst { it.id == initialState }
+                                    val toIndex = playerUiState.queue.indexOfFirst { it.id == targetState }
+                                    ElovaireMotion.directionalContentSwapTransform(forward = toIndex >= fromIndex)
+                                },
                                 label = "player_artwork_content",
                             ) { songId ->
                                 val animatedSong = playerUiState.queue.firstOrNull { it.id == songId } ?: currentSong
@@ -962,7 +984,11 @@ internal fun NowPlayingScreen(
                     ) {
                         AnimatedContent(
                             targetState = currentSong.id,
-                            transitionSpec = { ElovaireMotion.quickContentSwapTransform() },
+                            transitionSpec = {
+                                val fromIndex = playerUiState.queue.indexOfFirst { it.id == initialState }
+                                val toIndex = playerUiState.queue.indexOfFirst { it.id == targetState }
+                                ElovaireMotion.directionalContentSwapTransform(forward = toIndex >= fromIndex)
+                            },
                             label = "player_metadata_content",
                             modifier = Modifier.weight(1f),
                         ) { songId ->

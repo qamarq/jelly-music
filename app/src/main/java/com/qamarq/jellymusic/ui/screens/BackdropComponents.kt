@@ -98,7 +98,7 @@ internal fun ProgressiveChromeBackdrop(
 ) {
     DynamicBackdropSurface(
         modifier = modifier,
-        overlayAlpha = overlayAlpha ?: 0.7f,
+        overlayAlpha = overlayAlpha ?: 0.45f,
         showTopEdgeLine = edge == ProgressiveChromeEdge.Bottom && showEdgeLine,
         showBottomEdgeLine = edge == ProgressiveChromeEdge.Top && showEdgeLine,
     )

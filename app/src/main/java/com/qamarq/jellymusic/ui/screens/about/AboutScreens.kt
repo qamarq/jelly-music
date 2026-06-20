@@ -685,7 +685,6 @@ private fun localizedAboutTitle(
     language: AppLanguage,
 ): String = when (title) {
     "Droid Beauty" -> title
-    "Elovaire" -> title
     "Resources" -> when (language) {
         AppLanguage.Polish -> "Zasoby"
         AppLanguage.ChineseSimplified -> "资源"
@@ -722,32 +721,18 @@ private fun localizedAboutDescription(
         AppLanguage.Ukrainian -> "Мінімалістично створені застосунки й враження для красивішого Android"
         else -> description
     }
-    "Elovaire" -> when (language) {
-        AppLanguage.Polish -> "Elegancki odtwarzacz offline stworzony z myślą o Twojej lokalnej muzyce"
-        AppLanguage.ChineseSimplified -> "为你的本地音乐打造的优雅离线播放器"
-        AppLanguage.Czech -> "Elegantní offline přehrávač vytvořený pro vaši místní hudbu"
-        AppLanguage.French -> "Un lecteur hors ligne élégant conçu pour votre musique locale"
-        AppLanguage.German -> "Ein eleganter Offline-Player für deine lokale Musik"
-        AppLanguage.Italian -> "Un player offline elegante creato per la tua musica locale"
-        AppLanguage.Japanese -> "ローカル音楽のために作られた、エレガントなオフラインプレーヤー"
-        AppLanguage.Portuguese -> "Um reprodutor offline elegante feito para a sua música local"
-        AppLanguage.Russian -> "Элегантный офлайн-плеер для вашей локальной музыки"
-        AppLanguage.Spanish -> "Un reproductor sin conexión elegante hecho para tu música local"
-        AppLanguage.Ukrainian -> "Елегантний офлайн-програвач для вашої локальної музики"
-        else -> description
-    }
     "Resources" -> when (language) {
-        AppLanguage.Polish -> "Projekty, narzędzia i biblioteki, które pomagają tworzyć Elovaire"
-        AppLanguage.ChineseSimplified -> "帮助打造 Elovaire 的项目、工具和库"
-        AppLanguage.Czech -> "Projekty, nástroje a knihovny, které pomáhají tvořit Elovaire"
-        AppLanguage.French -> "Projets, outils et bibliothèques qui aident à créer Elovaire"
-        AppLanguage.German -> "Projekte, Werkzeuge und Bibliotheken, die Elovaire ermöglichen"
-        AppLanguage.Italian -> "Progetti, strumenti e librerie che aiutano a creare Elovaire"
-        AppLanguage.Japanese -> "Elovaire の制作を支えるプロジェクト、ツール、ライブラリ"
-        AppLanguage.Portuguese -> "Projetos, ferramentas e bibliotecas que ajudam a criar o Elovaire"
-        AppLanguage.Russian -> "Проекты, инструменты и библиотеки, которые помогают создавать Elovaire"
-        AppLanguage.Spanish -> "Proyectos, herramientas y bibliotecas que ayudan a crear Elovaire"
-        AppLanguage.Ukrainian -> "Проєкти, інструменти та бібліотеки, що допомагають створювати Elovaire"
+        AppLanguage.Polish -> "Projekty, narzędzia i biblioteki, które pomagają tworzyć JellyMusic"
+        AppLanguage.ChineseSimplified -> "帮助打造 JellyMusic 的项目、工具和库"
+        AppLanguage.Czech -> "Projekty, nástroje a knihovny, které pomáhají tvořit JellyMusic"
+        AppLanguage.French -> "Projets, outils et bibliothèques qui aident à créer JellyMusic"
+        AppLanguage.German -> "Projekte, Werkzeuge und Bibliotheken, die JellyMusic ermöglichen"
+        AppLanguage.Italian -> "Progetti, strumenti e librerie che aiutano a creare JellyMusic"
+        AppLanguage.Japanese -> "JellyMusic の制作を支えるプロジェクト、ツール、ライブラリ"
+        AppLanguage.Portuguese -> "Projetos, ferramentas e bibliotecas que ajudam a criar o JellyMusic"
+        AppLanguage.Russian -> "Проекты, инструменты и библиотеки, которые помогают создавать JellyMusic"
+        AppLanguage.Spanish -> "Proyectos, herramientas y bibliotecas que ayudan a crear JellyMusic"
+        AppLanguage.Ukrainian -> "Проєкти, інструменти та бібліотеки, що допомагають створювати JellyMusic"
         else -> description
     }
     else -> description

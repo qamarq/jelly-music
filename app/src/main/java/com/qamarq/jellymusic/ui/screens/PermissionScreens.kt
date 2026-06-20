@@ -366,7 +366,7 @@ internal fun PermissionGate(
                     style = MaterialTheme.typography.displayLarge.copy(fontSize = elovaireScaledSp(30f)),
                 )
                 Text(
-                    text = "Elovaire scans the device Music folder for local albums, artwork, and track queues",
+                    text = "JellyMusic scans the device Music folder for local albums, artwork, and track queues",
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -409,7 +409,7 @@ internal fun FirstLaunchPermissionLoadingScreen(
             .background(MaterialTheme.colorScheme.background),
     ) {
         UnifiedTopBar(
-            title = "Elovaire",
+            title = "JellyMusic",
             showSettings = false,
             onOpenMenu = onRequestPermission,
             modifier = Modifier

@@ -12,7 +12,7 @@ internal class ElovaireViewModelFactory(
         return when {
             modelClass.isAssignableFrom(SearchViewModel::class.java) -> {
                 SearchViewModel(
-                    libraryRepository = appContainer.libraryRepository,
+                    libraryContentState = appContainer.mergedContentState,
                     preferenceStore = appContainer.preferenceStore,
                     playbackManager = appContainer.playbackManager,
                 ) as T

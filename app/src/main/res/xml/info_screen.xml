@@ -20,7 +20,7 @@
     -->
     <entry
         title="Droid Beauty"
-        description="Beautifully designed widgets and themes for Android to make your homescreen stunning. I'm also the creator of this music player app you're using right now"
+        description="Beautifully designed widgets and themes for Android to make your homescreen stunning. Also the original creator of Elovaire Music, the project this app was forked from."
         logoUrl="https://raw.githubusercontent.com/user774820/logoimages/refs/heads/main/DroidBeautyLogo.png">
         <link
             label="Instagram"
@@ -34,19 +34,22 @@
         <link
             label="Ko-fi"
             url="https://ko-fi.com/droidbeauty" />
-    </entry>
-
-    <entry
-        title="Elovaire"
-        description="Your music, refined into an elegant listening experience. Latest release always available on GitHub. Thank you for using this app and I hope you have a great experience!">
         <link
-            label="Elovaire on GitHub"
+            label="Elovaire Music (original repo)"
             url="https://github.com/droidbeauty/elovaire-music" />
     </entry>
 
     <entry
+        title="qamarq"
+        description="Maintainer of this JellyMusic fork. Add your own bio here!">
+        <link
+            label="JellyMusic on GitHub"
+            url="https://github.com/qamarq/jelly-music" />
+    </entry>
+
+    <entry
         title="Resources"
-        description="Elovaire is built with modern open-source Android components that shape experience of the app. Thanks to everyone creating resources such as Media3 playback, Jetpack Compose framework or Lucide icons">
+        description="JellyMusic is built with modern open-source Android components that shape experience of the app. Thanks to everyone creating resources such as Media3 playback, Jetpack Compose framework or Lucide icons">
         <link
             label="Android Developer"
             url="https://developer.android.com" />

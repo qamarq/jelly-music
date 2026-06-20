@@ -405,7 +405,7 @@ internal fun BottomNavigationHazeBackground(
     FrostedTopBarBackground(
         darkTheme = darkTheme,
         edge = ProgressiveChromeEdge.Bottom,
-        overlayAlpha = 0.7f,
+        overlayAlpha = 0.45f,
         flatOverlay = true,
         showEdgeLine = true,
         modifier = modifier,

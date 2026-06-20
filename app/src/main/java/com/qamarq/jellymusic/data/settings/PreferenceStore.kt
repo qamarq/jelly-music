@@ -83,6 +83,22 @@ class PreferenceStore(context: Context) {
     val recentSongIds: StateFlow<List<Long>> = _recentSongIds.asStateFlow()
     private val _recentAlbumIds = MutableStateFlow(loadRecentAlbumIds())
     val recentAlbumIds: StateFlow<List<Long>> = _recentAlbumIds.asStateFlow()
+    private val _recentPlaylistIds = MutableStateFlow(loadRecentPlaylistIds())
+    val recentPlaylistIds: StateFlow<List<Long>> = _recentPlaylistIds.asStateFlow()
+
+    private val _hasCompletedOnboarding = MutableStateFlow(loadHasCompletedOnboarding())
+    val hasCompletedOnboarding: StateFlow<Boolean> = _hasCompletedOnboarding.asStateFlow()
+
+    fun setHasCompletedOnboarding(completed: Boolean) {
+        preferences.edit {
+            putBoolean(KEY_HAS_COMPLETED_ONBOARDING, completed)
+        }
+        _hasCompletedOnboarding.value = completed
+    }
+
+    private fun loadHasCompletedOnboarding(): Boolean {
+        return preferences.getBoolean(KEY_HAS_COMPLETED_ONBOARDING, false)
+    }
     private val _lastPlayedCollectionKind = MutableStateFlow(loadLastPlayedCollectionKind())
     val lastPlayedCollectionKind: StateFlow<PlaybackCollectionKind?> = _lastPlayedCollectionKind.asStateFlow()
     private val _lastPlayedCollectionId = MutableStateFlow(loadLastPlayedCollectionId())
@@ -156,6 +172,7 @@ class PreferenceStore(context: Context) {
     fun setRecentPlaybackIds(
         songIds: List<Long>,
         albumIds: List<Long>,
+        playlistIds: List<Long>,
         lastPlayedCollectionKind: PlaybackCollectionKind?,
         lastPlayedCollectionId: Long?,
     ) {
@@ -167,9 +184,14 @@ class PreferenceStore(context: Context) {
             .filter { it > 0L }
             .distinct()
             .take(MAX_RECENT_PLAYBACK_IDS)
+        val normalizedPlaylistIds = playlistIds
+            .filter { it > 0L }
+            .distinct()
+            .take(MAX_RECENT_PLAYBACK_IDS)
         preferences.edit {
             putString(KEY_RECENT_SONG_IDS, normalizedSongIds.joinToString(","))
             putString(KEY_RECENT_ALBUM_IDS, normalizedAlbumIds.joinToString(","))
+            putString(KEY_RECENT_PLAYLIST_IDS, normalizedPlaylistIds.joinToString(","))
             putString(KEY_LAST_PLAYED_COLLECTION_KIND, lastPlayedCollectionKind?.name)
             if (lastPlayedCollectionId != null && lastPlayedCollectionId > 0L) {
                 putLong(KEY_LAST_PLAYED_COLLECTION_ID, lastPlayedCollectionId)
@@ -179,6 +201,7 @@ class PreferenceStore(context: Context) {
         }
         _recentSongIds.value = normalizedSongIds
         _recentAlbumIds.value = normalizedAlbumIds
+        _recentPlaylistIds.value = normalizedPlaylistIds
         _lastPlayedCollectionKind.value = lastPlayedCollectionKind
         _lastPlayedCollectionId.value = lastPlayedCollectionId?.takeIf { it > 0L }
     }
@@ -684,6 +707,14 @@ class PreferenceStore(context: Context) {
             .orEmpty()
     }
 
+    private fun loadRecentPlaylistIds(): List<Long> {
+        return preferences.getString(KEY_RECENT_PLAYLIST_IDS, null)
+            ?.takeIf { it.isNotBlank() }
+            ?.split(",")
+            ?.mapNotNull { it.toLongOrNull() }
+            .orEmpty()
+    }
+
     private fun loadLastPlayedCollectionKind(): PlaybackCollectionKind? {
         val stored = preferences.getString(KEY_LAST_PLAYED_COLLECTION_KIND, null) ?: return null
         return PlaybackCollectionKind.entries.firstOrNull { it.name == stored }
@@ -817,6 +848,8 @@ class PreferenceStore(context: Context) {
         const val KEY_SONG_PLAY_COUNTS = "song_play_counts"
         const val KEY_RECENT_SONG_IDS = "recent_song_ids"
         const val KEY_RECENT_ALBUM_IDS = "recent_album_ids"
+        const val KEY_RECENT_PLAYLIST_IDS = "recent_playlist_ids"
+        const val KEY_HAS_COMPLETED_ONBOARDING = "has_completed_onboarding"
         const val KEY_LAST_PLAYED_COLLECTION_KIND = "last_played_collection_kind"
         const val KEY_LAST_PLAYED_COLLECTION_ID = "last_played_collection_id"
         const val KEY_PLAYBACK_VOLUME = "playback_volume"

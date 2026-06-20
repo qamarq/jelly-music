@@ -64,6 +64,8 @@ fun HomeScreen(
     songsById: Map<Long, Song>,
     recentlyAddedAlbums: List<Album>,
     recentSongs: List<Song>,
+    topPlayedSongs: List<Song> = emptyList(),
+    recentlyPlayedPlaylists: List<Playlist> = emptyList(),
     favoriteAlbums: List<Album>,
     jellyfinAlbums: List<Album> = emptyList(),
     jellyfinArtists: List<Artist> = emptyList(),
@@ -82,6 +84,7 @@ fun HomeScreen(
     onPlayAlbum: (Album) -> Unit,
     onPlayPlaylist: (Playlist, List<Song>) -> Unit,
     onSongSelected: (Song) -> Unit,
+    onPlayTopSong: (Song) -> Unit = {},
     onToggleFavorite: (Long) -> Unit,
     onConnectJellyfin: () -> Unit = {},
     onArtistSelected: (String) -> Unit,
@@ -171,6 +174,30 @@ fun HomeScreen(
                             }
                         }
 
+                        // Quick Picks (Spotify-like 2x3 grid, mixing albums and recently played playlists)
+                        item(key = "quick_picks") {
+                            val quickPicks = buildList {
+                                jellyfinAlbums.take(2).forEach { add(HomeQuickPick.AlbumPick(it)) }
+                                recentlyPlayedPlaylists.take(2).forEach { playlist ->
+                                    add(
+                                        HomeQuickPick.PlaylistPick(
+                                            playlist = playlist,
+                                            songs = playlist.songIds.mapNotNull(songsById::get),
+                                        ),
+                                    )
+                                }
+                                recentlyAddedAlbums.take(2).forEach { add(HomeQuickPick.AlbumPick(it)) }
+                                favoriteAlbums.take(2).forEach { add(HomeQuickPick.AlbumPick(it)) }
+                            }.distinctBy { it.key }.take(6)
+                            if (quickPicks.isNotEmpty()) {
+                                QuickPicksGrid(
+                                    items = quickPicks,
+                                    onAlbumSelected = onAlbumSelected,
+                                    onPlaylistSelected = onPlaylistSelected,
+                                )
+                            }
+                        }
+
                         // Artists row (circles)
                         if (jellyfinArtists.isNotEmpty()) {
                             item(key = "artists_row") {
@@ -182,13 +209,12 @@ fun HomeScreen(
                             }
                         }
 
-                        // Quick Picks (Spotify-like 2x3 grid)
-                        item(key = "quick_picks") {
-                            val quickPicks = (jellyfinAlbums.take(2) + recentlyAddedAlbums.take(2) + favoriteAlbums.take(2)).distinctBy { it.id }.take(6)
-                            if (quickPicks.isNotEmpty()) {
-                                QuickPicksGrid(
-                                    items = quickPicks,
-                                    onAlbumSelected = onAlbumSelected
+                        // Most Played songs
+                        if (topPlayedSongs.isNotEmpty()) {
+                            item(key = "most_played") {
+                                MostPlayedSongsSection(
+                                    songs = topPlayedSongs,
+                                    onSongSelected = onPlayTopSong,
                                 )
                             }
                         }
@@ -388,10 +414,16 @@ fun FeaturedAlbumCard(
     }
 }
 
+internal sealed class HomeQuickPick(val key: String) {
+    data class AlbumPick(val album: Album) : HomeQuickPick("album:${album.id}")
+    data class PlaylistPick(val playlist: Playlist, val songs: List<Song>) : HomeQuickPick("playlist:${playlist.id}")
+}
+
 @Composable
-fun QuickPicksGrid(
-    items: List<Album>,
-    onAlbumSelected: (Album, ExpandOrigin) -> Unit
+internal fun QuickPicksGrid(
+    items: List<HomeQuickPick>,
+    onAlbumSelected: (Album, ExpandOrigin) -> Unit,
+    onPlaylistSelected: (Playlist) -> Unit,
 ) {
     Column(modifier = Modifier.padding(horizontal = 20.dp)) {
         items.chunked(2).forEach { row ->
@@ -401,11 +433,16 @@ fun QuickPicksGrid(
                     .padding(vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                row.forEach { album ->
+                row.forEach { pick ->
                     QuickPickItem(
-                        album = album,
+                        pick = pick,
                         modifier = Modifier.weight(1f),
-                        onClick = { onAlbumSelected(album, ExpandOrigin()) }
+                        onClick = {
+                            when (pick) {
+                                is HomeQuickPick.AlbumPick -> onAlbumSelected(pick.album, ExpandOrigin())
+                                is HomeQuickPick.PlaylistPick -> onPlaylistSelected(pick.playlist)
+                            }
+                        },
                     )
                 }
                 if (row.size == 1) Spacer(modifier = Modifier.weight(1f))
@@ -415,8 +452,8 @@ fun QuickPicksGrid(
 }
 
 @Composable
-fun QuickPickItem(
-    album: Album,
+internal fun QuickPickItem(
+    pick: HomeQuickPick,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
@@ -428,14 +465,24 @@ fun QuickPickItem(
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            ArtworkImage(
-                uri = album.artUri,
-                title = album.title,
-                modifier = Modifier.size(56.dp),
-                cornerRadius = 0.dp
-            )
+            when (pick) {
+                is HomeQuickPick.AlbumPick -> ArtworkImage(
+                    uri = pick.album.artUri,
+                    title = pick.album.title,
+                    modifier = Modifier.size(56.dp),
+                    cornerRadius = 0.dp
+                )
+                is HomeQuickPick.PlaylistPick -> PlaylistArtworkPreview(
+                    songs = pick.songs,
+                    title = pick.playlist.name,
+                    modifier = Modifier.size(56.dp),
+                )
+            }
             Text(
-                text = album.title,
+                text = when (pick) {
+                    is HomeQuickPick.AlbumPick -> pick.album.title
+                    is HomeQuickPick.PlaylistPick -> pick.playlist.name
+                },
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
                 modifier = Modifier.padding(horizontal = 12.dp),
                 maxLines = 2,
@@ -671,6 +718,53 @@ fun AlbumGridCard(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+        }
+    }
+}
+
+@Composable
+internal fun MostPlayedSongsSection(
+    songs: List<Song>,
+    onSongSelected: (Song) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        SectionTitleRow(title = "Most Played", modifier = Modifier.padding(horizontal = 20.dp))
+        Spacer(modifier = Modifier.height(12.dp))
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            items(songs, key = { it.id }) { song ->
+                Column(
+                    modifier = Modifier
+                        .width(120.dp)
+                        .clickable(onClick = { onSongSelected(song) }),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    ArtworkImage(
+                        uri = song.artUri,
+                        title = song.title,
+                        modifier = Modifier.aspectRatio(1f).fillMaxWidth(),
+                        cornerRadius = ElovaireRadii.artwork,
+                        showArtworkGlow = true,
+                    )
+                    Column {
+                        Text(
+                            text = song.title,
+                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = song.artist,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = readableSecondaryTextColor(),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
         }
     }
 }

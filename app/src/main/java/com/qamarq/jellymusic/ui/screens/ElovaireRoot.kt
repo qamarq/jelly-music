@@ -424,6 +424,7 @@ fun ElovaireRoot(
     val textSizePreset by container.preferenceStore.textSizePreset.collectAsStateWithLifecycle()
     val appLanguage by container.preferenceStore.appLanguage.collectAsStateWithLifecycle()
     val playlists by container.preferenceStore.playlists.collectAsStateWithLifecycle()
+    val hasCompletedOnboarding by container.preferenceStore.hasCompletedOnboarding.collectAsStateWithLifecycle()
     val favoriteSongIds by container.preferenceStore.favoriteSongIds.collectAsStateWithLifecycle()
     val favoriteSongIdSet = remember(favoriteSongIds) { favoriteSongIds.toHashSet() }
     val albumPlayCounts by container.preferenceStore.albumPlayCounts.collectAsStateWithLifecycle()
@@ -459,8 +460,9 @@ fun ElovaireRoot(
     }
     var hasPermission by remember { mutableStateOf(hasAudioPermission(context)) }
     var hasNotificationPermission by remember { mutableStateOf(hasNotificationPermission(context)) }
-    var hasRequestedAudioPermission by rememberSaveable { mutableStateOf(false) }
-    var hasRequestedNotificationPermission by rememberSaveable { mutableStateOf(false) }
+    var hasNearbyWifiDevicesPermission by remember { mutableStateOf(hasNearbyWifiDevicesPermission(context)) }
+    var hasLocalNetworkPermission by remember { mutableStateOf(hasLocalNetworkPermission(context)) }
+    var pendingJellyfinSetupAfterOnboarding by rememberSaveable { mutableStateOf(false) }
     var firstLaunchPermissionExperienceActive by rememberSaveable {
         mutableStateOf(!hasPermission)
     }
@@ -479,7 +481,16 @@ fun ElovaireRoot(
     val recentAlbums = remember(libraryState.albums, playbackState.recentAlbumIds) {
         recentAlbumsFor(libraryState, playbackState)
     }
+    val topPlayedSongs = remember(songsById, songPlayCounts) {
+        songsById.values
+            .filter { (songPlayCounts[it.id] ?: 0) > 0 }
+            .sortedByDescending { songPlayCounts[it.id] ?: 0 }
+            .take(10)
+    }
     val playlistsById = remember(playlists) { playlists.associateBy { it.id } }
+    val recentlyPlayedPlaylists = remember(playlistsById, playbackState.recentPlaylistIds) {
+        playbackState.recentPlaylistIds.mapNotNull(playlistsById::get).take(8)
+    }
     val lastPlayedPlaylist = remember(
         playlistsById,
         playbackState.lastPlayedCollectionKind,
@@ -512,6 +523,16 @@ fun ElovaireRoot(
         )
     }
 
+    val nearbyWifiDevicesPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        hasNearbyWifiDevicesPermission = granted
+    }
+    val localNetworkPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        hasLocalNetworkPermission = granted
+    }
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
     ) { granted ->
@@ -523,15 +544,6 @@ fun ElovaireRoot(
     ) { granted ->
         hasPermission = granted
         container.libraryRepository.onPermissionChanged(granted)
-        if (
-            granted &&
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            !hasNotificationPermission &&
-            !hasRequestedNotificationPermission
-        ) {
-            hasRequestedNotificationPermission = true
-            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
     }
     suspend fun completeSongDeletion(
         songs: List<Song>,
@@ -563,20 +575,8 @@ fun ElovaireRoot(
         }
     }
 
-    LaunchedEffect(hasPermission, hasNotificationPermission) {
+    LaunchedEffect(hasPermission) {
         container.libraryRepository.onPermissionChanged(hasPermission)
-        if (!hasPermission && !hasRequestedAudioPermission) {
-            hasRequestedAudioPermission = true
-            permissionLauncher.launch(audioPermission())
-        } else if (
-            hasPermission &&
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            !hasNotificationPermission &&
-            !hasRequestedNotificationPermission
-        ) {
-            hasRequestedNotificationPermission = true
-            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
     }
 
     LaunchedEffect(hasNotificationPermission) {
@@ -588,6 +588,8 @@ fun ElovaireRoot(
             if (event == Lifecycle.Event.ON_RESUME) {
                 val refreshedAudioPermission = hasAudioPermission(context)
                 val refreshedNotificationPermission = hasNotificationPermission(context)
+                val refreshedNearbyWifiDevicesPermission = hasNearbyWifiDevicesPermission(context)
+                val refreshedLocalNetworkPermission = hasLocalNetworkPermission(context)
                 if (hasPermission != refreshedAudioPermission) {
                     hasPermission = refreshedAudioPermission
                     container.libraryRepository.onPermissionChanged(refreshedAudioPermission)
@@ -595,6 +597,12 @@ fun ElovaireRoot(
                 if (hasNotificationPermission != refreshedNotificationPermission) {
                     hasNotificationPermission = refreshedNotificationPermission
                     container.setNotificationsEnabled(refreshedNotificationPermission)
+                }
+                if (hasNearbyWifiDevicesPermission != refreshedNearbyWifiDevicesPermission) {
+                    hasNearbyWifiDevicesPermission = refreshedNearbyWifiDevicesPermission
+                }
+                if (hasLocalNetworkPermission != refreshedLocalNetworkPermission) {
+                    hasLocalNetworkPermission = refreshedLocalNetworkPermission
                 }
             }
         }
@@ -632,6 +640,90 @@ fun ElovaireRoot(
             (libraryState.songs.isNotEmpty() || libraryState.albums.isNotEmpty() || libraryState.errorMessage != null)
         ) {
             playFirstLaunchHomeReveal = true
+        }
+    }
+
+    if (!hasCompletedOnboarding) {
+        val onboardingSteps = remember(
+            hasPermission,
+            hasNotificationPermission,
+            hasNearbyWifiDevicesPermission,
+            hasLocalNetworkPermission,
+        ) {
+            buildList {
+                if (!hasPermission) {
+                    add(
+                        OnboardingStep(
+                            iconResId = R.drawable.ic_lucide_music,
+                            title = "Audio library access",
+                            description = "JellyMusic needs access to the music files on your device so it can play them.",
+                            primaryLabel = "Allow access",
+                            skippable = false,
+                            onPrimaryAction = { permissionLauncher.launch(audioPermission()) },
+                        ),
+                    )
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasNotificationPermission) {
+                    add(
+                        OnboardingStep(
+                            iconResId = R.drawable.ic_lucide_bell,
+                            title = "Notifications",
+                            description = "We show a notification for the currently playing track, so you can control playback from the notification shade and lock screen.",
+                            primaryLabel = "Allow",
+                            onPrimaryAction = {
+                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            },
+                        ),
+                    )
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasNearbyWifiDevicesPermission) {
+                    add(
+                        OnboardingStep(
+                            iconResId = R.drawable.ic_lucide_wifi,
+                            title = "Nearby devices",
+                            description = "Needed to discover Chromecasts, TVs, and speakers on your Wi-Fi network so you can stream music to them.",
+                            primaryLabel = "Allow",
+                            onPrimaryAction = {
+                                nearbyWifiDevicesPermissionLauncher.launch(Manifest.permission.NEARBY_WIFI_DEVICES)
+                            },
+                        ),
+                    )
+                }
+                if (Build.VERSION.SDK_INT >= 37 && !hasLocalNetworkPermission) {
+                    add(
+                        OnboardingStep(
+                            iconResId = R.drawable.ic_lucide_speaker,
+                            title = "Local network",
+                            description = "Starting with Android 17, this permission is required for the app to talk to devices on your home network, e.g. when casting to a TV.",
+                            primaryLabel = "Allow",
+                            onPrimaryAction = {
+                                localNetworkPermissionLauncher.launch(Manifest.permission.ACCESS_LOCAL_NETWORK)
+                            },
+                        ),
+                    )
+                }
+                add(
+                    OnboardingStep(
+                        iconResId = R.drawable.ic_lucide_server,
+                        title = "Connect to Jellyfin",
+                        description = "Optional, but recommended: connect to your Jellyfin server to access your whole library in one place.",
+                        primaryLabel = "Connect",
+                        onPrimaryAction = { pendingJellyfinSetupAfterOnboarding = true },
+                    ),
+                )
+            }
+        }
+        OnboardingCarousel(
+            steps = onboardingSteps,
+            onFinished = { container.preferenceStore.setHasCompletedOnboarding(true) },
+        )
+        return
+    }
+
+    LaunchedEffect(pendingJellyfinSetupAfterOnboarding) {
+        if (pendingJellyfinSetupAfterOnboarding) {
+            navController.navigate(JELLYFIN_SETUP_ROUTE)
+            pendingJellyfinSetupAfterOnboarding = false
         }
     }
 
@@ -966,6 +1058,7 @@ fun ElovaireRoot(
         }
     }
 
+    val castPickerController = remember { CastPickerController() }
     CompositionLocalProvider(
         LocalOverscrollFactory provides overscrollFactory,
         LocalSongMenuActions provides songMenuActions,
@@ -973,6 +1066,7 @@ fun ElovaireRoot(
         LocalSharedBackIconPainter provides sharedBackIconPainter,
         LocalSharedTopMenuIconPainter provides sharedTopMenuIconPainter,
         LocalAppLanguage provides appLanguage,
+        LocalCastPickerController provides castPickerController,
     ) {
         Box(
             modifier = Modifier
@@ -1075,6 +1169,8 @@ fun ElovaireRoot(
                             songsById = songsById,
                             recentlyAddedAlbums = recentlyAddedAlbums,
                             recentSongs = recentSongs,
+                            topPlayedSongs = topPlayedSongs,
+                            recentlyPlayedPlaylists = recentlyPlayedPlaylists,
                             favoriteAlbums = favoriteAlbums,
                             jellyfinAlbums = jellyfinAlbums,
                             jellyfinArtists = jellyfinArtists,
@@ -1132,6 +1228,14 @@ fun ElovaireRoot(
                                         sourceLabel = song.album,
                                     )
                                 }
+                                openPlayerIfAllowed(null)
+                            },
+                            onPlayTopSong = { song ->
+                                container.playbackManager.playSong(
+                                    song = song,
+                                    collection = topPlayedSongs,
+                                    sourceLabel = "Most Played",
+                                )
                                 openPlayerIfAllowed(null)
                             },
                             onToggleFavorite = { songId ->
@@ -1232,6 +1336,18 @@ fun ElovaireRoot(
                                         song = firstSong,
                                         collection = songs,
                                         sourceLabel = sourceLabel,
+                                        sourcePlaylistId = playlist?.id,
+                                    )
+                                    openPlayerIfAllowed(null)
+                                }
+                            },
+                            onShufflePlaylist = { songs, sourceLabel ->
+                                songs.randomOrNull()?.let { firstSong ->
+                                    container.playbackManager.playSong(
+                                        song = firstSong,
+                                        collection = songs,
+                                        sourceLabel = sourceLabel,
+                                        shuffleEnabled = true,
                                         sourcePlaylistId = playlist?.id,
                                     )
                                     openPlayerIfAllowed(null)
@@ -1979,6 +2095,7 @@ fun ElovaireRoot(
                     )
                 }
             }
+            CastDevicePickerOverlay(controller = castPickerController)
         }
     }
 }
@@ -2016,6 +2133,7 @@ internal fun playbackUiStateOf(
         audioSessionId = nowPlaying.audioSessionId,
         recentSongIds = recent.recentSongIds,
         recentAlbumIds = recent.recentAlbumIds,
+        recentPlaylistIds = recent.recentPlaylistIds,
         sourcePlaylistId = queue.sourcePlaylistId,
         lastPlayedCollectionKind = recent.lastPlayedCollectionKind,
         lastPlayedCollectionId = recent.lastPlayedCollectionId,

@@ -262,6 +262,18 @@ object ElovaireMotion {
         fadeIn(animationSpec = scaledTween(durationMillis = ComponentBase, easing = FadeIn)) togetherWith
             fadeOut(animationSpec = scaledTween(durationMillis = FastBase, easing = FadeOut))
 
+    fun directionalContentSwapTransform(forward: Boolean): ContentTransform {
+        val enter = slideInHorizontally(
+            animationSpec = scaledTween(durationMillis = ComponentBase, easing = GentleDecelerate),
+            initialOffsetX = { fullWidth -> if (forward) fullWidth else -fullWidth },
+        ) + fadeIn(animationSpec = scaledTween(durationMillis = ComponentBase, easing = FadeIn))
+        val exit = slideOutHorizontally(
+            animationSpec = scaledTween(durationMillis = ComponentBase, easing = GentleAccelerate),
+            targetOffsetX = { fullWidth -> if (forward) -fullWidth else fullWidth },
+        ) + fadeOut(animationSpec = scaledTween(durationMillis = FastBase, easing = FadeOut))
+        return enter togetherWith exit
+    }
+
     fun verticalRevealEnter(): EnterTransition = fadeIn(
         animationSpec = scaledTween(durationMillis = FastBase, easing = FadeIn),
     ) + androidx.compose.animation.expandVertically(

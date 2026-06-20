@@ -212,6 +212,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -427,57 +428,67 @@ internal fun NowPlayingBar(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            val openPlayerFromTap = remember(song.id, barBounds, artworkBounds) {
+                {
+                    val validSnapshot = if (
+                        barBounds != null &&
+                        artworkBounds != null &&
+                        barBounds!!.isValidTransitionBounds &&
+                        artworkBounds!!.isValidTransitionBounds
+                    ) {
+                        NowPlayingTransitionSnapshot(
+                            songId = song.id,
+                            barBounds = barBounds!!,
+                            artworkBounds = artworkBounds!!,
+                        )
+                    } else {
+                        null
+                    }
+                    onOpenPlayer(validSnapshot)
+                }
+            }
             Row(
                 modifier = Modifier
                     .weight(1f)
                     .graphicsLayer { translationX = animatedDragOffsetX * 0.18f }
                     .then(
                         if (visible) {
+                            // A single gesture detector handles both tap-to-open and
+                            // swipe-to-skip; stacking a separate pointerInput drag detector
+                            // alongside .clickable() makes the first tap's down event get
+                            // claimed by the drag detector, so the click never registers.
                             Modifier.pointerInput(song.id) {
-                                detectHorizontalDragGestures(
-                                    onHorizontalDrag = { change, dragAmount ->
-                                        change.consume()
-                                        dragOffsetX = (dragOffsetX + dragAmount).coerceIn(-160f, 160f)
-                                    },
-                                    onDragEnd = {
+                                var isDragging = false
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    isDragging = false
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                        val dx = change.positionChange().x
+                                        if (!isDragging && kotlin.math.abs(dragOffsetX + dx) > 12f) {
+                                            isDragging = true
+                                        }
+                                        if (isDragging) {
+                                            change.consume()
+                                            dragOffsetX = (dragOffsetX + dx).coerceIn(-160f, 160f)
+                                        }
+                                        if (!change.pressed) break
+                                    }
+                                    if (isDragging) {
                                         when {
                                             dragOffsetX <= -swipeThresholdPx -> onSkipNext()
                                             dragOffsetX >= swipeThresholdPx -> onSkipPrevious()
                                         }
                                         dragOffsetX = 0f
-                                    },
-                                    onDragCancel = {
-                                        dragOffsetX = 0f
-                                    },
-                                )
+                                    } else {
+                                        openPlayerFromTap()
+                                    }
+                                }
                             }
                         } else {
                             Modifier
                         }
-                    )
-                    .clickable(
-                        enabled = visible,
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = {
-                            val validSnapshot = if (
-                                barBounds != null &&
-                                artworkBounds != null &&
-                                barBounds!!.isValidTransitionBounds &&
-                                artworkBounds!!.isValidTransitionBounds
-                            ) {
-                                NowPlayingTransitionSnapshot(
-                                    songId = song.id,
-                                    barBounds = barBounds!!,
-                                    artworkBounds = artworkBounds!!,
-                                )
-                            } else {
-                                null
-                            }
-                            onOpenPlayer(
-                                validSnapshot,
-                            )
-                        },
                     ),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -516,6 +527,25 @@ internal fun NowPlayingBar(
                         maxLines = 1,
                     )
                 }
+            }
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .clickable(
+                        enabled = visible,
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onSkipPrevious,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_elovaire_backward_filled),
+                    contentDescription = "Previous",
+                    tint = controlIconTint,
+                    modifier = Modifier.size(18.dp),
+                )
             }
             Box(
                 modifier = Modifier
@@ -586,6 +616,25 @@ internal fun NowPlayingBar(
                         modifier = Modifier.size(18.dp),
                     )
                 }
+            }
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .clickable(
+                        enabled = visible,
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onSkipNext,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_elovaire_forward_filled),
+                    contentDescription = "Next",
+                    tint = controlIconTint,
+                    modifier = Modifier.size(18.dp),
+                )
             }
         }
     }

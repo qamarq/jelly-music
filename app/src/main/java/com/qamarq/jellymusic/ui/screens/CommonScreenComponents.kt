@@ -537,6 +537,18 @@ internal fun hasNotificationPermission(context: Context): Boolean {
         ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 }
 
+internal fun hasNearbyWifiDevicesPermission(context: Context): Boolean {
+    return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+        ContextCompat.checkSelfPermission(context, Manifest.permission.NEARBY_WIFI_DEVICES) == PackageManager.PERMISSION_GRANTED
+}
+
+// Android 17 (API 37) blocks local-network access (mDNS/Cast discovery, LAN sockets) by default
+// for apps targeting SDK 37+; ACCESS_LOCAL_NETWORK must be granted to restore it.
+internal fun hasLocalNetworkPermission(context: Context): Boolean {
+    return Build.VERSION.SDK_INT < 37 ||
+        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_LOCAL_NETWORK) == PackageManager.PERMISSION_GRANTED
+}
+
 internal fun audioPermission(): String {
     return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_AUDIO

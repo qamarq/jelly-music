@@ -135,9 +135,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.mediarouter.app.MediaRouteButton
-import com.google.android.gms.cast.framework.CastButtonFactory
 import com.qamarq.jellymusic.BuildConfig
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -422,6 +419,7 @@ internal fun UnifiedTopBar(
                             modifier = Modifier.zIndex(1f),
                         )
                     }
+                    CastButton(modifier = Modifier.zIndex(1f))
                     HeaderIconButton(
                         iconResId = R.drawable.ic_lucide_menu,
                         contentDescription = "Menu",
@@ -624,6 +622,7 @@ internal fun SharedTopBarOverlay(
                                         onClick = currentSpec.onSupplementalAction,
                                     )
                                 }
+                                CastButton()
                                 HeaderIconButton(
                                     iconResId = R.drawable.ic_lucide_menu,
                                     contentDescription = "Menu",

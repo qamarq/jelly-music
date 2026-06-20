@@ -4,7 +4,6 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.qamarq.jellymusic.data.library.LibraryContentState
-import com.qamarq.jellymusic.data.library.LibraryRepository
 import com.qamarq.jellymusic.data.playback.PlaybackManager
 import com.qamarq.jellymusic.data.settings.PreferenceStore
 import com.qamarq.jellymusic.domain.model.Album
@@ -41,7 +40,7 @@ internal data class SearchUiState(
 )
 
 internal class SearchViewModel(
-    libraryRepository: LibraryRepository,
+    libraryContentState: StateFlow<LibraryContentState>,
     private val preferenceStore: PreferenceStore,
     playbackManager: PlaybackManager,
 ) : ViewModel() {
@@ -76,7 +75,7 @@ internal class SearchViewModel(
 
     val uiState: StateFlow<SearchUiState> = combine(
         searchConfig,
-        libraryRepository.contentState,
+        libraryContentState,
         preferenceStore.searchHistory,
         preferenceStore.albumPlayCounts,
         playbackSnapshot,

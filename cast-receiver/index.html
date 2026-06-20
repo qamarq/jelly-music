@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>JellyMusic</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    html, body { margin: 0; height: 100%; background: #000; }
+    #bg {
+      background-size: cover;
+      background-position: center;
+      filter: blur(70px) brightness(0.45) saturate(1.2);
+      transform: scale(1.2);
+    }
+    #progressFill { transition: width 0.25s linear; }
+    #artwork { transition: opacity 0.3s ease; }
+  </style>
+</head>
+<body class="h-full w-full overflow-hidden font-sans text-white">
+  <div id="bg" class="fixed inset-0"></div>
+  <div class="fixed inset-0 bg-black/45"></div>
+
+  <div id="player" class="relative z-10 hidden h-full w-full flex-col items-center justify-center gap-10 px-16">
+    <img id="artwork" class="h-72 w-72 rounded-3xl object-cover shadow-2xl md:h-96 md:w-96" src="" alt="" />
+
+    <div class="max-w-3xl text-center">
+      <h1 id="title" class="truncate text-4xl font-semibold md:text-5xl">&mdash;</h1>
+      <p id="artist" class="mt-3 truncate text-xl text-white/70 md:text-2xl">&mdash;</p>
+    </div>
+
+    <div class="flex w-full max-w-2xl items-center gap-4">
+      <span id="currentTime" class="w-12 text-right text-sm text-white/60">0:00</span>
+      <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-white/20">
+        <div id="progressFill" class="h-full rounded-full bg-[#1162DB]" style="width: 0%"></div>
+      </div>
+      <span id="duration" class="w-12 text-sm text-white/60">0:00</span>
+    </div>
+  </div>
+
+  <div id="idle" class="relative z-20 flex h-full w-full items-center justify-center">
+    <div class="text-center">
+      <div class="text-3xl font-semibold text-white/85">JellyMusic</div>
+      <div class="mt-2 text-white/40">Ready to cast</div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

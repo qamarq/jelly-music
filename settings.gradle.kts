@@ -14,6 +14,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Elovaire Music"
+rootProject.name = "JellyMusic"
 include(":app")
 
