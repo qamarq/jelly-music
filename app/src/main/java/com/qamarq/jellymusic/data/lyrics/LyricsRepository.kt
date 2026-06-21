@@ -184,7 +184,7 @@ internal class LyricsRepository(
             }
         }
 
-        if (!isNetworkAvailable()) {
+        if (!LYRICS_REMOTE_LOOKUP_ENABLED || !isNetworkAvailable()) {
             logDebug("offline fallback for ${identity.normalizedLookupKey}")
             if (localUnsyncedFallback != null) {
                 return@coroutineScope LyricsLookupOutcome(
@@ -418,6 +418,9 @@ internal class LyricsRepository(
     }
 
     private companion object {
+        // Temporarily disabled: remote lyrics APIs (lyrics.ovh, lrclib, Genius) were timing out
+        // and flooding logs/network without finding results.
+        const val LYRICS_REMOTE_LOOKUP_ENABLED = false
         const val TAG = "LyricsRepository"
         const val LOCAL_LOOKUP_TIMEOUT_MS = 250L
         const val FAST_NOT_FOUND_BUDGET_MS = 1_100L

@@ -79,6 +79,7 @@ data class PlaybackUiState(
     val sourcePlaylistId: Long? = null,
     val lastPlayedCollectionKind: PlaybackCollectionKind? = null,
     val lastPlayedCollectionId: Long? = null,
+    val isCastQueueLoading: Boolean = false,
 ) {
     val currentSong: Song?
         get() = queue.getOrNull(currentIndex)
@@ -173,7 +174,15 @@ class PlaybackManager(
     private var lastAppliedAudioPathDecisionKey: AudioPathDecisionKey? = null
     private var player: Player = createPlayer(enableSignalProcessing = true)
     private var castPlayer: CastPlayer? = null
-    
+
+    // Firing setMediaItems()/prepare() against the Cast receiver again before the previous one
+    // has reached STATE_READY makes the receiver's local sequence number drift out of sync,
+    // causing a burst of "Invalid Request" errors and the song restarting repeatedly until it
+    // self-corrects. Coalescing rapid taps into a single pending request (applied once the
+    // in-flight one finishes) avoids ever sending overlapping load requests.
+    private var castQueueLoadInFlight = false
+    private var pendingCastQueueLoad: (() -> Unit)? = null
+
     private val castSessionAvailabilityListener = object : SessionAvailabilityListener {
         override fun onCastSessionAvailable() {
             switchToCastPlayer()
@@ -250,6 +259,13 @@ class PlaybackManager(
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
+            if (castQueueLoadInFlight && playbackState == Player.STATE_READY) {
+                castQueueLoadInFlight = false
+                pendingCastQueueLoad?.let { runNext ->
+                    pendingCastQueueLoad = null
+                    runNext()
+                }
+            }
             if (playbackState == Player.STATE_ENDED && player.repeatMode == Player.REPEAT_MODE_OFF) {
                 stopAndClearQueue()
             } else if (
@@ -819,7 +835,10 @@ class PlaybackManager(
     private fun switchToCastPlayer() {
         val cp = castPlayer ?: return
         if (player === cp) return
-        
+
+        castQueueLoadInFlight = false
+        pendingCastQueueLoad = null
+
         val playbackSnapshot = PlaybackSnapshot.from(player)
         val queueSnapshot = _state.value.queue
         
@@ -832,32 +851,29 @@ class PlaybackManager(
         mediaSession.setPlayer(cp)
         
         if (queueSnapshot.isNotEmpty()) {
-            val resumePositionMs = playbackSnapshot.positionMs
+            // CastPlayer's startIndex/startPositionMs on the initial load request - and any
+            // seekTo() issued right after - are unreliable against this app's custom receiver,
+            // intermittently rejected with "Invalid Request" once the local/receiver queue state
+            // drifts out of sync. Loading only from the current song onward at index 0 sidesteps
+            // both problems entirely, at the cost of losing "previous" into songs before it and
+            // resuming the exact mid-song position.
+            val resumeIndex = playbackSnapshot.currentIndex.coerceIn(0, queueSnapshot.lastIndex)
+            val castQueueSongs = queueSnapshot.subList(resumeIndex, queueSnapshot.size)
             cp.setMediaItems(
-                queueSnapshot.map(Song::toPlaybackMediaItem),
-                playbackSnapshot.currentIndex.coerceIn(0, queueSnapshot.lastIndex),
-                resumePositionMs
+                castQueueSongs.map(Song::toPlaybackMediaItem),
+                0,
+                0L,
             )
             // CastPlayer bundles playWhenReady into the load request it sends to the receiver,
             // so it must be set before prepare() dispatches that request, or the receiver loads
             // paused and resuming needs an explicit tap.
             cp.playWhenReady = playbackSnapshot.playWhenReady
             cp.prepare()
-            if (resumePositionMs > 0L) {
-                // RemoteCastPlayer's startPositionMs is not reliably honored by the Cast
-                // framework on the initial load (known upstream issue), so once playback is
-                // actually ready, seek explicitly to make sure we resume where we left off.
-                cp.addListener(
-                    object : Player.Listener {
-                        override fun onPlaybackStateChanged(playbackState: Int) {
-                            if (playbackState == Player.STATE_READY) {
-                                cp.seekTo(resumePositionMs)
-                                cp.removeListener(this)
-                            }
-                        }
-                    },
-                )
-            }
+            castQueueLoadInFlight = true
+            _state.value = _state.value.copy(
+                queue = castQueueSongs,
+                currentIndex = 0,
+            )
         }
 
         cp.addListener(playerListener)
@@ -867,13 +883,16 @@ class PlaybackManager(
 
     private fun switchToExoPlayer() {
         if (player is ExoPlayer) return
-        
+
+        castQueueLoadInFlight = false
+        pendingCastQueueLoad = null
+
         val exoPlayer = createPlayer(enableSignalProcessing = !isDirectPlaybackActive)
         attachPlayerObservers(exoPlayer)
-        
+
         val playbackSnapshot = PlaybackSnapshot.from(player)
         val queueSnapshot = _state.value.queue
-        
+
         player.pause()
         player.removeListener(playerListener)
         
@@ -1032,15 +1051,14 @@ class PlaybackManager(
         scheduleAudioPathReevaluation("set-queue", AUDIO_PATH_REEVALUATION_DELAY_MS)
         resetUnexpectedIdleRecoveryGuard()
 
-        // CastPlayer's load request does not reliably honor a non-zero startIndex against this
-        // app's custom receiver, so when casting we rotate the requested song to the front of the
-        // queue instead of relying on it.
+        // CastPlayer's startIndex/startPositionMs on the initial load request - and any seekTo()
+        // issued right after - are unreliable against this app's custom receiver, intermittently
+        // rejected with "Invalid Request" once the local/receiver queue state drifts out of sync.
+        // Loading only from the selected song onward at index 0 sidesteps both problems entirely,
+        // at the cost of losing "previous" into songs before it while casting.
         val isCasting = player is CastPlayer
-        val (queueSongs, effectiveStartIndex) = if (isCasting && startIndex != 0) {
-            (songs.subList(startIndex, songs.size) + songs.subList(0, startIndex)) to 0
-        } else {
-            songs to startIndex
-        }
+        val queueSongs = if (isCasting) songs.subList(startIndex, songs.size) else songs
+        val loadIndex = if (isCasting) 0 else startIndex
 
         val mediaItems = queueSongs.map { song ->
             song.toPlaybackMediaItem()
@@ -1049,24 +1067,43 @@ class PlaybackManager(
         // CastPlayer reads playWhenReady at the moment setMediaItems() is called (it's baked into
         // the load request's autoplay flag), so it must be set before that call, not after.
         val shouldAutoPlay = requestAudioFocus()
-        player.playWhenReady = shouldAutoPlay
-        player.setMediaItems(mediaItems, effectiveStartIndex, 0L)
-        player.shuffleModeEnabled = shuffleEnabled
-        player.prepare()
-        if (shouldAutoPlay) {
-            if (player is ExoPlayer) {
-                (player as ExoPlayer).volume = effectivePlayerGain()
+        val targetPlayer = player
+
+        val performLoad: () -> Unit = {
+            targetPlayer.playWhenReady = shouldAutoPlay
+            targetPlayer.setMediaItems(mediaItems, loadIndex, 0L)
+            targetPlayer.shuffleModeEnabled = shuffleEnabled
+            targetPlayer.prepare()
+            if (shouldAutoPlay) {
+                if (targetPlayer is ExoPlayer) {
+                    targetPlayer.volume = effectivePlayerGain()
+                }
+                targetPlayer.play()
             }
-            player.play()
+            _state.value = _state.value.copy(
+                queue = queueSongs,
+                currentIndex = loadIndex.coerceIn(queueSongs.indices),
+                sourceLabel = sourceLabel,
+                transportShowsPause = shouldAutoPlay,
+                sourcePlaylistId = sourcePlaylistId,
+                isCastQueueLoading = false,
+            )
+            updateState()
         }
-        _state.value = _state.value.copy(
-            queue = queueSongs,
-            currentIndex = effectiveStartIndex.coerceIn(queueSongs.indices),
-            sourceLabel = sourceLabel,
-            transportShowsPause = shouldAutoPlay,
-            sourcePlaylistId = sourcePlaylistId,
-        )
-        updateState()
+
+        if (isCasting && castQueueLoadInFlight) {
+            // A previous load against the receiver hasn't reached STATE_READY yet - queueing
+            // this one (overwriting any earlier pending one) instead of firing it immediately
+            // avoids sending overlapping load requests, which desyncs the receiver's local
+            // sequence number and causes a burst of "Invalid Request" / repeated restarts.
+            pendingCastQueueLoad = performLoad
+            _state.value = _state.value.copy(isCastQueueLoading = true)
+            return
+        }
+        if (isCasting) {
+            castQueueLoadInFlight = true
+        }
+        performLoad()
     }
 
     private fun stopAndClearQueue() {
