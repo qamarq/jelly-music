@@ -770,33 +770,50 @@ class PlaybackManager(
 
     private fun logCastDiscovery(context: Context) {
         val mediaRouter = androidx.mediarouter.media.MediaRouter.getInstance(context)
-        val selector = androidx.mediarouter.media.MediaRouteSelector.Builder()
-            .addControlCategory(
-                com.google.android.gms.cast.CastMediaControlIntent.categoryForCast(
-                    com.google.android.gms.cast.CastMediaControlIntent.DEFAULT_MEDIA_RECEIVER_APPLICATION_ID,
-                ),
-            )
-            .build()
-        mediaRouter.addCallback(
-            selector,
-            object : androidx.mediarouter.media.MediaRouter.Callback() {
-                override fun onRouteAdded(
-                    router: androidx.mediarouter.media.MediaRouter,
-                    route: androidx.mediarouter.media.MediaRouter.RouteInfo,
-                ) {
-                    Log.d("PlaybackManager", "Cast route added: ${route.name} (${route.id})")
-                }
+        // Register one diagnostic callback per app id so we can directly compare, in the same
+        // run, whether discovery only fails for our custom app id or for Cast in general.
+        listOf(
+            "JellyMusic" to JELLYMUSIC_CAST_RECEIVER_APP_ID,
+            "DefaultMediaReceiver" to com.google.android.gms.cast.CastMediaControlIntent.DEFAULT_MEDIA_RECEIVER_APPLICATION_ID,
+        ).forEach { (label, appId) ->
+            val selector = androidx.mediarouter.media.MediaRouteSelector.Builder()
+                .addControlCategory(com.google.android.gms.cast.CastMediaControlIntent.categoryForCast(appId))
+                .build()
+            mediaRouter.addCallback(
+                selector,
+                object : androidx.mediarouter.media.MediaRouter.Callback() {
+                    override fun onRouteAdded(
+                        router: androidx.mediarouter.media.MediaRouter,
+                        route: androidx.mediarouter.media.MediaRouter.RouteInfo,
+                    ) {
+                        Log.d("PlaybackManager", "[$label] Cast route added: ${route.name} (${route.id})")
+                    }
 
-                override fun onRouteRemoved(
-                    router: androidx.mediarouter.media.MediaRouter,
-                    route: androidx.mediarouter.media.MediaRouter.RouteInfo,
-                ) {
-                    Log.d("PlaybackManager", "Cast route removed: ${route.name}")
-                }
-            },
-            androidx.mediarouter.media.MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY,
-        )
-        Log.d("PlaybackManager", "Cast discovery active, current route count=${mediaRouter.routes.size}")
+                    override fun onRouteRemoved(
+                        router: androidx.mediarouter.media.MediaRouter,
+                        route: androidx.mediarouter.media.MediaRouter.RouteInfo,
+                    ) {
+                        Log.d("PlaybackManager", "[$label] Cast route removed: ${route.name}")
+                    }
+
+                    override fun onRouteChanged(
+                        router: androidx.mediarouter.media.MediaRouter,
+                        route: androidx.mediarouter.media.MediaRouter.RouteInfo,
+                    ) {
+                        Log.d(
+                            "PlaybackManager",
+                            "[$label] Cast route changed: ${route.name}, connectionState=${route.connectionState}",
+                        )
+                    }
+                },
+                androidx.mediarouter.media.MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY,
+            )
+            val matchingRoutes = mediaRouter.routes.filter { it.matchesSelector(selector) }
+            Log.d(
+                "PlaybackManager",
+                "[$label] Cast discovery active for appId=$appId, matching route count=${matchingRoutes.size}, all route count=${mediaRouter.routes.size}",
+            )
+        }
     }
 
     private fun switchToCastPlayer() {
@@ -815,16 +832,32 @@ class PlaybackManager(
         mediaSession.setPlayer(cp)
         
         if (queueSnapshot.isNotEmpty()) {
+            val resumePositionMs = playbackSnapshot.positionMs
             cp.setMediaItems(
                 queueSnapshot.map(Song::toPlaybackMediaItem),
                 playbackSnapshot.currentIndex.coerceIn(0, queueSnapshot.lastIndex),
-                playbackSnapshot.positionMs
+                resumePositionMs
             )
             // CastPlayer bundles playWhenReady into the load request it sends to the receiver,
             // so it must be set before prepare() dispatches that request, or the receiver loads
             // paused and resuming needs an explicit tap.
             cp.playWhenReady = playbackSnapshot.playWhenReady
             cp.prepare()
+            if (resumePositionMs > 0L) {
+                // RemoteCastPlayer's startPositionMs is not reliably honored by the Cast
+                // framework on the initial load (known upstream issue), so once playback is
+                // actually ready, seek explicitly to make sure we resume where we left off.
+                cp.addListener(
+                    object : Player.Listener {
+                        override fun onPlaybackStateChanged(playbackState: Int) {
+                            if (playbackState == Player.STATE_READY) {
+                                cp.seekTo(resumePositionMs)
+                                cp.removeListener(this)
+                            }
+                        }
+                    },
+                )
+            }
         }
 
         cp.addListener(playerListener)
@@ -999,26 +1032,36 @@ class PlaybackManager(
         scheduleAudioPathReevaluation("set-queue", AUDIO_PATH_REEVALUATION_DELAY_MS)
         resetUnexpectedIdleRecoveryGuard()
 
-        val mediaItems = songs.map { song ->
+        // CastPlayer's load request does not reliably honor a non-zero startIndex against this
+        // app's custom receiver, so when casting we rotate the requested song to the front of the
+        // queue instead of relying on it.
+        val isCasting = player is CastPlayer
+        val (queueSongs, effectiveStartIndex) = if (isCasting && startIndex != 0) {
+            (songs.subList(startIndex, songs.size) + songs.subList(0, startIndex)) to 0
+        } else {
+            songs to startIndex
+        }
+
+        val mediaItems = queueSongs.map { song ->
             song.toPlaybackMediaItem()
         }
 
-        player.setMediaItems(mediaItems, startIndex, 0L)
+        // CastPlayer reads playWhenReady at the moment setMediaItems() is called (it's baked into
+        // the load request's autoplay flag), so it must be set before that call, not after.
+        val shouldAutoPlay = requestAudioFocus()
+        player.playWhenReady = shouldAutoPlay
+        player.setMediaItems(mediaItems, effectiveStartIndex, 0L)
         player.shuffleModeEnabled = shuffleEnabled
         player.prepare()
-        val shouldAutoPlay = requestAudioFocus()
         if (shouldAutoPlay) {
             if (player is ExoPlayer) {
                 (player as ExoPlayer).volume = effectivePlayerGain()
             }
-            player.playWhenReady = true
             player.play()
-        } else {
-            player.playWhenReady = false
         }
         _state.value = _state.value.copy(
-            queue = songs,
-            currentIndex = startIndex.coerceIn(songs.indices),
+            queue = queueSongs,
+            currentIndex = effectiveStartIndex.coerceIn(queueSongs.indices),
             sourceLabel = sourceLabel,
             transportShowsPause = shouldAutoPlay,
             sourcePlaylistId = sourcePlaylistId,

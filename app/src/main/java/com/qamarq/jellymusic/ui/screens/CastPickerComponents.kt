@@ -45,6 +45,7 @@ import androidx.mediarouter.media.MediaRouteSelector
 import androidx.mediarouter.media.MediaRouter
 import com.google.android.gms.cast.CastMediaControlIntent
 import com.qamarq.jellymusic.R
+import com.qamarq.jellymusic.data.playback.JELLYMUSIC_CAST_RECEIVER_APP_ID
 import com.qamarq.jellymusic.ui.motion.ElovaireMotion
 import com.qamarq.jellymusic.ui.theme.ElovaireRadii
 import com.qamarq.jellymusic.ui.theme.RoseAccent
@@ -59,7 +60,7 @@ internal class CastPickerController {
 internal val LocalCastPickerController = compositionLocalOf<CastPickerController?> { null }
 
 private fun castRouteSelector(): MediaRouteSelector = MediaRouteSelector.Builder()
-    .addControlCategory(CastMediaControlIntent.categoryForCast(CastMediaControlIntent.DEFAULT_MEDIA_RECEIVER_APPLICATION_ID))
+    .addControlCategory(CastMediaControlIntent.categoryForCast(JELLYMUSIC_CAST_RECEIVER_APP_ID))
     .build()
 
 @Composable

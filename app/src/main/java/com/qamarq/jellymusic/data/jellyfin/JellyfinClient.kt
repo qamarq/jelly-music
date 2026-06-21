@@ -39,6 +39,23 @@ data class BaseItemDto(
     val ImageTags: Map<String, String>? = null,
     val Container: String? = null,
     val Bitrate: Int? = null,
+    val MediaSources: List<MediaSourceDto>? = null,
+)
+
+@Serializable
+data class MediaSourceDto(
+    val Container: String? = null,
+    val Bitrate: Int? = null,
+    val MediaStreams: List<MediaStreamDto>? = null,
+)
+
+@Serializable
+data class MediaStreamDto(
+    val Type: String? = null,
+    val Codec: String? = null,
+    val SampleRate: Int? = null,
+    val BitDepth: Int? = null,
+    val BitRate: Int? = null,
 )
 
 @Serializable
@@ -97,7 +114,7 @@ class JellyfinClient(
 
     suspend fun getMusicItems(userId: String): List<BaseItemDto> = withContext(Dispatchers.IO) {
         val request = Request.Builder()
-            .url(buildUrl("Users/$userId/Items?IncludeItemTypes=Audio&Recursive=true&Fields=ArtistItems,AlbumArtists,Album,ProductionYear,Genres,RunTimeTicks,IndexNumber,ParentIndexNumber,ImageTags"))
+            .url(buildUrl("Users/$userId/Items?IncludeItemTypes=Audio&Recursive=true&Fields=ArtistItems,AlbumArtists,Album,ProductionYear,Genres,RunTimeTicks,IndexNumber,ParentIndexNumber,ImageTags,MediaSources,Bitrate"))
             .addAuth()
             .build()
 

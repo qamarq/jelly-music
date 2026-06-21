@@ -1,6 +1,3 @@
-const context = cast.framework.CastReceiverContext.getInstance();
-const playerManager = context.getPlayerManager();
-
 const bgEl = document.getElementById('bg');
 const playerEl = document.getElementById('player');
 const idleEl = document.getElementById('idle');
@@ -10,6 +7,40 @@ const artistEl = document.getElementById('artist');
 const progressFillEl = document.getElementById('progressFill');
 const currentTimeEl = document.getElementById('currentTime');
 const durationEl = document.getElementById('duration');
+const errorBannerEl = document.getElementById('errorBanner');
+const errorTextEl = document.getElementById('errorText');
+const playIconEl = document.getElementById('playIcon');
+const pauseIconEl = document.getElementById('pauseIcon');
+
+function showError(label, detail) {
+  const message = `[${new Date().toISOString()}] ${label}\n${detail}`;
+  errorTextEl.textContent = `${errorTextEl.textContent}\n\n${message}`.trim();
+  errorBannerEl.classList.remove('hidden');
+  errorBannerEl.classList.add('flex');
+  // eslint-disable-next-line no-console
+  console.error(label, detail);
+}
+
+window.addEventListener('error', (event) => {
+  showError('Uncaught error', `${event.message}\n${event.filename}:${event.lineno}:${event.colno}\n${event.error && event.error.stack ? event.error.stack : ''}`);
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  showError('Unhandled promise rejection', event.reason && event.reason.stack ? event.reason.stack : String(event.reason));
+});
+
+function guarded(label, fn) {
+  return (...args) => {
+    try {
+      fn(...args);
+    } catch (err) {
+      showError(label, err && err.stack ? err.stack : String(err));
+    }
+  };
+}
+
+const context = cast.framework.CastReceiverContext.getInstance();
+const playerManager = context.getPlayerManager();
 
 function formatTime(seconds) {
   if (!isFinite(seconds) || seconds < 0) seconds = 0;
@@ -53,31 +84,75 @@ function updateMetadata(mediaInformation) {
   }
 }
 
-playerManager.addEventListener(cast.framework.events.EventType.MEDIA_STATUS, () => {
-  const mediaStatus = playerManager.getMediaStatus();
-  if (!mediaStatus || !mediaStatus.media) {
-    showIdle();
-    return;
-  }
-  showPlayer();
-  updateMetadata(mediaStatus.media);
-});
+function isCurrentlyPlaying() {
+  return playerManager.getPlayerState() === cast.framework.messages.PlayerState.PLAYING;
+}
 
-playerManager.addEventListener(cast.framework.events.EventType.TIME_UPDATE, () => {
-  const mediaStatus = playerManager.getMediaStatus();
-  if (!mediaStatus || !mediaStatus.media) return;
+function updatePlayPauseIcon() {
+  const isPlaying = isCurrentlyPlaying();
+  playIconEl.classList.toggle('hidden', isPlaying);
+  pauseIconEl.classList.toggle('hidden', !isPlaying);
+}
 
-  const duration = mediaStatus.media.duration || 0;
-  const current = playerManager.getCurrentTimeSec ? playerManager.getCurrentTimeSec() : mediaStatus.currentTime || 0;
-  const pct = duration > 0 ? (current / duration) * 100 : 0;
+playerManager.addEventListener(
+  cast.framework.events.EventType.MEDIA_STATUS,
+  guarded('MEDIA_STATUS handler', () => {
+    const mediaInformation = playerManager.getMediaInformation();
+    if (!mediaInformation) {
+      showIdle();
+      return;
+    }
+    showPlayer();
+    updateMetadata(mediaInformation);
+    updatePlayPauseIcon();
+  }),
+);
 
-  progressFillEl.style.width = `${pct}%`;
-  currentTimeEl.textContent = formatTime(current);
-  durationEl.textContent = formatTime(duration);
-});
+playerManager.addEventListener(
+  cast.framework.events.EventType.TIME_UPDATE,
+  guarded('TIME_UPDATE handler', () => {
+    const mediaInformation = playerManager.getMediaInformation();
+    if (!mediaInformation) return;
 
-playerManager.addEventListener(cast.framework.events.EventType.ENDED, showIdle);
+    const duration = playerManager.getDurationSec() || 0;
+    const current = playerManager.getCurrentTimeSec() || 0;
+    const pct = duration > 0 ? (current / duration) * 100 : 0;
+
+    progressFillEl.style.width = `${pct}%`;
+    currentTimeEl.textContent = formatTime(current);
+    durationEl.textContent = formatTime(duration);
+    updatePlayPauseIcon();
+  }),
+);
+
+playerManager.addEventListener(cast.framework.events.EventType.ENDED, guarded('ENDED handler', showIdle));
+
+playerManager.addEventListener(
+  cast.framework.events.EventType.ERROR,
+  guarded('PlayerManager ERROR event', (event) => {
+    showError('Player error', JSON.stringify(event, null, 2));
+  }),
+);
+
+context.addEventListener(
+  cast.framework.system.EventType.ERROR,
+  guarded('CastReceiverContext ERROR event', (event) => {
+    showError('Receiver error', JSON.stringify(event, null, 2));
+  }),
+);
+
+context.addEventListener(
+  cast.framework.system.EventType.SENDER_DISCONNECTED,
+  guarded('SENDER_DISCONNECTED', (event) => {
+    showError('Sender disconnected', JSON.stringify(event, null, 2));
+  }),
+);
 
 const options = new cast.framework.CastReceiverOptions();
 options.maxInactivity = 3600;
-context.start(options);
+
+try {
+  context.start(options);
+} catch (err) {
+  showError('context.start() threw', err && err.stack ? err.stack : String(err));
+}

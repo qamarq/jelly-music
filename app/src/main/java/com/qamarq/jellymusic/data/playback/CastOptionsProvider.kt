@@ -8,7 +8,7 @@ import com.google.android.gms.cast.framework.SessionProvider
 class CastOptionsProvider : OptionsProvider {
     override fun getCastOptions(context: Context): CastOptions {
         return CastOptions.Builder()
-            .setReceiverApplicationId("CC1AD845") // Default Media Receiver or your specific ID
+            .setReceiverApplicationId(JELLYMUSIC_CAST_RECEIVER_APP_ID)
             .build()
     }
 
@@ -16,3 +16,6 @@ class CastOptionsProvider : OptionsProvider {
         return null
     }
 }
+
+/** App ID of the JellyMusic custom Cast receiver, registered in the Google Cast SDK Developer Console. */
+const val JELLYMUSIC_CAST_RECEIVER_APP_ID = "0909CD3C"

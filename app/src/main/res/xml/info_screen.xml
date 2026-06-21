@@ -19,6 +19,14 @@
       anything else -> globe icon
     -->
     <entry
+        title="qamarq"
+        description="Maintainer of this JellyMusic fork. Add your own bio here!">
+        <link
+            label="JellyMusic on GitHub"
+            url="https://github.com/qamarq/jelly-music" />
+    </entry>
+
+    <entry
         title="Droid Beauty"
         description="Beautifully designed widgets and themes for Android to make your homescreen stunning. Also the original creator of Elovaire Music, the project this app was forked from."
         logoUrl="https://raw.githubusercontent.com/user774820/logoimages/refs/heads/main/DroidBeautyLogo.png">
@@ -37,14 +45,6 @@
         <link
             label="Elovaire Music (original repo)"
             url="https://github.com/droidbeauty/elovaire-music" />
-    </entry>
-
-    <entry
-        title="qamarq"
-        description="Maintainer of this JellyMusic fork. Add your own bio here!">
-        <link
-            label="JellyMusic on GitHub"
-            url="https://github.com/qamarq/jelly-music" />
     </entry>
 
     <entry
