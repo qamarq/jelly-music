@@ -1,12 +1,17 @@
 package com.qamarq.jellymusic.ui.screens
 
+import android.media.AudioDeviceCallback
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -17,8 +22,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -35,10 +42,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.mediarouter.media.MediaRouteSelector
@@ -49,7 +58,6 @@ import com.qamarq.jellymusic.data.playback.JELLYMUSIC_CAST_RECEIVER_APP_ID
 import com.qamarq.jellymusic.ui.motion.ElovaireMotion
 import com.qamarq.jellymusic.ui.theme.ElovaireRadii
 import com.qamarq.jellymusic.ui.theme.RoseAccent
-import com.qamarq.jellymusic.ui.theme.ToggleEnabledGreen
 
 /** Hoists "show the cast picker" so a single sheet instance renders at the app root, where it can
  * actually blur the real screen content behind it (a Dialog renders in its own Window and can't). */
@@ -69,6 +77,7 @@ internal fun rememberCastRoutesState(): CastRoutesState {
     var routes by remember { mutableStateOf(emptyList<MediaRouter.RouteInfo>()) }
     var selectedRouteId by remember { mutableStateOf<String?>(null) }
     var selectedConnectionState by remember { mutableStateOf(MediaRouter.RouteInfo.CONNECTION_STATE_DISCONNECTED) }
+    var volumeRefreshTick by remember { mutableStateOf(0) }
     DisposableEffect(context) {
         val mediaRouter = MediaRouter.getInstance(context)
         val selector = castRouteSelector()
@@ -79,6 +88,7 @@ internal fun rememberCastRoutesState(): CastRoutesState {
             selectedRouteId = selectedRoute?.id
             selectedConnectionState = selectedRoute?.connectionState
                 ?: MediaRouter.RouteInfo.CONNECTION_STATE_DISCONNECTED
+            volumeRefreshTick++
         }
 
         val callback = object : MediaRouter.Callback() {
@@ -87,6 +97,7 @@ internal fun rememberCastRoutesState(): CastRoutesState {
             override fun onRouteChanged(router: MediaRouter, route: MediaRouter.RouteInfo) = refresh()
             override fun onRouteSelected(router: MediaRouter, route: MediaRouter.RouteInfo, reason: Int) = refresh()
             override fun onRouteUnselected(router: MediaRouter, route: MediaRouter.RouteInfo, reason: Int) = refresh()
+            override fun onRouteVolumeChanged(router: MediaRouter, route: MediaRouter.RouteInfo) = refresh()
         }
         mediaRouter.addCallback(selector, callback, MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY)
         refresh()
@@ -98,6 +109,7 @@ internal fun rememberCastRoutesState(): CastRoutesState {
         routes = routes,
         selectedRouteId = selectedRouteId,
         selectedConnectionState = selectedConnectionState,
+        volumeRefreshTick = volumeRefreshTick,
     )
 }
 
@@ -105,9 +117,49 @@ internal data class CastRoutesState(
     val routes: List<MediaRouter.RouteInfo>,
     val selectedRouteId: String?,
     val selectedConnectionState: Int,
+    val volumeRefreshTick: Int = 0,
 ) {
     val isCasting: Boolean get() = selectedRouteId != null
-    val isConnecting: Boolean get() = isCasting && selectedConnectionState == MediaRouter.RouteInfo.CONNECTION_STATE_CONNECTING
+    // Treat anything short of fully CONNECTED as still connecting, rather than only the
+    // CONNECTING value - some providers briefly report other transitional states (or skip
+    // straight from DISCONNECTED), and we don't want a premature "Connected" label.
+    val isConnecting: Boolean get() = isCasting && selectedConnectionState != MediaRouter.RouteInfo.CONNECTION_STATE_CONNECTED
+    val selectedRoute: MediaRouter.RouteInfo? get() = routes.firstOrNull { it.id == selectedRouteId }
+}
+
+private val BLUETOOTH_AUDIO_DEVICE_TYPES = setOf(
+    AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+    AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+)
+
+/** The currently connected Bluetooth audio output device's name, if any - mirrors what the
+ * system output switcher shows so the cast picker can offer it as a local playback target too. */
+@Composable
+internal fun rememberConnectedBluetoothAudioDeviceName(): String? {
+    val context = LocalContext.current
+    var deviceName by remember { mutableStateOf<String?>(null) }
+    DisposableEffect(context) {
+        val audioManager = context.getSystemService(AudioManager::class.java)
+
+        fun refresh() {
+            deviceName = audioManager
+                ?.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                ?.firstOrNull { it.type in BLUETOOTH_AUDIO_DEVICE_TYPES }
+                ?.productName
+                ?.toString()
+        }
+
+        val callback = object : AudioDeviceCallback() {
+            override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) = refresh()
+            override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) = refresh()
+        }
+        audioManager?.registerAudioDeviceCallback(callback, null)
+        refresh()
+        onDispose {
+            audioManager?.unregisterAudioDeviceCallback(callback)
+        }
+    }
+    return deviceName
 }
 
 @Composable
@@ -140,6 +192,7 @@ internal fun CastDevicePickerOverlay(
     controller: CastPickerController,
 ) {
     val castState = rememberCastRoutesState()
+    val bluetoothDeviceName = rememberConnectedBluetoothAudioDeviceName()
     val context = LocalContext.current
     AnimatedVisibility(
         visible = controller.visible,
@@ -150,113 +203,174 @@ internal fun CastDevicePickerOverlay(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.32f))
+                .background(Color.Black.copy(alpha = 0.42f))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                     onClick = { controller.visible = false },
                 ),
-            contentAlignment = Alignment.Center,
+            contentAlignment = Alignment.BottomCenter,
         ) {
             AnimatedVisibility(
                 visible = controller.visible,
                 enter = fadeIn(animationSpec = ElovaireMotion.contentFadeInSpec()) +
-                    scaleIn(
-                        initialScale = 0.92f,
+                    slideInVertically(
+                        initialOffsetY = { it / 4 },
                         animationSpec = ElovaireMotion.offsetSoft(durationMillis = ElovaireMotion.Standard),
                     ),
                 exit = fadeOut(animationSpec = tween(durationMillis = 150)) +
-                    scaleOut(
-                        targetScale = 0.94f,
+                    slideOutVertically(
+                        targetOffsetY = { it / 6 },
                         animationSpec = tween(durationMillis = 150),
                     ),
             ) {
                 DynamicBackdropSurface(
                     modifier = Modifier
-                        .fillMaxWidth(0.88f)
-                        .padding(vertical = 12.dp)
+                        .fillMaxWidth()
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
                             onClick = {},
                         ),
-                    shape = RoundedCornerShape(ElovaireRadii.card),
-                    overlayAlpha = 0.42f,
+                    shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                    overlayAlpha = 0.6f,
                     borderColor = blurSurfaceBorderColor(),
                 ) {
                     Column(
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .padding(bottom = 12.dp),
                     ) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterHorizontally)
+                                .width(36.dp)
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)),
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_lucide_cast),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.size(18.dp),
+                            CastPickerIconButton(
+                                iconRes = R.drawable.ic_lucide_x,
+                                contentDescription = "Close",
+                                onClick = { controller.visible = false },
                             )
                             Text(
-                                text = "Cast",
-                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium),
+                                text = "Cast to device",
+                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.onSurface,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.weight(1f),
+                            )
+                            CastPickerIconButton(
+                                iconRes = R.drawable.ic_lucide_info,
+                                contentDescription = "Help",
+                                onClick = {},
                             )
                         }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        if (castState.routes.isEmpty()) {
-                            Text(
-                                text = "No devices found on your network. Make sure your phone and your device (TV/speaker) are on the same Wi-Fi network.",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = readableSecondaryTextColor(),
-                                textAlign = TextAlign.Start,
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
+                        DividerLine()
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        val connectedRoute = castState.selectedRoute
+                        val availableRoutes = castState.routes.filter { it.id != castState.selectedRouteId }
+                        val localSourceName = bluetoothDeviceName ?: "This phone"
+                        val localSourceIconRes = if (bluetoothDeviceName != null) {
+                            R.drawable.ic_lucide_headphones
                         } else {
-                            castState.routes.forEach { route ->
-                                CastDeviceRow(
-                                    route = route,
-                                    selected = route.id == castState.selectedRouteId,
+                            R.drawable.ic_lucide_smartphone
+                        }
+                        val localSourceSubtitle = if (bluetoothDeviceName != null) "Bluetooth" else "Built-in speaker"
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp),
+                        ) {
+                            if (connectedRoute != null) {
+                                // Read fresh on every recomposition (driven by
+                                // castState.volumeRefreshTick via onRouteVolumeChanged) rather than
+                                // caching it keyed off the route object - MediaRouter mutates the
+                                // same RouteInfo instance in place, so a remember() keyed on it
+                                // would never see external volume changes (TV remote, phone, etc.)
+                                // as a "changed" key and would go stale.
+                                val volumeFraction = if (connectedRoute.volumeMax > 0) {
+                                    connectedRoute.volume.toFloat() / connectedRoute.volumeMax.toFloat()
+                                } else {
+                                    0f
+                                }
+                                ConnectedCastDeviceCard(
+                                    route = connectedRoute,
+                                    isConnecting = castState.isConnecting,
+                                    volumeFraction = volumeFraction,
+                                    onVolumeChange = { fraction ->
+                                        val newVolume = (fraction * connectedRoute.volumeMax)
+                                            .toInt()
+                                            .coerceIn(0, connectedRoute.volumeMax)
+                                        connectedRoute.requestSetVolume(newVolume)
+                                    },
+                                )
+                                Spacer(modifier = Modifier.height(20.dp))
+                            } else {
+                                ConnectedLocalSourceCard(
+                                    name = localSourceName,
+                                    iconRes = localSourceIconRes,
+                                )
+                                Spacer(modifier = Modifier.height(20.dp))
+                            }
+
+                            if (connectedRoute != null || availableRoutes.isNotEmpty()) {
+                                Text(
+                                    text = "AVAILABLE DEVICES",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = readableSecondaryTextColor(),
+                                    modifier = Modifier.padding(bottom = 4.dp),
+                                )
+                                if (connectedRoute != null) {
+                                    AvailableLocalSourceRow(
+                                        name = localSourceName,
+                                        subtitle = localSourceSubtitle,
+                                        iconRes = localSourceIconRes,
+                                        onClick = {
+                                            MediaRouter.getInstance(context)
+                                                .unselect(MediaRouter.UNSELECT_REASON_STOPPED)
+                                        },
+                                    )
+                                }
+                                availableRoutes.forEach { route ->
+                                    AvailableCastDeviceRow(
+                                        route = route,
+                                        onClick = { route.select() },
+                                    )
+                                }
+                            } else {
+                                Text(
+                                    text = "No devices found on your network. Make sure your phone and your device (TV/speaker) are on the same Wi-Fi network.",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = readableSecondaryTextColor(),
+                                    textAlign = TextAlign.Start,
+                                )
+                            }
+
+                            if (castState.isCasting) {
+                                Spacer(modifier = Modifier.height(20.dp))
+                                StopCastingButton(
                                     onClick = {
-                                        route.select()
+                                        MediaRouter.getInstance(context)
+                                            .unselect(MediaRouter.UNSELECT_REASON_STOPPED)
                                         controller.visible = false
                                     },
                                 )
                             }
-                        }
-                        if (castState.isCasting) {
                             Spacer(modifier = Modifier.height(8.dp))
-                            DividerLine()
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = null,
-                                        onClick = {
-                                            MediaRouter.getInstance(context)
-                                                .unselect(MediaRouter.UNSELECT_REASON_STOPPED)
-                                            controller.visible = false
-                                        },
-                                    )
-                                    .padding(vertical = 12.dp),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Icon(
-                                    painter = painterResource(id = R.drawable.ic_lucide_x),
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.error,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                                Text(
-                                    text = "Stop casting",
-                                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-                                    color = MaterialTheme.colorScheme.error,
-                                )
-                            }
                         }
                     }
                 }
@@ -265,19 +379,204 @@ internal fun CastDevicePickerOverlay(
     }
 }
 
-private fun castDeviceIconRes(route: MediaRouter.RouteInfo, selected: Boolean): Int {
-    val isActivelyConnected = selected && route.connectionState != MediaRouter.RouteInfo.CONNECTION_STATE_CONNECTING
+@Composable
+private fun CastPickerIconButton(
+    iconRes: Int,
+    contentDescription: String?,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            painter = painterResource(id = iconRes),
+            contentDescription = contentDescription,
+            tint = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.size(20.dp),
+        )
+    }
+}
+
+private fun castDeviceIconRes(route: MediaRouter.RouteInfo): Int {
     return when (route.deviceType) {
         MediaRouter.RouteInfo.DEVICE_TYPE_TV -> R.drawable.ic_lucide_tv
         MediaRouter.RouteInfo.DEVICE_TYPE_SPEAKER -> R.drawable.ic_lucide_speaker
-        else -> if (isActivelyConnected) R.drawable.ic_lucide_cast_filled else R.drawable.ic_lucide_cast
+        MediaRouter.RouteInfo.DEVICE_TYPE_BLUETOOTH_A2DP -> R.drawable.ic_lucide_cast
+        else -> R.drawable.ic_lucide_cast
+    }
+}
+
+private fun castDeviceTypeLabel(route: MediaRouter.RouteInfo): String {
+    return when (route.deviceType) {
+        MediaRouter.RouteInfo.DEVICE_TYPE_TV -> "TV"
+        MediaRouter.RouteInfo.DEVICE_TYPE_SPEAKER -> "Wi-Fi speaker"
+        MediaRouter.RouteInfo.DEVICE_TYPE_BLUETOOTH_A2DP -> "Bluetooth"
+        else -> "Wi-Fi device"
     }
 }
 
 @Composable
-private fun CastDeviceRow(
+private fun ConnectedCastDeviceCard(
     route: MediaRouter.RouteInfo,
-    selected: Boolean,
+    isConnecting: Boolean,
+    volumeFraction: Float,
+    onVolumeChange: (Float) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(ElovaireRadii.card))
+            .background(RoseAccent.copy(alpha = 0.16f))
+            .padding(16.dp),
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(RoseAccent.copy(alpha = 0.24f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(id = castDeviceIconRes(route)),
+                    contentDescription = null,
+                    tint = RoseAccent,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = route.name,
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = if (isConnecting) "Connecting..." else "Connected",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (isConnecting) readableSecondaryTextColor() else RoseAccent,
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(RoseAccent),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_lucide_check),
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(14.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.ic_lucide_volume_x),
+                contentDescription = null,
+                tint = readableSecondaryTextColor(),
+                modifier = Modifier.size(16.dp),
+            )
+            ThinContinuousSlider(
+                value = volumeFraction,
+                onValueChange = onVolumeChange,
+                valueRange = 0f..1f,
+                lineThickness = 4.dp,
+                knobSize = 18.dp,
+                modifier = Modifier.weight(1f),
+            )
+            Icon(
+                painter = painterResource(id = R.drawable.ic_lucide_volume_2),
+                contentDescription = null,
+                tint = readableSecondaryTextColor(),
+                modifier = Modifier.size(16.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ConnectedLocalSourceCard(
+    name: String,
+    iconRes: Int,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(ElovaireRadii.card))
+            .background(RoseAccent.copy(alpha = 0.16f))
+            .padding(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(RoseAccent.copy(alpha = 0.24f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(id = iconRes),
+                contentDescription = null,
+                tint = RoseAccent,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = name,
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = "Connected",
+                style = MaterialTheme.typography.labelLarge,
+                color = RoseAccent,
+            )
+        }
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .clip(CircleShape)
+                .background(RoseAccent),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.ic_lucide_check),
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(16.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun AvailableLocalSourceRow(
+    name: String,
+    subtitle: String,
+    iconRes: Int,
     onClick: () -> Unit,
 ) {
     Row(
@@ -294,16 +593,71 @@ private fun CastDeviceRow(
     ) {
         Box(
             modifier = Modifier
-                .size(40.dp)
+                .size(44.dp)
                 .clip(CircleShape)
-                .background(if (selected) RoseAccent.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                painter = painterResource(id = castDeviceIconRes(route, selected)),
+                painter = painterResource(id = iconRes),
                 contentDescription = null,
-                tint = if (selected) RoseAccent else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = name,
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.labelLarge,
+                color = readableSecondaryTextColor(),
+            )
+        }
+        Canvas(modifier = Modifier.size(20.dp)) {
+            drawCircle(
+                color = Color.Gray.copy(alpha = 0.5f),
+                radius = size.minDimension / 2f - 1.dp.toPx(),
+                style = Stroke(width = 1.5.dp.toPx()),
+            )
+        }
+    }
+}
+
+@Composable
+private fun AvailableCastDeviceRow(
+    route: MediaRouter.RouteInfo,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            )
+            .padding(vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(id = castDeviceIconRes(route)),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
             )
         }
         Column(modifier = Modifier.weight(1f)) {
@@ -311,26 +665,57 @@ private fun CastDeviceRow(
                 text = route.name,
                 style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
-            if (selected) {
-                Text(
-                    text = if (route.connectionState == MediaRouter.RouteInfo.CONNECTION_STATE_CONNECTING) "Connecting..." else "Connected",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = if (route.connectionState == MediaRouter.RouteInfo.CONNECTION_STATE_CONNECTING) {
-                        readableSecondaryTextColor()
-                    } else {
-                        ToggleEnabledGreen
-                    },
-                )
-            }
-        }
-        if (selected) {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(ToggleEnabledGreen),
+            Text(
+                text = castDeviceTypeLabel(route),
+                style = MaterialTheme.typography.labelLarge,
+                color = readableSecondaryTextColor(),
             )
         }
+        Canvas(modifier = Modifier.size(20.dp)) {
+            drawCircle(
+                color = Color.Gray.copy(alpha = 0.5f),
+                radius = size.minDimension / 2f - 1.dp.toPx(),
+                style = Stroke(width = 1.5.dp.toPx()),
+            )
+        }
+    }
+}
+
+@Composable
+private fun StopCastingButton(
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(ElovaireRadii.pill))
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.error.copy(alpha = 0.5f),
+                shape = RoundedCornerShape(ElovaireRadii.pill),
+            )
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            )
+            .padding(vertical = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            painter = painterResource(id = R.drawable.ic_lucide_circle_stop),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.error,
+            modifier = Modifier.size(18.dp),
+        )
+        Text(
+            text = "Stop casting",
+            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.error,
+        )
     }
 }

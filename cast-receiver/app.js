@@ -21,6 +21,13 @@ function showError(label, detail) {
   console.error(label, detail);
 }
 
+// For events that are expected/handled (not actual failures) - log for debugging
+// without surfacing the red error banner over the UI.
+function logInfo(label, detail) {
+  // eslint-disable-next-line no-console
+  console.log(`[${new Date().toISOString()}] ${label}`, detail);
+}
+
 window.addEventListener('error', (event) => {
   showError('Uncaught error', `${event.message}\n${event.filename}:${event.lineno}:${event.colno}\n${event.error && event.error.stack ? event.error.stack : ''}`);
 });
@@ -37,6 +44,16 @@ function guarded(label, fn) {
       showError(label, err && err.stack ? err.stack : String(err));
     }
   };
+}
+
+// CAF event objects often hold circular references (e.g. back to the originating
+// request), which makes a plain JSON.stringify throw instead of producing a log.
+function safeStringify(value) {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch (err) {
+    return `type=${value && value.type} (could not stringify: ${err && err.message})`;
+  }
 }
 
 const context = cast.framework.CastReceiverContext.getInstance();
@@ -130,21 +147,43 @@ playerManager.addEventListener(cast.framework.events.EventType.ENDED, guarded('E
 playerManager.addEventListener(
   cast.framework.events.EventType.ERROR,
   guarded('PlayerManager ERROR event', (event) => {
-    showError('Player error', JSON.stringify(event, null, 2));
+    showError('Player error', safeStringify(event));
   }),
 );
 
 context.addEventListener(
   cast.framework.system.EventType.ERROR,
   guarded('CastReceiverContext ERROR event', (event) => {
-    showError('Receiver error', JSON.stringify(event, null, 2));
+    showError('Receiver error', safeStringify(event));
   }),
 );
 
 context.addEventListener(
   cast.framework.system.EventType.SENDER_DISCONNECTED,
   guarded('SENDER_DISCONNECTED', (event) => {
-    showError('Sender disconnected', JSON.stringify(event, null, 2));
+    logInfo('Sender disconnected', `reason=${event && event.reason}`);
+    // This receiver only ever expects a single sender (the phone), so any
+    // disconnect - crash, force-close, network drop, manual stop - should halt
+    // playback outright instead of leaving audio running with nothing to control
+    // it. playerManager.stop() alone wasn't reliably silencing the underlying
+    // <cast-media-player> element, so also pause/reset it directly as a fallback.
+    try {
+      playerManager.stop();
+    } catch (err) {
+      showError('playerManager.stop() threw', err && err.stack ? err.stack : String(err));
+    }
+    try {
+      const mediaPlayerEl = document.querySelector('cast-media-player');
+      const mediaElement = mediaPlayerEl && mediaPlayerEl.mediaElement;
+      if (mediaElement) {
+        mediaElement.pause();
+        mediaElement.removeAttribute('src');
+        mediaElement.load();
+      }
+    } catch (err) {
+      showError('cast-media-player fallback stop threw', err && err.stack ? err.stack : String(err));
+    }
+    showIdle();
   }),
 );
 
