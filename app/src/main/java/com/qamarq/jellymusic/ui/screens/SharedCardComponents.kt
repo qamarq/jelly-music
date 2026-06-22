@@ -1093,7 +1093,11 @@ internal fun HomeRecentSongRow(
                         title = song.title,
                         isExplicit = song.isExplicit,
                         style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = if (isCurrentSong) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.fillMaxWidth(),
@@ -1108,7 +1112,7 @@ internal fun HomeRecentSongRow(
                 )
             }
             Row(
-                modifier = Modifier.width(96.dp),
+                modifier = Modifier.width(100.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -1118,7 +1122,8 @@ internal fun HomeRecentSongRow(
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
                     maxLines = 1,
                     textAlign = TextAlign.End,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
                 )
                 InlineFavoriteSongButton(
                     isFavorite = isFavorite,

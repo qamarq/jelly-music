@@ -183,6 +183,14 @@ class PlaybackManager(
     private var castQueueLoadInFlight = false
     private var pendingCastQueueLoad: (() -> Unit)? = null
 
+    private fun finalizeCastQueueLoad() {
+        castQueueLoadInFlight = false
+        pendingCastQueueLoad?.let { runNext ->
+            pendingCastQueueLoad = null
+            runNext()
+        }
+    }
+
     private val castSessionAvailabilityListener = object : SessionAvailabilityListener {
         override fun onCastSessionAvailable() {
             switchToCastPlayer()
@@ -260,11 +268,7 @@ class PlaybackManager(
 
         override fun onPlaybackStateChanged(playbackState: Int) {
             if (castQueueLoadInFlight && playbackState == Player.STATE_READY) {
-                castQueueLoadInFlight = false
-                pendingCastQueueLoad?.let { runNext ->
-                    pendingCastQueueLoad = null
-                    runNext()
-                }
+                finalizeCastQueueLoad()
             }
             if (playbackState == Player.STATE_ENDED && player.repeatMode == Player.REPEAT_MODE_OFF) {
                 stopAndClearQueue()
@@ -284,6 +288,9 @@ class PlaybackManager(
         }
 
         override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+            if (castQueueLoadInFlight) {
+                finalizeCastQueueLoad()
+            }
             if (_state.value.queue.isNotEmpty() && !isStoppingQueue && !isRecoveringPlayback) {
                 recoverUnexpectedIdleState(shouldAutoPlay = shouldAutoResumeAfterUnexpectedIdle())
             } else {
@@ -841,22 +848,19 @@ class PlaybackManager(
 
         val playbackSnapshot = PlaybackSnapshot.from(player)
         val queueSnapshot = _state.value.queue
-        
+
         if (player is ExoPlayer) {
             detachPlayerObservers(player as ExoPlayer)
         }
         player.pause()
-        
+
         player = cp
         mediaSession.setPlayer(cp)
-        
+
         if (queueSnapshot.isNotEmpty()) {
-            // CastPlayer's startIndex/startPositionMs on the initial load request - and any
-            // seekTo() issued right after - are unreliable against this app's custom receiver,
-            // intermittently rejected with "Invalid Request" once the local/receiver queue state
-            // drifts out of sync. Loading only from the current song onward at index 0 sidesteps
-            // both problems entirely, at the cost of losing "previous" into songs before it and
-            // resuming the exact mid-song position.
+            // Seeking against CastPlayer after a load is unreliable against this app's custom
+            // receiver, so we avoid it entirely by loading only from the current song onward at
+            // index 0 (losing mid-song resume position and "previous" into earlier songs).
             val resumeIndex = playbackSnapshot.currentIndex.coerceIn(0, queueSnapshot.lastIndex)
             val castQueueSongs = queueSnapshot.subList(resumeIndex, queueSnapshot.size)
             cp.setMediaItems(
@@ -1051,11 +1055,11 @@ class PlaybackManager(
         scheduleAudioPathReevaluation("set-queue", AUDIO_PATH_REEVALUATION_DELAY_MS)
         resetUnexpectedIdleRecoveryGuard()
 
-        // CastPlayer's startIndex/startPositionMs on the initial load request - and any seekTo()
-        // issued right after - are unreliable against this app's custom receiver, intermittently
-        // rejected with "Invalid Request" once the local/receiver queue state drifts out of sync.
-        // Loading only from the selected song onward at index 0 sidesteps both problems entirely,
-        // at the cost of losing "previous" into songs before it while casting.
+        // Seeking against CastPlayer after a load - even a single, non-overlapping one - is
+        // unreliable against this app's custom receiver and can trigger a multi-second burst of
+        // "Invalid Request" errors while the receiver's local sequence number resyncs. Loading
+        // only from the selected song onward at index 0 avoids seeking entirely, at the cost of
+        // losing "previous" into songs before it while casting.
         val isCasting = player is CastPlayer
         val queueSongs = if (isCasting) songs.subList(startIndex, songs.size) else songs
         val loadIndex = if (isCasting) 0 else startIndex

@@ -265,6 +265,15 @@ internal fun CastDevicePickerOverlay(
     }
 }
 
+private fun castDeviceIconRes(route: MediaRouter.RouteInfo, selected: Boolean): Int {
+    val isActivelyConnected = selected && route.connectionState != MediaRouter.RouteInfo.CONNECTION_STATE_CONNECTING
+    return when (route.deviceType) {
+        MediaRouter.RouteInfo.DEVICE_TYPE_TV -> R.drawable.ic_lucide_tv
+        MediaRouter.RouteInfo.DEVICE_TYPE_SPEAKER -> R.drawable.ic_lucide_speaker
+        else -> if (isActivelyConnected) R.drawable.ic_lucide_cast_filled else R.drawable.ic_lucide_cast
+    }
+}
+
 @Composable
 private fun CastDeviceRow(
     route: MediaRouter.RouteInfo,
@@ -291,13 +300,7 @@ private fun CastDeviceRow(
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                painter = painterResource(
-                    id = if (selected && route.connectionState != MediaRouter.RouteInfo.CONNECTION_STATE_CONNECTING) {
-                        R.drawable.ic_lucide_cast_filled
-                    } else {
-                        R.drawable.ic_lucide_cast
-                    },
-                ),
+                painter = painterResource(id = castDeviceIconRes(route, selected)),
                 contentDescription = null,
                 tint = if (selected) RoseAccent else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(18.dp),

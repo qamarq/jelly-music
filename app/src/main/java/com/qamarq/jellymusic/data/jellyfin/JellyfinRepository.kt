@@ -114,7 +114,12 @@ class JellyfinRepository(
                 name = firstSong.artist,
                 image = firstSong.artistImage
             )
-        }
+        }.sortedWith(
+            compareBy(
+                { it.name.equals("Unknown Artist", ignoreCase = true) },
+                { it.name.lowercase() },
+            ),
+        )
 
         _songs.value = jellyfinSongs
         _albums.value = jellyfinAlbums

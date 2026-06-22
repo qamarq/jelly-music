@@ -2013,7 +2013,7 @@ internal fun QueueSongRow(
                     color = secondaryTint.copy(alpha = 0.78f),
                     maxLines = 1,
                     textAlign = TextAlign.End,
-                    modifier = Modifier.width(40.dp),
+                    modifier = Modifier.width(45.dp),
                 )
                 QueueSongOverflowMenuButton(
                     tint = tint,

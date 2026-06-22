@@ -68,6 +68,7 @@ fun HomeScreen(
     recentlyPlayedPlaylists: List<Playlist> = emptyList(),
     favoriteAlbums: List<Album>,
     jellyfinAlbums: List<Album> = emptyList(),
+    recentlyPlayedJellyfinAlbums: List<Album> = emptyList(),
     jellyfinArtists: List<Artist> = emptyList(),
     isJellyfinConnected: Boolean = false,
     playbackState: PlaybackUiState,
@@ -174,11 +175,11 @@ fun HomeScreen(
                             }
                         }
 
-                        // Quick Picks (Spotify-like 2x3 grid, mixing albums and recently played playlists)
+                        // Quick Picks (Spotify-like 2x3 grid: recently listened Jellyfin albums and playlists)
                         item(key = "quick_picks") {
                             val quickPicks = buildList {
-                                jellyfinAlbums.take(2).forEach { add(HomeQuickPick.AlbumPick(it)) }
-                                recentlyPlayedPlaylists.take(2).forEach { playlist ->
+                                recentlyPlayedJellyfinAlbums.forEach { add(HomeQuickPick.AlbumPick(it)) }
+                                recentlyPlayedPlaylists.forEach { playlist ->
                                     add(
                                         HomeQuickPick.PlaylistPick(
                                             playlist = playlist,
@@ -186,8 +187,6 @@ fun HomeScreen(
                                         ),
                                     )
                                 }
-                                recentlyAddedAlbums.take(2).forEach { add(HomeQuickPick.AlbumPick(it)) }
-                                favoriteAlbums.take(2).forEach { add(HomeQuickPick.AlbumPick(it)) }
                             }.distinctBy { it.key }.take(6)
                             if (quickPicks.isNotEmpty()) {
                                 QuickPicksGrid(

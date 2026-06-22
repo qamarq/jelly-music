@@ -107,6 +107,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
@@ -982,7 +983,11 @@ internal fun AlbumSongRow(
                         title = song.title,
                         isExplicit = song.isExplicit,
                         style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = if (isCurrentSong) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.fillMaxWidth(),
@@ -997,7 +1002,6 @@ internal fun AlbumSongRow(
                 )
             }
             Row(
-                modifier = Modifier.width(94.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -1007,7 +1011,7 @@ internal fun AlbumSongRow(
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
                     maxLines = 1,
                     textAlign = TextAlign.End,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.widthIn(min = 44.dp),
                 )
                 InlineFavoriteSongButton(
                     isFavorite = isFavorite,

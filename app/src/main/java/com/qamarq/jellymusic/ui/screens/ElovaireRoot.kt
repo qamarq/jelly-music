@@ -481,6 +481,10 @@ fun ElovaireRoot(
     val recentAlbums = remember(libraryState.albums, playbackState.recentAlbumIds) {
         recentAlbumsFor(libraryState, playbackState)
     }
+    val recentlyPlayedJellyfinAlbums = remember(jellyfinAlbums, playbackState.recentAlbumIds) {
+        val jellyfinAlbumsById = jellyfinAlbums.associateBy { it.id }
+        playbackState.recentAlbumIds.mapNotNull(jellyfinAlbumsById::get).take(6)
+    }
     val topPlayedSongs = remember(songsById, songPlayCounts) {
         songsById.values
             .filter { (songPlayCounts[it.id] ?: 0) > 0 }
@@ -1173,6 +1177,7 @@ fun ElovaireRoot(
                             recentlyPlayedPlaylists = recentlyPlayedPlaylists,
                             favoriteAlbums = favoriteAlbums,
                             jellyfinAlbums = jellyfinAlbums,
+                            recentlyPlayedJellyfinAlbums = recentlyPlayedJellyfinAlbums,
                             jellyfinArtists = jellyfinArtists,
                             isJellyfinConnected = isJellyfinConnected,
                             onConnectJellyfin = { navController.navigate(JELLYFIN_SETUP_ROUTE) },

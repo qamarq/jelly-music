@@ -988,7 +988,7 @@ internal fun PlaylistSongRow(
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
                             maxLines = 1,
                             textAlign = TextAlign.End,
-                            modifier = Modifier.width(40.dp),
+                            modifier = Modifier.width(45.dp),
                         )
                         InlineFavoriteSongButton(
                             isFavorite = isFavorite,
@@ -1603,7 +1603,11 @@ internal fun SelectableSongRow(
                         title = song.title,
                         isExplicit = song.isExplicit,
                         style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = if (selected) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.fillMaxWidth(),
@@ -1626,7 +1630,7 @@ internal fun SelectableSongRow(
                     text = formatDuration(song.durationMs),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
-                    modifier = Modifier.width(40.dp),
+                    modifier = Modifier.width(45.dp),
                     textAlign = TextAlign.End,
                 )
                 if (selectionIndicatorOnRight) {
