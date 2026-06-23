@@ -270,8 +270,6 @@ import com.qamarq.jellymusic.data.playback.PlaybackRepeatMode
 import com.qamarq.jellymusic.data.playback.PlaybackUiState
 import com.qamarq.jellymusic.data.playback.PlaybackVolumeState
 import com.qamarq.jellymusic.data.playback.RecentPlaybackState
-import com.qamarq.jellymusic.data.update.AppReleaseInfo
-import com.qamarq.jellymusic.data.update.AppUpdateUiState
 import com.qamarq.jellymusic.domain.model.Album
 import com.qamarq.jellymusic.domain.model.AppLanguage
 import com.qamarq.jellymusic.domain.model.EqSettings

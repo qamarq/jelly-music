@@ -11,7 +11,6 @@ import com.qamarq.jellymusic.data.playback.PlaybackEffectsController
 import com.qamarq.jellymusic.data.playback.PlaybackManager
 import com.qamarq.jellymusic.data.playback.PlaybackNotificationController
 import com.qamarq.jellymusic.data.settings.PreferenceStore
-import com.qamarq.jellymusic.data.update.AppUpdateManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -35,11 +34,6 @@ class AppContainer(
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     val preferenceStore = PreferenceStore(applicationContext)
-    val appUpdateManager = AppUpdateManager(
-        context = applicationContext,
-        scope = appScope,
-        preferenceStore = preferenceStore,
-    )
     val lyricsService = LyricsService(applicationContext)
     private val playbackEffectsController = PlaybackEffectsController()
     val playbackManager = PlaybackManager(
@@ -116,14 +110,9 @@ class AppContainer(
         _openPlayerRequests.tryEmit(Unit)
     }
 
-    fun scheduleDeferredStartupWork() {
-        appUpdateManager.scheduleStartupMaintenance()
-    }
-
     fun release() {
         playbackNotificationController?.setNotificationsEnabled(false)
         playbackNotificationController = null
-        appUpdateManager.release()
         libraryRepository.release()
         playbackManager.release()
     }

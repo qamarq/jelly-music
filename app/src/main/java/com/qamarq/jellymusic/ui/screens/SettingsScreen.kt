@@ -273,8 +273,6 @@ import com.qamarq.jellymusic.data.playback.PlaybackRepeatMode
 import com.qamarq.jellymusic.data.playback.PlaybackUiState
 import com.qamarq.jellymusic.data.playback.PlaybackVolumeState
 import com.qamarq.jellymusic.data.playback.RecentPlaybackState
-import com.qamarq.jellymusic.data.update.AppReleaseInfo
-import com.qamarq.jellymusic.data.update.AppUpdateUiState
 import com.qamarq.jellymusic.domain.model.Album
 import com.qamarq.jellymusic.domain.model.AppLanguage
 import com.qamarq.jellymusic.domain.model.EqSettings
@@ -361,7 +359,6 @@ internal fun SettingsScreen(
     onOpenJellyfinSetup: () -> Unit,
     onOpenChangelog: () -> Unit,
     onScanLibrary: () -> Unit,
-    onCheckForUpdates: () -> Unit,
 ) {
     val listState = rememberElovaireLazyListState("settings_screen")
     val copy = remember(appLanguage) { settingsCopy(appLanguage) }
@@ -607,15 +604,6 @@ internal fun SettingsScreen(
                             subtitle = copy.scanLibrarySubtitle,
                             actionLabel = copy.scan,
                             onAction = onScanLibrary,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 2.dp),
-                        )
-                        SettingActionRow(
-                            title = copy.checkUpdates,
-                            subtitle = copy.checkUpdatesSubtitle,
-                            actionLabel = copy.check,
-                            onAction = onCheckForUpdates,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 2.dp),
@@ -978,96 +966,6 @@ internal fun LanguagePickerOptionRow(
                 ),
                 color = MaterialTheme.colorScheme.onSurface,
             )
-        }
-    }
-}
-
-@Composable
-internal fun UpdateAvailableBanner(
-    release: AppReleaseInfo,
-    uiState: AppUpdateUiState,
-    onDismiss: () -> Unit,
-    onUpdate: () -> Unit,
-) {
-    val darkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val primaryTextColor = if (darkTheme) Color.White else InkText
-    val secondaryTextColor = if (darkTheme) {
-        Color.White.copy(alpha = 0.7f)
-    } else {
-        InkText.copy(alpha = 0.7f)
-    }
-    DynamicBackdropSurface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(ElovaireRadii.pill),
-        overlayAlpha = 0.7f,
-        borderColor = blurSurfaceBorderColor(),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 32.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onDismiss,
-                    ),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "Update available",
-                        style = MaterialTheme.typography.bodyLarge.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            lineHeight = 22.sp,
-                        ),
-                        color = primaryTextColor,
-                    )
-                    Text(
-                        text = release.versionName,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = secondaryTextColor,
-                    )
-                }
-            }
-            Surface(
-                onClick = onUpdate,
-                shape = RoundedCornerShape(ElovaireRadii.pill),
-                color = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                enabled = !uiState.isInstalling,
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = when {
-                            uiState.isInstalling -> "Installing"
-                            uiState.isDownloading -> {
-                                val percent = ((uiState.downloadProgress ?: 0f) * 100f).roundToInt()
-                                "Downloading $percent%"
-                            }
-                            else -> "Download"
-                        },
-                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                    )
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_lucide_download),
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-            }
         }
     }
 }

@@ -70,9 +70,6 @@ class PreferenceStore(context: Context) {
     private val _jellyfinUserId = MutableStateFlow(loadJellyfinUserId())
     val jellyfinUserId: StateFlow<String> = _jellyfinUserId.asStateFlow()
 
-    private val _dismissedUpdateVersion = MutableStateFlow(loadDismissedUpdateVersion())
-    val dismissedUpdateVersion: StateFlow<String?> = _dismissedUpdateVersion.asStateFlow()
-
     private val _searchHistory = MutableStateFlow(loadSearchHistory())
     val searchHistory: StateFlow<List<SearchHistoryEntry>> = _searchHistory.asStateFlow()
     private val _albumPlayCounts = MutableStateFlow(loadAlbumPlayCounts())
@@ -475,27 +472,6 @@ class PreferenceStore(context: Context) {
         _jellyfinUserId.value = ""
     }
 
-    fun setDismissedUpdateVersion(versionName: String?) {
-        preferences.edit {
-            if (versionName.isNullOrBlank()) {
-                remove(KEY_DISMISSED_UPDATE_VERSION)
-            } else {
-                putString(KEY_DISMISSED_UPDATE_VERSION, versionName.trim())
-            }
-        }
-        _dismissedUpdateVersion.value = versionName?.trim()?.takeIf { it.isNotBlank() }
-    }
-
-    fun lastAutomaticUpdateCheckAtMs(): Long {
-        return preferences.getLong(KEY_LAST_AUTOMATIC_UPDATE_CHECK_AT_MS, 0L).coerceAtLeast(0L)
-    }
-
-    fun setLastAutomaticUpdateCheckAtMs(timestampMs: Long) {
-        preferences.edit {
-            putLong(KEY_LAST_AUTOMATIC_UPDATE_CHECK_AT_MS, timestampMs.coerceAtLeast(0L))
-        }
-    }
-
     private fun persistEqSettings(settings: EqSettings) {
         val normalizedSettings = settings.copy(
             reverbDurationMs = normalizeReverbDurationMs(settings.reverbDurationMs),
@@ -648,12 +624,6 @@ class PreferenceStore(context: Context) {
     private fun loadJellyfinPassword(): String = preferences.getString(KEY_JELLYFIN_PASSWORD, "").orEmpty()
     private fun loadJellyfinAccessToken(): String = preferences.getString(KEY_JELLYFIN_ACCESS_TOKEN, "").orEmpty()
     private fun loadJellyfinUserId(): String = preferences.getString(KEY_JELLYFIN_USER_ID, "").orEmpty()
-
-    private fun loadDismissedUpdateVersion(): String? {
-        return preferences.getString(KEY_DISMISSED_UPDATE_VERSION, null)
-            ?.trim()
-            ?.takeIf { it.isNotBlank() }
-    }
 
     private fun loadSearchHistory(): List<SearchHistoryEntry> {
         return preferences.getString(KEY_SEARCH_HISTORY, null)
@@ -865,8 +835,6 @@ class PreferenceStore(context: Context) {
         const val KEY_JELLYFIN_PASSWORD = "jellyfin_password"
         const val KEY_JELLYFIN_ACCESS_TOKEN = "jellyfin_access_token"
         const val KEY_JELLYFIN_USER_ID = "jellyfin_user_id"
-        const val KEY_DISMISSED_UPDATE_VERSION = "dismissed_update_version"
-        const val KEY_LAST_AUTOMATIC_UPDATE_CHECK_AT_MS = "last_automatic_update_check_at_ms"
         const val KEY_BANDS = "eq_bands"
         const val KEY_BASS = "eq_bass"
         const val KEY_MIDRANGE = "eq_midrange"

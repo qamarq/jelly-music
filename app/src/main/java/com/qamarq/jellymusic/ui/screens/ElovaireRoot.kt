@@ -273,8 +273,6 @@ import com.qamarq.jellymusic.data.playback.PlaybackRepeatMode
 import com.qamarq.jellymusic.data.playback.PlaybackUiState
 import com.qamarq.jellymusic.data.playback.PlaybackVolumeState
 import com.qamarq.jellymusic.data.playback.RecentPlaybackState
-import com.qamarq.jellymusic.data.update.AppReleaseInfo
-import com.qamarq.jellymusic.data.update.AppUpdateUiState
 import com.qamarq.jellymusic.domain.model.Album
 import com.qamarq.jellymusic.domain.model.AppLanguage
 import com.qamarq.jellymusic.domain.model.EqSettings
@@ -433,7 +431,6 @@ fun ElovaireRoot(
     val songCollectionGridEnabled by container.preferenceStore.songCollectionGridEnabled.collectAsStateWithLifecycle()
     val albumCollectionSortModeName by container.preferenceStore.albumCollectionSortMode.collectAsStateWithLifecycle()
     val songCollectionSortModeName by container.preferenceStore.songCollectionSortMode.collectAsStateWithLifecycle()
-    val appUpdateState by container.appUpdateManager.uiState.collectAsStateWithLifecycle()
     val albumCollectionLayoutMode = albumCollectionLayoutModeName.toAlbumLayoutMode()
     val changelogReleases = remember(context) { ChangelogRepository(context).loadReleases() }
     val rootScope = rememberCoroutineScope()
@@ -1747,9 +1744,6 @@ fun ElovaireRoot(
                                     showLoadingIndicator = true,
                                 )
                             },
-                            onCheckForUpdates = {
-                                container.appUpdateManager.checkForUpdates(force = true)
-                            },
                         )
                     }
 
@@ -1921,30 +1915,6 @@ fun ElovaireRoot(
                                 }
                             },
                         )
-                    }
-                    ElovaireAnimatedVisibility(
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .zIndex(7f)
-                            .padding(
-                                start = 16.dp,
-                                end = 16.dp,
-                                top = topBarHeight + 8.dp,
-                            ),
-                        visible = (showTopLevelChrome || currentRoute == SETTINGS_ROUTE) &&
-                            appUpdateState.availableRelease != null,
-                        enter = ElovaireMotion.bannerEnter(),
-                        exit = ElovaireMotion.bannerExit(),
-                        label = "UpdateBannerVisibility",
-                    ) {
-                        appUpdateState.availableRelease?.let { release ->
-                            UpdateAvailableBanner(
-                                release = release,
-                                uiState = appUpdateState,
-                                onDismiss = container.appUpdateManager::dismissAvailableUpdate,
-                                onUpdate = container.appUpdateManager::startUpdate,
-                            )
-                        }
                     }
                     ElovaireAnimatedVisibility(
                         visible = showFirstLaunchPermissionOverlay,
