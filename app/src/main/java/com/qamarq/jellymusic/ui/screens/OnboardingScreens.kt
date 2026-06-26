@@ -29,6 +29,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -51,6 +52,11 @@ internal data class OnboardingStep(
     val description: String,
     val primaryLabel: String,
     val skippable: Boolean = true,
+    // Permission-request steps launch an async system dialog - the result comes back later
+    // and removes the now-granted step from the list (the carousel naturally lands on the next
+    // remaining step at the same index). Auto-advancing immediately on tap, before that result
+    // arrives, races ahead of the actual system dialog and ends up skipping/misattributing steps.
+    val autoAdvanceOnClick: Boolean = true,
     val onPrimaryAction: () -> Unit,
 )
 
@@ -61,7 +67,21 @@ internal fun OnboardingCarousel(
 ) {
     val pagerState = rememberPagerState(pageCount = { steps.size })
     val scope = rememberCoroutineScope()
-    val isLastPage by remember { derivedStateOf { pagerState.currentPage == steps.lastIndex } }
+    // Keyed on steps - without this, the derivedStateOf is created once on first composition
+    // and keeps comparing against that original (longer) list's lastIndex forever, even after
+    // granted permissions shrink the list. isLastPage then never becomes true again, so the
+    // final "Connect" step's click silently tries to animate to a page index that no longer
+    // exists instead of finishing onboarding.
+    val isLastPage by remember(steps) { derivedStateOf { pagerState.currentPage == steps.lastIndex } }
+    val canGoBack by remember { derivedStateOf { pagerState.currentPage > 0 } }
+
+    // A granted permission removes its step from the list (see autoAdvanceOnClick below), which
+    // can leave currentPage pointing past the end of the now-shorter list.
+    LaunchedEffect(steps.size) {
+        if (pagerState.currentPage > steps.lastIndex) {
+            pagerState.scrollToPage(steps.lastIndex.coerceAtLeast(0))
+        }
+    }
 
     fun advance() {
         if (isLastPage) {
@@ -70,6 +90,17 @@ internal fun OnboardingCarousel(
             scope.launch {
                 pagerState.animateScrollToPage(
                     page = pagerState.currentPage + 1,
+                    animationSpec = tween(durationMillis = 320),
+                )
+            }
+        }
+    }
+
+    fun goBack() {
+        if (canGoBack) {
+            scope.launch {
+                pagerState.animateScrollToPage(
+                    page = pagerState.currentPage - 1,
                     animationSpec = tween(durationMillis = 320),
                 )
             }
@@ -87,6 +118,24 @@ internal fun OnboardingCarousel(
                 .statusBarsPadding()
                 .navigationBarsPadding(),
         ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .padding(start = 8.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                if (canGoBack) {
+                    TextButton(onClick = { goBack() }) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_lucide_chevron_left),
+                            contentDescription = "Back",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+            }
             HorizontalPager(
                 state = pagerState,
                 modifier = Modifier
@@ -121,7 +170,7 @@ internal fun OnboardingCarousel(
                 }
             }
 
-            val currentStep = steps[pagerState.currentPage]
+            val currentStep = steps[pagerState.currentPage.coerceIn(0, steps.lastIndex)]
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -131,7 +180,13 @@ internal fun OnboardingCarousel(
                 Button(
                     onClick = {
                         currentStep.onPrimaryAction()
-                        advance()
+                        // Permission steps launch an async system dialog - the actual result
+                        // (delivered later) removes the now-granted step from the list, which
+                        // naturally lands the carousel on the next remaining step. Advancing here
+                        // too would race ahead of that dialog and skip/misattribute steps.
+                        if (currentStep.autoAdvanceOnClick) {
+                            advance()
+                        }
                     },
                     modifier = Modifier
                         .fillMaxWidth()

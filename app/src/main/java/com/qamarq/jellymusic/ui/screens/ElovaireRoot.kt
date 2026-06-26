@@ -660,6 +660,7 @@ fun ElovaireRoot(
                             description = "JellyMusic needs access to the music files on your device so it can play them.",
                             primaryLabel = "Allow access",
                             skippable = false,
+                            autoAdvanceOnClick = false,
                             onPrimaryAction = { permissionLauncher.launch(audioPermission()) },
                         ),
                     )
@@ -671,6 +672,7 @@ fun ElovaireRoot(
                             title = "Notifications",
                             description = "We show a notification for the currently playing track, so you can control playback from the notification shade and lock screen.",
                             primaryLabel = "Allow",
+                            autoAdvanceOnClick = false,
                             onPrimaryAction = {
                                 notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                             },
@@ -684,6 +686,7 @@ fun ElovaireRoot(
                             title = "Nearby devices",
                             description = "Needed to discover Chromecasts, TVs, and speakers on your Wi-Fi network so you can stream music to them.",
                             primaryLabel = "Allow",
+                            autoAdvanceOnClick = false,
                             onPrimaryAction = {
                                 nearbyWifiDevicesPermissionLauncher.launch(Manifest.permission.NEARBY_WIFI_DEVICES)
                             },
@@ -697,6 +700,7 @@ fun ElovaireRoot(
                             title = "Local network",
                             description = "Starting with Android 17, this permission is required for the app to talk to devices on your home network, e.g. when casting to a TV.",
                             primaryLabel = "Allow",
+                            autoAdvanceOnClick = false,
                             onPrimaryAction = {
                                 localNetworkPermissionLauncher.launch(Manifest.permission.ACCESS_LOCAL_NETWORK)
                             },
@@ -721,13 +725,6 @@ fun ElovaireRoot(
         return
     }
 
-    LaunchedEffect(pendingJellyfinSetupAfterOnboarding) {
-        if (pendingJellyfinSetupAfterOnboarding) {
-            navController.navigate(JELLYFIN_SETUP_ROUTE)
-            pendingJellyfinSetupAfterOnboarding = false
-        }
-    }
-
     if (!hasPermission) {
         FirstLaunchPermissionLoadingScreen(
             showLoading = true,
@@ -743,6 +740,16 @@ fun ElovaireRoot(
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentBackStackEntry?.destination?.route
     val currentConcreteRoute = currentBackStackEntry?.concreteNavigationRoute() ?: currentRoute
+
+    // Navigating before the NavHost below has mounted and settled on its start destination is a
+    // silent no-op (navController has no graph yet) - currentRoute only becomes non-null once
+    // that's actually happened, so gate on it instead of firing the moment the flag is set.
+    LaunchedEffect(pendingJellyfinSetupAfterOnboarding, currentRoute) {
+        if (pendingJellyfinSetupAfterOnboarding && currentRoute != null) {
+            navController.navigate(JELLYFIN_SETUP_ROUTE)
+            pendingJellyfinSetupAfterOnboarding = false
+        }
+    }
     val currentAlbumRouteId = currentBackStackEntry?.arguments?.let { arguments ->
         val idObj = arguments.get("albumId")
         when (idObj) {
